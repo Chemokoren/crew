@@ -1,0 +1,158 @@
+// Package repository defines interfaces for all data access operations.
+// Services depend on these interfaces, never on concrete implementations.
+// This enables unit testing with mocks.
+package repository
+
+import (
+	"context"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/kibsoft/amy-mis/internal/models"
+)
+
+// --- Filter types ---
+
+// CrewFilter specifies filtering criteria for crew member queries.
+type CrewFilter struct {
+	SaccoID   *uuid.UUID
+	Role      string
+	KYCStatus string
+	IsActive  *bool
+	Search    string // Matches first_name, last_name, crew_id
+}
+
+// AssignmentFilter specifies filtering criteria for assignment queries.
+type AssignmentFilter struct {
+	SaccoID      *uuid.UUID
+	CrewMemberID *uuid.UUID
+	VehicleID    *uuid.UUID
+	Status       string
+	ShiftDate    *time.Time
+	DateFrom     *time.Time
+	DateTo       *time.Time
+}
+
+// EarningFilter specifies filtering criteria for earning queries.
+type EarningFilter struct {
+	CrewMemberID *uuid.UUID
+	AssignmentID *uuid.UUID
+	EarningType  string
+	DateFrom     *time.Time
+	DateTo       *time.Time
+	IsVerified   *bool
+}
+
+// TxFilter specifies filtering criteria for wallet transaction queries.
+type TxFilter struct {
+	Category        string
+	TransactionType string
+	Status          string
+	DateFrom        *time.Time
+	DateTo          *time.Time
+}
+
+// BulkError represents a single error in a bulk operation.
+type BulkError struct {
+	Index int    `json:"index"`
+	Error string `json:"error"`
+}
+
+// --- Repository interfaces ---
+
+// UserRepository handles user data access.
+type UserRepository interface {
+	Create(ctx context.Context, user *models.User) error
+	GetByID(ctx context.Context, id uuid.UUID) (*models.User, error)
+	GetByPhone(ctx context.Context, phone string) (*models.User, error)
+	Update(ctx context.Context, user *models.User) error
+	List(ctx context.Context, page, perPage int) ([]models.User, int64, error)
+}
+
+// CrewRepository handles crew member data access.
+type CrewRepository interface {
+	Create(ctx context.Context, crew *models.CrewMember) error
+	GetByID(ctx context.Context, id uuid.UUID) (*models.CrewMember, error)
+	GetByCrewID(ctx context.Context, crewID string) (*models.CrewMember, error)
+	Update(ctx context.Context, crew *models.CrewMember) error
+	Delete(ctx context.Context, id uuid.UUID) error
+	List(ctx context.Context, filter CrewFilter, page, perPage int) ([]models.CrewMember, int64, error)
+	NextCrewID(ctx context.Context) (string, error)
+}
+
+// SACCORepository handles SACCO data access.
+type SACCORepository interface {
+	Create(ctx context.Context, sacco *models.SACCO) error
+	GetByID(ctx context.Context, id uuid.UUID) (*models.SACCO, error)
+	Update(ctx context.Context, sacco *models.SACCO) error
+	Delete(ctx context.Context, id uuid.UUID) error
+	List(ctx context.Context, page, perPage int, search string) ([]models.SACCO, int64, error)
+}
+
+// VehicleRepository handles vehicle data access.
+type VehicleRepository interface {
+	Create(ctx context.Context, vehicle *models.Vehicle) error
+	GetByID(ctx context.Context, id uuid.UUID) (*models.Vehicle, error)
+	Update(ctx context.Context, vehicle *models.Vehicle) error
+	Delete(ctx context.Context, id uuid.UUID) error
+	List(ctx context.Context, saccoID *uuid.UUID, page, perPage int) ([]models.Vehicle, int64, error)
+}
+
+// RouteRepository handles route data access.
+type RouteRepository interface {
+	Create(ctx context.Context, route *models.Route) error
+	GetByID(ctx context.Context, id uuid.UUID) (*models.Route, error)
+	Update(ctx context.Context, route *models.Route) error
+	Delete(ctx context.Context, id uuid.UUID) error
+	List(ctx context.Context, page, perPage int, search string) ([]models.Route, int64, error)
+}
+
+// AssignmentRepository handles assignment data access.
+type AssignmentRepository interface {
+	Create(ctx context.Context, assignment *models.Assignment) error
+	BulkCreate(ctx context.Context, assignments []models.Assignment) (int, []BulkError, error)
+	GetByID(ctx context.Context, id uuid.UUID) (*models.Assignment, error)
+	Update(ctx context.Context, assignment *models.Assignment) error
+	List(ctx context.Context, filter AssignmentFilter, page, perPage int) ([]models.Assignment, int64, error)
+	HasActiveAssignment(ctx context.Context, crewMemberID uuid.UUID, date time.Time) (bool, error)
+}
+
+// EarningRepository handles earning data access.
+type EarningRepository interface {
+	Create(ctx context.Context, earning *models.Earning) error
+	BulkCreate(ctx context.Context, earnings []models.Earning) (int, []BulkError, error)
+	GetByID(ctx context.Context, id uuid.UUID) (*models.Earning, error)
+	Update(ctx context.Context, earning *models.Earning) error
+	List(ctx context.Context, filter EarningFilter, page, perPage int) ([]models.Earning, int64, error)
+	GetDailySummary(ctx context.Context, crewMemberID uuid.UUID, date time.Time) (*models.DailyEarningsSummary, error)
+	UpsertDailySummary(ctx context.Context, summary *models.DailyEarningsSummary) error
+}
+
+// WalletRepository handles wallet data access with atomic financial operations.
+type WalletRepository interface {
+	Create(ctx context.Context, wallet *models.Wallet) error
+	GetByCrewMemberID(ctx context.Context, crewMemberID uuid.UUID) (*models.Wallet, error)
+
+	// CreditWallet atomically updates balance and creates a transaction.
+	// Returns ErrOptimisticLock if version mismatch.
+	CreditWallet(ctx context.Context, walletID uuid.UUID, version int, amountCents int64,
+		category models.TransactionCategory, idempotencyKey, reference, description string) (*models.WalletTransaction, error)
+
+	// DebitWallet atomically checks balance, updates, and creates a transaction.
+	// Returns ErrInsufficientBalance or ErrOptimisticLock.
+	DebitWallet(ctx context.Context, walletID uuid.UUID, version int, amountCents int64,
+		category models.TransactionCategory, idempotencyKey, reference, description string) (*models.WalletTransaction, error)
+
+	GetTransactions(ctx context.Context, walletID uuid.UUID, filter TxFilter, page, perPage int) ([]models.WalletTransaction, int64, error)
+	GetByIdempotencyKey(ctx context.Context, key string) (*models.WalletTransaction, error)
+}
+
+// PayrollRepository handles payroll data access.
+type PayrollRepository interface {
+	Create(ctx context.Context, run *models.PayrollRun) error
+	GetByID(ctx context.Context, id uuid.UUID) (*models.PayrollRun, error)
+	Update(ctx context.Context, run *models.PayrollRun) error
+	List(ctx context.Context, saccoID *uuid.UUID, page, perPage int) ([]models.PayrollRun, int64, error)
+	CreateEntries(ctx context.Context, entries []models.PayrollEntry) error
+	GetEntries(ctx context.Context, runID uuid.UUID) ([]models.PayrollEntry, error)
+}

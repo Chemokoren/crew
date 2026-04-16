@@ -1,0 +1,8 @@
+ALTER TABLE users DROP CONSTRAINT IF EXISTS fk_users_crew_member;
+ALTER TABLE users DROP CONSTRAINT IF EXISTS fk_users_sacco;
+DROP TABLE IF EXISTS crew_sacco_memberships;
+DROP TABLE IF EXISTS vehicles;
+DROP TABLE IF EXISTS routes;
+DROP TABLE IF EXISTS crew_members;
+DROP TABLE IF EXISTS saccos;
+DROP SEQUENCE IF EXISTS crew_id_seq;
