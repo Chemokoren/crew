@@ -54,7 +54,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	// --- 4. Connect to Redis ---
+	// --- 4. Run database migrations ---
+	if err := database.RunMigrations(cfg.DatabaseURL, cfg.MigrationsPath); err != nil {
+		slog.Error("failed to run database migrations", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+
+	// --- 5. Connect to Redis ---
 	redisClient, err := database.ConnectRedis(cfg.RedisURL)
 	if err != nil {
 		slog.Error("failed to connect to Redis", slog.String("error", err.Error()))

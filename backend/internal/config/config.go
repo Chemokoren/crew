@@ -16,15 +16,16 @@ type Config struct {
 	Environment string // development | staging | production
 
 	// Database
-	DatabaseURL string // PostgreSQL connection string (required)
+	DatabaseURL    string // PostgreSQL connection string (required)
+	MigrationsPath string // Path to migration files (default: ./migrations)
 
 	// Redis
 	RedisURL string // Redis connection string (required)
 
 	// JWT
-	JWTSecret       string // JWT signing secret (required)
-	JWTExpiryMinutes int   // Access token TTL in minutes (default: 15)
-	JWTRefreshDays   int   // Refresh token TTL in days (default: 7)
+	JWTSecret        string // JWT signing secret (required)
+	JWTExpiryMinutes int    // Access token TTL in minutes (default: 15)
+	JWTRefreshDays   int    // Refresh token TTL in days (default: 7)
 
 	// MinIO (S3-compatible file storage)
 	MinIOEndpoint  string // MinIO server endpoint (required)
@@ -62,6 +63,7 @@ func Load() (*Config, error) {
 		Port:             getEnvInt("PORT", 8080),
 		Environment:      getEnv("ENVIRONMENT", "development"),
 		DatabaseURL:      os.Getenv("DATABASE_URL"),
+		MigrationsPath:   getEnv("MIGRATIONS_PATH", "./migrations"),
 		RedisURL:         os.Getenv("REDIS_URL"),
 		JWTSecret:        os.Getenv("JWT_SECRET"),
 		JWTExpiryMinutes: getEnvInt("JWT_EXPIRY_MINUTES", 15),

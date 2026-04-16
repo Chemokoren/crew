@@ -8,6 +8,10 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
 
 // Connect establishes a connection to PostgreSQL and configures the pool.
@@ -51,4 +55,23 @@ func Connect(databaseURL string, isDev bool) (*gorm.DB, error) {
 	)
 
 	return db, nil
+}
+
+// RunMigrations applies all pending migrations from the given path.
+func RunMigrations(databaseURL, migrationsPath string) error {
+	m, err := migrate.New(
+		"file://"+migrationsPath,
+		databaseURL,
+	)
+	if err != nil {
+		return fmt.Errorf("create migrate instance: %w", err)
+	}
+	defer m.Close()
+
+	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+		return fmt.Errorf("apply migrations: %w", err)
+	}
+
+	slog.Info("database migrations applied successfully")
+	return nil
 }
