@@ -116,15 +116,18 @@ func main() {
 	router := gin.New()
 
 	// Global middleware
+	router.Use(middleware.CORS())
 	router.Use(middleware.RequestID())
+	router.Use(middleware.MetricsMiddleware())
 	router.Use(middleware.Logger(logger))
 	router.Use(middleware.Recovery(logger))
 
 	// --- 12. Register routes ---
 
-	// Health & readiness probes (no auth)
+	// Health, readiness, and metrics (no auth)
 	router.GET("/health", healthHandler.Health)
 	router.GET("/ready", healthHandler.Ready)
+	router.GET("/metrics", middleware.MetricsHandler())
 
 	// API v1 — public endpoints
 	v1 := router.Group("/api/v1")
