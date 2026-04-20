@@ -207,7 +207,8 @@ func (r *WalletRepo) GetByCrewMemberID(_ context.Context, crewMemberID uuid.UUID
 	defer r.mu.RUnlock()
 	for _, w := range r.wallets {
 		if w.CrewMemberID == crewMemberID {
-			return w, nil
+			copy := *w // Return a copy to prevent data races
+			return &copy, nil
 		}
 	}
 	return nil, errs.ErrNotFound
