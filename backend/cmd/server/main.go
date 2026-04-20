@@ -18,6 +18,10 @@ import (
 	"github.com/kibsoft/amy-mis/internal/external/storage"
 	"github.com/kibsoft/amy-mis/internal/handler"
 	"github.com/kibsoft/amy-mis/internal/middleware"
+	pgRepo "github.com/kibsoft/amy-mis/internal/repository/postgres"
+	"github.com/kibsoft/amy-mis/internal/service"
+	"github.com/kibsoft/amy-mis/pkg/jwt"
+	"github.com/kibsoft/amy-mis/pkg/types"
 )
 
 func main() {
@@ -67,7 +71,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// --- 5. Connect to MinIO ---
+	// --- 6. Connect to MinIO ---
 	minioClient, err := storage.NewMinIOClient(
 		cfg.MinIOEndpoint,
 		cfg.MinIOAccessKey,
@@ -79,30 +83,101 @@ func main() {
 		slog.Error("failed to connect to MinIO", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
-	_ = minioClient // Will be injected into handlers in Phase 4
+	_ = minioClient // Injected into document handlers in a future phase
 
-	// --- 6. Setup Gin router ---
+	// --- 7. Initialize repositories ---
+	userRepo := pgRepo.NewUserRepo(db)
+	crewRepo := pgRepo.NewCrewRepo(db)
+	walletRepo := pgRepo.NewWalletRepo(db)
+	assignmentRepo := pgRepo.NewAssignmentRepo(db)
+	earningRepo := pgRepo.NewEarningRepo(db)
+
+	// --- 8. Initialize JWT manager ---
+	jwtManager := jwt.NewManager(cfg.JWTSecret, cfg.JWTExpiryMinutes, cfg.JWTRefreshDays)
+
+	// --- 9. Initialize services ---
+	authSvc := service.NewAuthService(userRepo, crewRepo, jwtManager, logger)
+	crewSvc := service.NewCrewService(crewRepo, logger)
+	walletSvc := service.NewWalletService(walletRepo, crewRepo, logger)
+	assignmentSvc := service.NewAssignmentService(assignmentRepo, earningRepo, walletSvc, logger)
+
+	// --- 10. Initialize handlers ---
+	healthHandler := handler.NewHealthHandler(db, redisClient)
+	authHandler := handler.NewAuthHandler(authSvc)
+	crewHandler := handler.NewCrewHandler(crewSvc)
+	walletHandler := handler.NewWalletHandler(walletSvc)
+	assignmentHandler := handler.NewAssignmentHandler(assignmentSvc)
+
+	// --- 11. Setup Gin router ---
 	if cfg.IsProduction() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	router := gin.New() // Don't use gin.Default() — we add our own middleware
+	router := gin.New()
 
 	// Global middleware
 	router.Use(middleware.RequestID())
 	router.Use(middleware.Logger(logger))
 	router.Use(middleware.Recovery(logger))
 
-	// --- 7. Register routes ---
-	healthHandler := handler.NewHealthHandler(db, redisClient)
+	// --- 12. Register routes ---
 
 	// Health & readiness probes (no auth)
 	router.GET("/health", healthHandler.Health)
 	router.GET("/ready", healthHandler.Ready)
 
-	// API v1 group (auth middleware will be added in Phase 4)
+	// API v1 — public endpoints
 	v1 := router.Group("/api/v1")
-	_ = v1 // Endpoint groups will be registered in Phase 4
+
+	auth := v1.Group("/auth")
+	{
+		auth.POST("/register", authHandler.Register)
+		auth.POST("/login", authHandler.Login)
+		auth.POST("/refresh", authHandler.Refresh)
+	}
+
+	// API v1 — authenticated endpoints
+	secured := v1.Group("")
+	secured.Use(middleware.JWTAuth(jwtManager))
+	{
+		// Current user
+		secured.GET("/auth/me", authHandler.Me)
+
+		// Crew members (SACCO admins & system admins)
+		crew := secured.Group("/crew")
+		crew.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin))
+		{
+			crew.POST("", crewHandler.Create)
+			crew.GET("", crewHandler.List)
+			crew.GET("/:id", crewHandler.GetByID)
+			crew.PUT("/:id/kyc", crewHandler.UpdateKYC)
+			crew.DELETE("/:id", crewHandler.Deactivate)
+		}
+
+		// Assignments
+		assignments := secured.Group("/assignments")
+		assignments.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin))
+		{
+			assignments.POST("", assignmentHandler.Create)
+			assignments.GET("", assignmentHandler.List)
+			assignments.GET("/:id", assignmentHandler.GetByID)
+			assignments.POST("/:id/complete", assignmentHandler.Complete)
+		}
+
+		// Wallets (system admin only for direct credit/debit; crew can view own)
+		wallets := secured.Group("/wallets")
+		{
+			wallets.GET("/:crew_member_id", walletHandler.GetBalance)
+			wallets.GET("/:crew_member_id/transactions", walletHandler.ListTransactions)
+
+			walletAdmin := wallets.Group("")
+			walletAdmin.Use(middleware.RequireRole(types.RoleSystemAdmin))
+			{
+				walletAdmin.POST("/credit", walletHandler.Credit)
+				walletAdmin.POST("/debit", walletHandler.Debit)
+			}
+		}
+	}
 
 	// --- 8. Start HTTP server ---
 	srv := &http.Server{
