@@ -366,6 +366,7 @@ func main() {
 			saccos.GET("/:id/float", saccoHandler.GetFloat)
 			saccos.POST("/:id/float/credit", saccoHandler.CreditFloat)
 			saccos.POST("/:id/float/debit", saccoHandler.DebitFloat)
+			saccos.GET("/:id/float/transactions", saccoHandler.ListFloatTransactions)
 		}
 
 		// Vehicles

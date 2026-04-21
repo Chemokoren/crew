@@ -199,6 +199,27 @@ func (h *SACCOHandler) DebitFloat(c *gin.Context) {
 	SuccessResponse(c, http.StatusCreated, tx)
 }
 
+func (h *SACCOHandler) ListFloatTransactions(c *gin.Context) {
+	saccoID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		BadRequest(c, "Invalid SACCO ID")
+		return
+	}
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "20"))
+	
+	filter := repository.SACCOFloatFilter{
+		TransactionType: c.Query("type"),
+	}
+
+	txs, total, err := h.saccoSvc.ListFloatTransactions(c.Request.Context(), saccoID, filter, page, perPage)
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+	ListResponse(c, txs, buildMeta(page, perPage, total))
+}
+
 // --- Vehicle Handler ---
 
 type VehicleHandler struct {
