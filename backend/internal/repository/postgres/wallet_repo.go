@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/kibsoft/amy-mis/internal/database"
 	"github.com/kibsoft/amy-mis/internal/models"
 	"github.com/kibsoft/amy-mis/internal/repository"
 	"github.com/kibsoft/amy-mis/pkg/errs"
@@ -25,8 +26,16 @@ func NewWalletRepo(db *gorm.DB) *WalletRepo {
 	return &WalletRepo{db: db}
 }
 
+// getDB returns the transaction from context if present, otherwise the default DB.
+func (r *WalletRepo) getDB(ctx context.Context) *gorm.DB {
+	if tx := database.ExtractTx(ctx); tx != nil {
+		return tx.WithContext(ctx)
+	}
+	return r.db.WithContext(ctx)
+}
+
 func (r *WalletRepo) Create(ctx context.Context, wallet *models.Wallet) error {
-	if err := r.db.WithContext(ctx).Create(wallet).Error; err != nil {
+	if err := r.getDB(ctx).Create(wallet).Error; err != nil {
 		return fmt.Errorf("create wallet: %w", err)
 	}
 	return nil
@@ -34,7 +43,7 @@ func (r *WalletRepo) Create(ctx context.Context, wallet *models.Wallet) error {
 
 func (r *WalletRepo) GetByCrewMemberID(ctx context.Context, crewMemberID uuid.UUID) (*models.Wallet, error) {
 	var wallet models.Wallet
-	if err := r.db.WithContext(ctx).Where("crew_member_id = ?", crewMemberID).First(&wallet).Error; err != nil {
+	if err := r.getDB(ctx).Where("crew_member_id = ?", crewMemberID).First(&wallet).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errs.ErrNotFound
 		}

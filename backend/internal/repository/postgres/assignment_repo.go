@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/kibsoft/amy-mis/internal/database"
 	"github.com/kibsoft/amy-mis/internal/models"
 	"github.com/kibsoft/amy-mis/internal/repository"
 	"github.com/kibsoft/amy-mis/pkg/errs"
@@ -22,8 +23,16 @@ func NewAssignmentRepo(db *gorm.DB) *AssignmentRepo {
 	return &AssignmentRepo{db: db}
 }
 
+// getDB returns the transaction from context if present, otherwise the default DB.
+func (r *AssignmentRepo) getDB(ctx context.Context) *gorm.DB {
+	if tx := database.ExtractTx(ctx); tx != nil {
+		return tx.WithContext(ctx)
+	}
+	return r.db.WithContext(ctx)
+}
+
 func (r *AssignmentRepo) Create(ctx context.Context, assignment *models.Assignment) error {
-	if err := r.db.WithContext(ctx).Create(assignment).Error; err != nil {
+	if err := r.getDB(ctx).Create(assignment).Error; err != nil {
 		return fmt.Errorf("create assignment: %w", err)
 	}
 	return nil
@@ -33,7 +42,7 @@ func (r *AssignmentRepo) BulkCreate(ctx context.Context, assignments []models.As
 	var bulkErrors []repository.BulkError
 	created := 0
 
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := r.getDB(ctx).Transaction(func(tx *gorm.DB) error {
 		for i, a := range assignments {
 			if err := tx.Create(&a).Error; err != nil {
 				bulkErrors = append(bulkErrors, repository.BulkError{
@@ -57,7 +66,7 @@ func (r *AssignmentRepo) BulkCreate(ctx context.Context, assignments []models.As
 
 func (r *AssignmentRepo) GetByID(ctx context.Context, id uuid.UUID) (*models.Assignment, error) {
 	var assignment models.Assignment
-	if err := r.db.WithContext(ctx).
+	if err := r.getDB(ctx).
 		Preload("CrewMember").
 		Preload("Vehicle").
 		Preload("Sacco").
@@ -72,7 +81,7 @@ func (r *AssignmentRepo) GetByID(ctx context.Context, id uuid.UUID) (*models.Ass
 }
 
 func (r *AssignmentRepo) Update(ctx context.Context, assignment *models.Assignment) error {
-	if err := r.db.WithContext(ctx).Save(assignment).Error; err != nil {
+	if err := r.getDB(ctx).Save(assignment).Error; err != nil {
 		return fmt.Errorf("update assignment: %w", err)
 	}
 	return nil
@@ -82,7 +91,7 @@ func (r *AssignmentRepo) List(ctx context.Context, filter repository.AssignmentF
 	var assignments []models.Assignment
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&models.Assignment{})
+	query := r.getDB(ctx).Model(&models.Assignment{})
 
 	if filter.SaccoID != nil {
 		query = query.Where("sacco_id = ?", *filter.SaccoID)
@@ -123,7 +132,7 @@ func (r *AssignmentRepo) List(ctx context.Context, filter repository.AssignmentF
 
 func (r *AssignmentRepo) HasActiveAssignment(ctx context.Context, crewMemberID uuid.UUID, date time.Time) (bool, error) {
 	var count int64
-	err := r.db.WithContext(ctx).Model(&models.Assignment{}).
+	err := r.getDB(ctx).Model(&models.Assignment{}).
 		Where("crew_member_id = ? AND shift_date = ? AND status IN ?", crewMemberID, date, []string{"SCHEDULED", "ACTIVE"}).
 		Count(&count).Error
 	if err != nil {

@@ -156,3 +156,85 @@ type PayrollRepository interface {
 	CreateEntries(ctx context.Context, entries []models.PayrollEntry) error
 	GetEntries(ctx context.Context, runID uuid.UUID) ([]models.PayrollEntry, error)
 }
+
+// MembershipRepository handles crew-SACCO membership data access.
+type MembershipRepository interface {
+	Create(ctx context.Context, m *models.CrewSACCOMembership) error
+	GetByID(ctx context.Context, id uuid.UUID) (*models.CrewSACCOMembership, error)
+	Update(ctx context.Context, m *models.CrewSACCOMembership) error
+	ListBySACCO(ctx context.Context, saccoID uuid.UUID, page, perPage int) ([]models.CrewSACCOMembership, int64, error)
+	ListByCrewMember(ctx context.Context, crewMemberID uuid.UUID) ([]models.CrewSACCOMembership, error)
+	GetActive(ctx context.Context, crewMemberID, saccoID uuid.UUID) (*models.CrewSACCOMembership, error)
+}
+
+// SACCOFloatFilter specifies filtering for SACCO float transaction queries.
+type SACCOFloatFilter struct {
+	TransactionType string
+	DateFrom        *time.Time
+	DateTo          *time.Time
+}
+
+// SACCOFloatRepository handles SACCO float data access with atomic operations.
+type SACCOFloatRepository interface {
+	GetOrCreate(ctx context.Context, saccoID uuid.UUID) (*models.SACCOFloat, error)
+	CreditFloat(ctx context.Context, floatID uuid.UUID, version int, amountCents int64,
+		idempotencyKey, reference string) (*models.SACCOFloatTransaction, error)
+	DebitFloat(ctx context.Context, floatID uuid.UUID, version int, amountCents int64,
+		idempotencyKey, reference string) (*models.SACCOFloatTransaction, error)
+	GetTransactions(ctx context.Context, floatID uuid.UUID, filter SACCOFloatFilter, page, perPage int) ([]models.SACCOFloatTransaction, int64, error)
+}
+
+// DocumentFilter specifies filtering for document queries.
+type DocumentFilter struct {
+	CrewMemberID *uuid.UUID
+	SaccoID      *uuid.UUID
+	VehicleID    *uuid.UUID
+	DocumentType string
+}
+
+// DocumentRepository handles document metadata data access.
+type DocumentRepository interface {
+	Create(ctx context.Context, doc *models.Document) error
+	GetByID(ctx context.Context, id uuid.UUID) (*models.Document, error)
+	Delete(ctx context.Context, id uuid.UUID) error
+	List(ctx context.Context, filter DocumentFilter, page, perPage int) ([]models.Document, int64, error)
+}
+
+// NotificationFilter specifies filtering for notification queries.
+type NotificationFilter struct {
+	Channel string
+	Status  string
+}
+
+// NotificationRepository handles notification data access.
+type NotificationRepository interface {
+	Create(ctx context.Context, n *models.Notification) error
+	GetByID(ctx context.Context, id uuid.UUID) (*models.Notification, error)
+	Update(ctx context.Context, n *models.Notification) error
+	ListByUser(ctx context.Context, userID uuid.UUID, filter NotificationFilter, page, perPage int) ([]models.Notification, int64, error)
+	MarkRead(ctx context.Context, id uuid.UUID) error
+	GetTemplate(ctx context.Context, eventName string) (*models.NotificationTemplate, error)
+	CreateTemplate(ctx context.Context, t *models.NotificationTemplate) error
+}
+
+// AuditLogRepository handles audit log data access (append-only).
+type AuditLogRepository interface {
+	Create(ctx context.Context, log *models.AuditLog) error
+	List(ctx context.Context, resource string, resourceID *uuid.UUID, page, perPage int) ([]models.AuditLog, int64, error)
+}
+
+// WebhookEventRepository handles inbound webhook event storage.
+type WebhookEventRepository interface {
+	Create(ctx context.Context, event *models.WebhookEvent) error
+	GetByID(ctx context.Context, id uuid.UUID) (*models.WebhookEvent, error)
+	GetByExternalRef(ctx context.Context, source models.WebhookSource, ref string) (*models.WebhookEvent, error)
+	MarkProcessed(ctx context.Context, id uuid.UUID) error
+	ListUnprocessed(ctx context.Context, source models.WebhookSource, limit int) ([]models.WebhookEvent, error)
+}
+
+// StatutoryRateRepository handles statutory deduction rate data access.
+type StatutoryRateRepository interface {
+	GetActiveRates(ctx context.Context) ([]models.StatutoryRate, error)
+	Create(ctx context.Context, rate *models.StatutoryRate) error
+	Update(ctx context.Context, rate *models.StatutoryRate) error
+}

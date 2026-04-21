@@ -13,6 +13,7 @@ import (
 	"github.com/kibsoft/amy-mis/internal/repository"
 	"github.com/kibsoft/amy-mis/internal/service"
 	"github.com/kibsoft/amy-mis/pkg/pagination"
+	"github.com/kibsoft/amy-mis/pkg/types"
 )
 
 // AssignmentHandler handles shift assignment endpoints.
@@ -45,6 +46,18 @@ func (h *AssignmentHandler) Create(c *gin.Context) {
 	}
 
 	claims := middleware.GetClaims(c)
+
+	// Gap 4: SACCO_ADMIN can only create assignments within their own SACCO
+	if claims.SystemRole == types.RoleSaccoAdmin {
+		if claims.SaccoID == nil {
+			Forbidden(c, "SACCO admin has no SACCO assigned")
+			return
+		}
+		if req.SaccoID != *claims.SaccoID {
+			Forbidden(c, "Cannot create assignments for a different SACCO")
+			return
+		}
+	}
 
 	result, err := h.assignmentSvc.CreateAssignment(c.Request.Context(), service.CreateAssignmentInput{
 		CrewMemberID:     req.CrewMemberID,
@@ -111,6 +124,15 @@ func (h *AssignmentHandler) GetByID(c *gin.Context) {
 		return
 	}
 
+	// Gap 4: SACCO_ADMIN can only view assignments within their SACCO
+	claims := middleware.GetClaims(c)
+	if claims.SystemRole == types.RoleSaccoAdmin && claims.SaccoID != nil {
+		if assignment.SaccoID != *claims.SaccoID {
+			Forbidden(c, "Cannot access assignments from a different SACCO")
+			return
+		}
+	}
+
 	SuccessResponse(c, http.StatusOK, dto.AssignmentToResponse(assignment))
 }
 
@@ -120,10 +142,16 @@ func (h *AssignmentHandler) List(c *gin.Context) {
 	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "20"))
 
 	filter := repository.AssignmentFilter{}
-	if saccoID := c.Query("sacco_id"); saccoID != "" {
+
+	// Gap 4: SACCO_ADMIN is automatically scoped to their own SACCO
+	claims := middleware.GetClaims(c)
+	if claims.SystemRole == types.RoleSaccoAdmin && claims.SaccoID != nil {
+		filter.SaccoID = claims.SaccoID
+	} else if saccoID := c.Query("sacco_id"); saccoID != "" {
 		id, _ := uuid.Parse(saccoID)
 		filter.SaccoID = &id
 	}
+
 	if crewID := c.Query("crew_member_id"); crewID != "" {
 		id, _ := uuid.Parse(crewID)
 		filter.CrewMemberID = &id
@@ -157,11 +185,51 @@ func NewWalletHandler(svc *service.WalletService) *WalletHandler {
 	return &WalletHandler{walletSvc: svc}
 }
 
+// enforceWalletAccess checks that the requesting user has access to the given crew member's wallet.
+// CREW users can only access their own wallet. SACCO_ADMIN can access wallets
+// of crew members in their SACCO (not enforced at DB level yet). SYSTEM_ADMIN can access any.
+// Returns true if access is denied (response already sent).
+func enforceWalletAccess(c *gin.Context, crewMemberID uuid.UUID) bool {
+	claims := middleware.GetClaims(c)
+	if claims == nil {
+		Unauthorized(c, "Authentication required")
+		return true
+	}
+
+	// SYSTEM_ADMIN can access any wallet
+	if claims.SystemRole == types.RoleSystemAdmin {
+		return false
+	}
+
+	// SACCO_ADMIN can access any wallet (SACCO-level filtering is a future enhancement)
+	if claims.SystemRole == types.RoleSaccoAdmin {
+		return false
+	}
+
+	// CREW users can only access their own wallet
+	if claims.SystemRole == types.RoleCrewUser {
+		if claims.CrewMemberID == nil || *claims.CrewMemberID != crewMemberID {
+			Forbidden(c, "You can only access your own wallet")
+			return true
+		}
+		return false
+	}
+
+	// LENDER, INSURER — no wallet access for now
+	Forbidden(c, "Insufficient permissions to access wallets")
+	return true
+}
+
 // GET /api/v1/wallets/:crew_member_id
 func (h *WalletHandler) GetBalance(c *gin.Context) {
 	crewMemberID, err := uuid.Parse(c.Param("crew_member_id"))
 	if err != nil {
 		BadRequest(c, "Invalid crew member ID")
+		return
+	}
+
+	// Gap 5: Enforce wallet ownership
+	if denied := enforceWalletAccess(c, crewMemberID); denied {
 		return
 	}
 
@@ -249,6 +317,11 @@ func (h *WalletHandler) ListTransactions(c *gin.Context) {
 	crewMemberID, err := uuid.Parse(c.Param("crew_member_id"))
 	if err != nil {
 		BadRequest(c, "Invalid crew member ID")
+		return
+	}
+
+	// Gap 5: Enforce wallet ownership for transaction history too
+	if denied := enforceWalletAccess(c, crewMemberID); denied {
 		return
 	}
 
@@ -356,7 +429,12 @@ func (h *CrewHandler) List(c *gin.Context) {
 		KYCStatus: c.Query("kyc_status"),
 		Search:    c.Query("search"),
 	}
-	if saccoID := c.Query("sacco_id"); saccoID != "" {
+
+	// Gap 4: SACCO_ADMIN is automatically scoped to their own SACCO
+	claims := middleware.GetClaims(c)
+	if claims.SystemRole == types.RoleSaccoAdmin && claims.SaccoID != nil {
+		filter.SaccoID = claims.SaccoID
+	} else if saccoID := c.Query("sacco_id"); saccoID != "" {
 		id, _ := uuid.Parse(saccoID)
 		filter.SaccoID = &id
 	}

@@ -34,16 +34,36 @@ type Config struct {
 	MinIOBucket    string // MinIO bucket name (default: amy-mis)
 	MinIOUseSSL    bool   // Use SSL for MinIO (default: false)
 
-	// External APIs
-	JamboPayAPIKey  string // JamboPay API key
-	JamboPayBaseURL string // JamboPay API base URL
-	PerpayAPIKey    string // Perpay API key
-	PerpayBaseURL   string // Perpay API base URL
-	IPRSAPIKey      string // IPRS API key
-	IPRSBaseURL     string // IPRS API base URL
-	ATAPIKey        string // Africa's Talking API key
-	ATUsername      string // Africa's Talking username
-	ATShortCode     string // Africa's Talking USSD short code
+	// SMS — Optimize (default provider)
+	SMSClientID           string // Optimize SMS client ID
+	SMSClientSecret       string // Optimize SMS client secret
+	SMSTokenURL           string // Optimize SMS OAuth2 token URL
+	SMSURL                string // Optimize SMS send endpoint
+	SMSSenderID           string // Optimize SMS sender name
+	SMSCallbackURL        string // Optimize SMS callback URL
+	SMSTokenExpirySec     int    // Optimize SMS token TTL (default: 3600)
+
+	// SMS — Africa's Talking (alternative provider)
+	ATAPIKey    string // Africa's Talking API key
+	ATUsername  string // Africa's Talking username
+	ATShortCode string // Africa's Talking short code
+	ATBaseURL   string // Africa's Talking base URL
+
+	// JamboPay (payment/payout)
+	JamboPayClientID     string // JamboPay OAuth2 client ID
+	JamboPayClientSecret string // JamboPay OAuth2 client secret
+	JamboPayBaseURL      string // JamboPay API base URL
+
+	// PerPay (payroll)
+	PerpayClientID     string // PerPay OAuth2 client ID
+	PerpayClientSecret string // PerPay OAuth2 client secret
+	PerpayBaseURL      string // PerPay API base URL
+
+	// IPRS (identity verification)
+	IPRSClientID          string // IPRS OAuth2 client ID
+	IPRSClientSecret      string // IPRS OAuth2 client secret
+	IPRSBaseURL           string // IPRS API base URL
+	IPRSTokenEndpoint     string // IPRS OAuth2 token endpoint
 
 	// Rate Limiting
 	RateLimitRPM int // Requests per minute per IP (default: 100)
@@ -73,16 +93,38 @@ func Load() (*Config, error) {
 		MinIOSecretKey:   os.Getenv("MINIO_SECRET_KEY"),
 		MinIOBucket:      getEnv("MINIO_BUCKET", "amy-mis"),
 		MinIOUseSSL:      getEnvBool("MINIO_USE_SSL", false),
-		JamboPayAPIKey:   os.Getenv("JAMBOPAY_API_KEY"),
-		JamboPayBaseURL:  os.Getenv("JAMBOPAY_BASE_URL"),
-		PerpayAPIKey:     os.Getenv("PERPAY_API_KEY"),
-		PerpayBaseURL:    os.Getenv("PERPAY_BASE_URL"),
-		IPRSAPIKey:       os.Getenv("IPRS_API_KEY"),
-		IPRSBaseURL:      os.Getenv("IPRS_BASE_URL"),
-		ATAPIKey:         os.Getenv("AT_API_KEY"),
-		ATUsername:        os.Getenv("AT_USERNAME"),
-		ATShortCode:      os.Getenv("AT_SHORTCODE"),
-		RateLimitRPM:     getEnvInt("RATE_LIMIT_RPM", 100),
+		// SMS — Optimize
+		SMSClientID:       os.Getenv("SMS_CLIENT_ID"),
+		SMSClientSecret:   os.Getenv("SMS_CLIENT_SECRET"),
+		SMSTokenURL:       os.Getenv("SMS_TOKEN_URL"),
+		SMSURL:            os.Getenv("SMS_URL"),
+		SMSSenderID:       getEnv("SMS_SENDER_ID", "AMY-MIS"),
+		SMSCallbackURL:    os.Getenv("SMS_CALLBACK_URL"),
+		SMSTokenExpirySec: getEnvInt("SMS_TOKEN_EXPIRATION_TIME", 3600),
+
+		// SMS — Africa's Talking
+		ATAPIKey:    os.Getenv("AT_API_KEY"),
+		ATUsername:  os.Getenv("AT_USERNAME"),
+		ATShortCode: os.Getenv("AT_SHORTCODE"),
+		ATBaseURL:   getEnv("AT_BASE_URL", "https://api.africastalking.com/version1"),
+
+		// JamboPay
+		JamboPayClientID:     os.Getenv("JAMBOPAY_CLIENT_ID"),
+		JamboPayClientSecret: os.Getenv("JAMBOPAY_CLIENT_SECRET"),
+		JamboPayBaseURL:      os.Getenv("JAMBOPAY_BASE_URL"),
+
+		// PerPay
+		PerpayClientID:     os.Getenv("PERPAY_CLIENT_ID"),
+		PerpayClientSecret: os.Getenv("PERPAY_CLIENT_SECRET"),
+		PerpayBaseURL:      os.Getenv("PERPAY_BASE_URL"),
+
+		// IPRS
+		IPRSClientID:      os.Getenv("IPRS_CLIENT_ID"),
+		IPRSClientSecret:  os.Getenv("IPRS_CLIENT_SECRET"),
+		IPRSBaseURL:       os.Getenv("IPRS_BASE_URL"),
+		IPRSTokenEndpoint: os.Getenv("IPRS_TOKEN_ENDPOINT"),
+
+		RateLimitRPM:       getEnvInt("RATE_LIMIT_RPM", 100),
 		CORSAllowedOrigins: getEnv("CORS_ALLOWED_ORIGINS", "*"),
 	}
 
@@ -119,13 +161,13 @@ func (c *Config) validate() error {
 		return fmt.Errorf("config: MINIO_SECRET_KEY is required")
 	}
 
-	// External APIs are optional in development
+	// External APIs are optional in development, required in production
 	if c.Environment == "production" {
-		if c.JamboPayAPIKey == "" {
-			return fmt.Errorf("config: JAMBOPAY_API_KEY is required in production")
+		if c.JamboPayClientID == "" {
+			return fmt.Errorf("config: JAMBOPAY_CLIENT_ID is required in production")
 		}
-		if c.ATAPIKey == "" {
-			return fmt.Errorf("config: AT_API_KEY is required in production")
+		if c.SMSClientID == "" && c.ATAPIKey == "" {
+			return fmt.Errorf("config: at least one SMS provider (SMS_CLIENT_ID or AT_API_KEY) is required in production")
 		}
 	}
 

@@ -324,3 +324,232 @@ func (r *WalletRepo) GetByIdempotencyKey(_ context.Context, key string) (*models
 	}
 	return nil, errs.ErrNotFound
 }
+
+// --- SACCORepo Mock ---
+
+type SACCORepo struct {
+	mu     sync.RWMutex
+	saccos map[uuid.UUID]*models.SACCO
+}
+
+func NewSACCORepo() *SACCORepo {
+	return &SACCORepo{saccos: make(map[uuid.UUID]*models.SACCO)}
+}
+
+func (r *SACCORepo) Create(_ context.Context, sacco *models.SACCO) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if sacco.ID == uuid.Nil {
+		sacco.ID = uuid.New()
+	}
+	sacco.CreatedAt = time.Now()
+	sacco.UpdatedAt = time.Now()
+	r.saccos[sacco.ID] = sacco
+	return nil
+}
+
+func (r *SACCORepo) GetByID(_ context.Context, id uuid.UUID) (*models.SACCO, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	s, ok := r.saccos[id]
+	if !ok {
+		return nil, errs.ErrNotFound
+	}
+	return s, nil
+}
+
+func (r *SACCORepo) Update(_ context.Context, sacco *models.SACCO) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	sacco.UpdatedAt = time.Now()
+	r.saccos[sacco.ID] = sacco
+	return nil
+}
+
+func (r *SACCORepo) Delete(_ context.Context, id uuid.UUID) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.saccos, id)
+	return nil
+}
+
+func (r *SACCORepo) List(_ context.Context, page, perPage int, search string) ([]models.SACCO, int64, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var all []models.SACCO
+	for _, s := range r.saccos {
+		all = append(all, *s)
+	}
+	return all, int64(len(all)), nil
+}
+
+// --- MembershipRepo Mock ---
+
+type MembershipRepo struct {
+	mu      sync.RWMutex
+	members map[uuid.UUID]*models.CrewSACCOMembership
+}
+
+func NewMembershipRepo() *MembershipRepo {
+	return &MembershipRepo{members: make(map[uuid.UUID]*models.CrewSACCOMembership)}
+}
+
+func (r *MembershipRepo) Create(_ context.Context, m *models.CrewSACCOMembership) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if m.ID == uuid.Nil {
+		m.ID = uuid.New()
+	}
+	m.JoinedAt = time.Now()
+	r.members[m.ID] = m
+	return nil
+}
+
+func (r *MembershipRepo) GetByID(_ context.Context, id uuid.UUID) (*models.CrewSACCOMembership, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	m, ok := r.members[id]
+	if !ok {
+		return nil, errs.ErrNotFound
+	}
+	return m, nil
+}
+
+func (r *MembershipRepo) Update(_ context.Context, m *models.CrewSACCOMembership) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.members[m.ID] = m
+	return nil
+}
+
+func (r *MembershipRepo) ListBySACCO(_ context.Context, saccoID uuid.UUID, page, perPage int) ([]models.CrewSACCOMembership, int64, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var all []models.CrewSACCOMembership
+	for _, m := range r.members {
+		if m.SaccoID == saccoID && m.IsActive {
+			all = append(all, *m)
+		}
+	}
+	return all, int64(len(all)), nil
+}
+
+func (r *MembershipRepo) ListByCrewMember(_ context.Context, crewMemberID uuid.UUID) ([]models.CrewSACCOMembership, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var all []models.CrewSACCOMembership
+	for _, m := range r.members {
+		if m.CrewMemberID == crewMemberID && m.IsActive {
+			all = append(all, *m)
+		}
+	}
+	return all, nil
+}
+
+func (r *MembershipRepo) GetActive(_ context.Context, crewMemberID, saccoID uuid.UUID) (*models.CrewSACCOMembership, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, m := range r.members {
+		if m.CrewMemberID == crewMemberID && m.SaccoID == saccoID && m.IsActive {
+			return m, nil
+		}
+	}
+	return nil, errs.ErrNotFound
+}
+
+// --- SACCOFloatRepo Mock ---
+
+type SACCOFloatRepo struct {
+	mu     sync.RWMutex
+	floats map[uuid.UUID]*models.SACCOFloat
+	txs    []models.SACCOFloatTransaction
+}
+
+func NewSACCOFloatRepo() *SACCOFloatRepo {
+	return &SACCOFloatRepo{
+		floats: make(map[uuid.UUID]*models.SACCOFloat),
+	}
+}
+
+func (r *SACCOFloatRepo) GetOrCreate(_ context.Context, saccoID uuid.UUID) (*models.SACCOFloat, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, f := range r.floats {
+		if f.SaccoID == saccoID {
+			return f, nil
+		}
+	}
+	f := &models.SACCOFloat{
+		ID:       uuid.New(),
+		SaccoID:  saccoID,
+		Currency: "KES",
+	}
+	r.floats[f.ID] = f
+	return f, nil
+}
+
+func (r *SACCOFloatRepo) CreditFloat(_ context.Context, floatID uuid.UUID, version int, amountCents int64, idempotencyKey, reference string) (*models.SACCOFloatTransaction, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	f, ok := r.floats[floatID]
+	if !ok {
+		return nil, errs.ErrNotFound
+	}
+	if f.Version != version {
+		return nil, errs.ErrOptimisticLock
+	}
+	f.BalanceCents += amountCents
+	f.Version++
+	tx := models.SACCOFloatTransaction{
+		ID:                uuid.New(),
+		SACCOFloatID:      floatID,
+		IdempotencyKey:    idempotencyKey,
+		TransactionType:   "CREDIT",
+		AmountCents:       amountCents,
+		BalanceAfterCents: f.BalanceCents,
+		Status:            models.TxCompleted,
+	}
+	r.txs = append(r.txs, tx)
+	return &tx, nil
+}
+
+func (r *SACCOFloatRepo) DebitFloat(_ context.Context, floatID uuid.UUID, version int, amountCents int64, idempotencyKey, reference string) (*models.SACCOFloatTransaction, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	f, ok := r.floats[floatID]
+	if !ok {
+		return nil, errs.ErrNotFound
+	}
+	if f.Version != version {
+		return nil, errs.ErrOptimisticLock
+	}
+	if f.BalanceCents < amountCents {
+		return nil, errs.ErrInsufficientBalance
+	}
+	f.BalanceCents -= amountCents
+	f.Version++
+	tx := models.SACCOFloatTransaction{
+		ID:                uuid.New(),
+		SACCOFloatID:      floatID,
+		IdempotencyKey:    idempotencyKey,
+		TransactionType:   "DEBIT",
+		AmountCents:       amountCents,
+		BalanceAfterCents: f.BalanceCents,
+		Status:            models.TxCompleted,
+	}
+	r.txs = append(r.txs, tx)
+	return &tx, nil
+}
+
+func (r *SACCOFloatRepo) GetTransactions(_ context.Context, floatID uuid.UUID, filter repository.SACCOFloatFilter, page, perPage int) ([]models.SACCOFloatTransaction, int64, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var all []models.SACCOFloatTransaction
+	for _, tx := range r.txs {
+		if tx.SACCOFloatID == floatID {
+			all = append(all, tx)
+		}
+	}
+	return all, int64(len(all)), nil
+}
+

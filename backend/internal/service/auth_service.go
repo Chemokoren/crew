@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/kibsoft/amy-mis/internal/database"
 	"github.com/kibsoft/amy-mis/internal/models"
 	"github.com/kibsoft/amy-mis/internal/repository"
 	"github.com/kibsoft/amy-mis/pkg/jwt"
@@ -19,6 +20,7 @@ type AuthService struct {
 	userRepo repository.UserRepository
 	crewRepo repository.CrewRepository
 	jwt      *jwt.Manager
+	txMgr    *database.TxManager
 	logger   *slog.Logger
 }
 
@@ -27,12 +29,14 @@ func NewAuthService(
 	userRepo repository.UserRepository,
 	crewRepo repository.CrewRepository,
 	jwtManager *jwt.Manager,
+	txMgr *database.TxManager,
 	logger *slog.Logger,
 ) *AuthService {
 	return &AuthService{
 		userRepo: userRepo,
 		crewRepo: crewRepo,
 		jwt:      jwtManager,
+		txMgr:    txMgr,
 		logger:   logger,
 	}
 }
@@ -59,6 +63,7 @@ type RegisterResult struct {
 }
 
 // Register creates a new user account and optionally a crew member profile.
+// The entire operation runs inside a database transaction to prevent orphan records.
 func (s *AuthService) Register(ctx context.Context, input RegisterInput) (*RegisterResult, error) {
 	// 1. Validate role
 	if !input.Role.IsValid() {
@@ -89,37 +94,55 @@ func (s *AuthService) Register(ctx context.Context, input RegisterInput) (*Regis
 		IsActive:     true,
 	}
 
-	// 5. If CREW role, create crew member profile
 	var crewMember *models.CrewMember
-	if input.Role == types.RoleCrewUser {
-		crewID, err := s.crewRepo.NextCrewID(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("generate crew id: %w", err)
+
+	// 5. Execute crew + user creation inside a single transaction.
+	// If txMgr is nil (e.g., in tests with mock repos), run without transaction.
+	createFn := func(txCtx context.Context) error {
+		// If CREW role, create crew member profile first
+		if input.Role == types.RoleCrewUser {
+			crewID, err := s.crewRepo.NextCrewID(txCtx)
+			if err != nil {
+				return fmt.Errorf("generate crew id: %w", err)
+			}
+
+			crewMember = &models.CrewMember{
+				CrewID:     crewID,
+				NationalID: input.NationalID,
+				FirstName:  input.FirstName,
+				LastName:   input.LastName,
+				Role:       input.CrewRole,
+				KYCStatus:  models.KYCPending,
+				IsActive:   true,
+			}
+
+			if err := s.crewRepo.Create(txCtx, crewMember); err != nil {
+				return fmt.Errorf("create crew member: %w", err)
+			}
+
+			user.CrewMemberID = &crewMember.ID
 		}
 
-		crewMember = &models.CrewMember{
-			CrewID:     crewID,
-			NationalID: input.NationalID,
-			FirstName:  input.FirstName,
-			LastName:   input.LastName,
-			Role:       input.CrewRole,
-			KYCStatus:  models.KYCPending,
-			IsActive:   true,
+		// Create user
+		if err := s.userRepo.Create(txCtx, user); err != nil {
+			return fmt.Errorf("create user: %w", err)
 		}
 
-		if err := s.crewRepo.Create(ctx, crewMember); err != nil {
-			return nil, fmt.Errorf("create crew member: %w", err)
-		}
-
-		user.CrewMemberID = &crewMember.ID
+		return nil
 	}
 
-	// 6. Create user
-	if err := s.userRepo.Create(ctx, user); err != nil {
-		return nil, fmt.Errorf("create user: %w", err)
+	if s.txMgr != nil {
+		if err := s.txMgr.RunInTx(ctx, createFn); err != nil {
+			return nil, err
+		}
+	} else {
+		// No transaction manager (test/mock mode) — run directly
+		if err := createFn(ctx); err != nil {
+			return nil, err
+		}
 	}
 
-	// 7. Generate tokens
+	// 6. Generate tokens (outside transaction — not a DB operation)
 	tokens, err := s.jwt.GenerateTokenPair(user.ID, user.Phone, user.SystemRole, user.CrewMemberID, user.SaccoID)
 	if err != nil {
 		return nil, fmt.Errorf("generate tokens: %w", err)

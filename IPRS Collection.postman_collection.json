@@ -1,0 +1,131 @@
+{
+	"info": {
+		"_postman_id": "b8ba570d-fb0b-4753-9f77-49c58963b2a3",
+		"name": "IPRS Collection",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "get-access-token",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "urlencoded",
+					"urlencoded": [
+						{
+							"key": "client_id",
+							"value": "{{ClientId}}",
+							"type": "default"
+						},
+						{
+							"key": "client_secret",
+							"value": "{{ClientSecret}}",
+							"type": "default"
+						},
+						{
+							"key": "scope",
+							"value": "iprs",
+							"type": "default"
+						},
+						{
+							"key": "grant_type",
+							"value": "client_credentials",
+							"type": "default"
+						}
+					]
+				},
+				"url": {
+					"raw": "{{AccessTokenEndpoint}}",
+					"host": [
+						"{{AccessTokenEndpoint}}"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "get-citizen-details",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{AccessToken}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"idNumber\":\"\",\r\n    \"serialNumber\":\"\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{IprsBaseUrl}}/citizen-details",
+					"host": [
+						"{{IprsBaseUrl}}"
+					],
+					"path": [
+						"citizen-details"
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "IprsBaseUrl",
+			"value": "http://192.168.11.29:1550/api/v1/iprs",
+			"type": "default"
+		},
+		{
+			"key": "AccessTokenEndpoint",
+			"value": "https://extenzia.jambopay.com:5101/connect/token",
+			"type": "default"
+		},
+		{
+			"key": "AccessToken",
+			"value": "eyJhbGciOiJSUzI1NiIsImtpZCI6IjU0NzNGMUMyRkYzMzcxQTRFOEQwQTVCMkI5QTIzRTE1MDU0RDc1NTUiLCJ0eXAiOiJhdCtqd3QiLCJ4NXQiOiJWSFB4d3Y4emNhVG8wS1d5dWFJLUZRVk5kVlUifQ.eyJuYmYiOjE2OTAyNzM2ODEsImV4cCI6MTY5MDI3NzI4MSwiaXNzIjoibnVsbCIsImF1ZCI6ImlwcnMiLCJjbGllbnRfaWQiOiI3ZjhjZjI1OTkzODY0ZDAzOWQ5MjUxNDRjZWQyZGFmYSIsInNjb3BlIjpbImlwcnMiXX0.B05ux4DIXvIMw5AOXyuzkWH8DMZUQxVSpYSCUqBaTMm6h59g51ll5pQ6w8F3KBUG5hXiO5-DSvKgESOHTR5Zz6nZFTkY8iP309XJknZPspoa5fXYKoPBAfYZdhBA69LiFJnsHfx0OxZQyqE4EWi96KtKnbIUL4G8UH6USAYopeqfrUhW3uZASGclhz3q2mq66wXdcADj4f4Nm_RisvUzyVRwDL9xn8t3GF-iJfRxIddnyJBkpaaqRHMPk-Xc1_zw6IgMgTyt-JA1lf7NC4diIzsOF6P1tPMa9cRDQAZMO-_ArkE-R3tRVm_iGwrlzfw14Oce6_Q9uREQC58CLfJjfA",
+			"type": "default"
+		},
+		{
+			"key": "ClientId",
+			"value": "",
+			"type": "default"
+		},
+		{
+			"key": "ClientSecret",
+			"value": "",
+			"type": "default"
+		}
+	]
+}

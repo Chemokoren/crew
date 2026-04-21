@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/kibsoft/amy-mis/internal/database"
 	"github.com/kibsoft/amy-mis/internal/models"
 	"github.com/kibsoft/amy-mis/internal/repository"
 	"github.com/kibsoft/amy-mis/pkg/errs"
@@ -22,8 +23,16 @@ func NewCrewRepo(db *gorm.DB) *CrewRepo {
 	return &CrewRepo{db: db}
 }
 
+// getDB returns the transaction from context if present, otherwise the default DB.
+func (r *CrewRepo) getDB(ctx context.Context) *gorm.DB {
+	if tx := database.ExtractTx(ctx); tx != nil {
+		return tx.WithContext(ctx)
+	}
+	return r.db.WithContext(ctx)
+}
+
 func (r *CrewRepo) Create(ctx context.Context, crew *models.CrewMember) error {
-	if err := r.db.WithContext(ctx).Create(crew).Error; err != nil {
+	if err := r.getDB(ctx).Create(crew).Error; err != nil {
 		return fmt.Errorf("create crew member: %w", err)
 	}
 	return nil
@@ -31,7 +40,7 @@ func (r *CrewRepo) Create(ctx context.Context, crew *models.CrewMember) error {
 
 func (r *CrewRepo) GetByID(ctx context.Context, id uuid.UUID) (*models.CrewMember, error) {
 	var crew models.CrewMember
-	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&crew).Error; err != nil {
+	if err := r.getDB(ctx).Where("id = ?", id).First(&crew).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errs.ErrNotFound
 		}
@@ -42,7 +51,7 @@ func (r *CrewRepo) GetByID(ctx context.Context, id uuid.UUID) (*models.CrewMembe
 
 func (r *CrewRepo) GetByCrewID(ctx context.Context, crewID string) (*models.CrewMember, error) {
 	var crew models.CrewMember
-	if err := r.db.WithContext(ctx).Where("crew_id = ?", crewID).First(&crew).Error; err != nil {
+	if err := r.getDB(ctx).Where("crew_id = ?", crewID).First(&crew).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errs.ErrNotFound
 		}
@@ -52,7 +61,7 @@ func (r *CrewRepo) GetByCrewID(ctx context.Context, crewID string) (*models.Crew
 }
 
 func (r *CrewRepo) Update(ctx context.Context, crew *models.CrewMember) error {
-	if err := r.db.WithContext(ctx).Save(crew).Error; err != nil {
+	if err := r.getDB(ctx).Save(crew).Error; err != nil {
 		return fmt.Errorf("update crew member: %w", err)
 	}
 	return nil
@@ -60,7 +69,7 @@ func (r *CrewRepo) Update(ctx context.Context, crew *models.CrewMember) error {
 
 func (r *CrewRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	// Soft delete via GORM's DeletedAt
-	if err := r.db.WithContext(ctx).Where("id = ?", id).Delete(&models.CrewMember{}).Error; err != nil {
+	if err := r.getDB(ctx).Where("id = ?", id).Delete(&models.CrewMember{}).Error; err != nil {
 		return fmt.Errorf("delete crew member: %w", err)
 	}
 	return nil
@@ -70,7 +79,7 @@ func (r *CrewRepo) List(ctx context.Context, filter repository.CrewFilter, page,
 	var members []models.CrewMember
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&models.CrewMember{})
+	query := r.getDB(ctx).Model(&models.CrewMember{})
 
 	if filter.SaccoID != nil {
 		query = query.Where("id IN (SELECT crew_member_id FROM crew_sacco_memberships WHERE sacco_id = ? AND is_active = true)", *filter.SaccoID)
@@ -102,7 +111,7 @@ func (r *CrewRepo) List(ctx context.Context, filter repository.CrewFilter, page,
 // NextCrewID generates the next human-readable crew ID (CRW-00001).
 func (r *CrewRepo) NextCrewID(ctx context.Context) (string, error) {
 	var nextVal int64
-	if err := r.db.WithContext(ctx).Raw("SELECT nextval('crew_id_seq')").Scan(&nextVal).Error; err != nil {
+	if err := r.getDB(ctx).Raw("SELECT nextval('crew_id_seq')").Scan(&nextVal).Error; err != nil {
 		return "", fmt.Errorf("get next crew_id_seq: %w", err)
 	}
 	return fmt.Sprintf("CRW-%05d", nextVal), nil

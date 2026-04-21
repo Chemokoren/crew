@@ -17,7 +17,7 @@ func newTestAuthService() (*AuthService, *mock.UserRepo, *mock.CrewRepo) {
 	crewRepo := mock.NewCrewRepo()
 	jwtMgr := jwt.NewManager("test-secret-key-that-is-at-least-32-chars-long!", 15, 7)
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	return NewAuthService(userRepo, crewRepo, jwtMgr, logger), userRepo, crewRepo
+	return NewAuthService(userRepo, crewRepo, jwtMgr, nil, logger), userRepo, crewRepo
 }
 
 func TestRegisterCrewUser(t *testing.T) {

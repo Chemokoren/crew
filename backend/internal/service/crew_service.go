@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/kibsoft/amy-mis/internal/models"
@@ -78,11 +79,8 @@ func (s *CrewService) UpdateKYCStatus(ctx context.Context, input UpdateKYCInput)
 
 	crew.KYCStatus = input.Status
 	if input.Status == models.KYCVerified {
-		now := ctx.Value("now") // Allow test injection
-		if now == nil {
-			t := models.KYCVerified // just mark timestamp
-			_ = t
-		}
+		now := time.Now()
+		crew.KYCVerifiedAt = &now
 	}
 
 	if err := s.crewRepo.Update(ctx, crew); err != nil {

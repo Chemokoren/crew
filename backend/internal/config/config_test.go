@@ -153,6 +153,6 @@ func TestProductionRequiresExternalAPIs(t *testing.T) {
 
 	_, err := Load()
 	if err == nil {
-		t.Error("Load() should fail in production when JAMBOPAY_API_KEY is missing")
+		t.Error("Load() should fail in production when JAMBOPAY_CLIENT_ID is missing")
 	}
 }

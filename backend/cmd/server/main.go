@@ -35,11 +35,19 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/kibsoft/amy-mis/internal/config"
 	"github.com/kibsoft/amy-mis/internal/database"
+	"github.com/kibsoft/amy-mis/internal/external/identity"
+	"github.com/kibsoft/amy-mis/internal/external/iprs"
+	"github.com/kibsoft/amy-mis/internal/external/jambopay"
+	"github.com/kibsoft/amy-mis/internal/external/payment"
+	"github.com/kibsoft/amy-mis/internal/external/payroll"
+	"github.com/kibsoft/amy-mis/internal/external/perpay"
+	"github.com/kibsoft/amy-mis/internal/external/sms"
 	"github.com/kibsoft/amy-mis/internal/external/storage"
 	"github.com/kibsoft/amy-mis/internal/handler"
 	"github.com/kibsoft/amy-mis/internal/middleware"
 	pgRepo "github.com/kibsoft/amy-mis/internal/repository/postgres"
 	"github.com/kibsoft/amy-mis/internal/service"
+	"github.com/kibsoft/amy-mis/internal/worker"
 	"github.com/kibsoft/amy-mis/pkg/jwt"
 	"github.com/kibsoft/amy-mis/pkg/types"
 
@@ -116,24 +124,129 @@ func main() {
 	walletRepo := pgRepo.NewWalletRepo(db)
 	assignmentRepo := pgRepo.NewAssignmentRepo(db)
 	earningRepo := pgRepo.NewEarningRepo(db)
+	saccoRepo := pgRepo.NewSACCORepo(db)
+	vehicleRepo := pgRepo.NewVehicleRepo(db)
+	routeRepo := pgRepo.NewRouteRepo(db)
+	payrollRepo := pgRepo.NewPayrollRepo(db)
+	membershipRepo := pgRepo.NewMembershipRepo(db)
+	floatRepo := pgRepo.NewSACCOFloatRepo(db)
+	documentRepo := pgRepo.NewDocumentRepo(db)
+	notificationRepo := pgRepo.NewNotificationRepo(db)
+	auditRepo := pgRepo.NewAuditLogRepo(db)
+	statutoryRateRepo := pgRepo.NewStatutoryRateRepo(db)
 
-	// --- 8. Initialize JWT manager ---
+	// --- 8. Initialize transaction manager ---
+	txMgr := database.NewTxManager(db)
+
+	// --- 9. Initialize JWT manager ---
 	jwtManager := jwt.NewManager(cfg.JWTSecret, cfg.JWTExpiryMinutes, cfg.JWTRefreshDays)
 
-	// --- 9. Initialize services ---
-	authSvc := service.NewAuthService(userRepo, crewRepo, jwtManager, logger)
+	// --- 10. Initialize services ---
+	authSvc := service.NewAuthService(userRepo, crewRepo, jwtManager, txMgr, logger)
 	crewSvc := service.NewCrewService(crewRepo, logger)
 	walletSvc := service.NewWalletService(walletRepo, crewRepo, logger)
-	assignmentSvc := service.NewAssignmentService(assignmentRepo, earningRepo, walletSvc, logger)
+	assignmentSvc := service.NewAssignmentService(assignmentRepo, earningRepo, walletSvc, txMgr, logger)
+	saccoSvc := service.NewSACCOService(saccoRepo, membershipRepo, floatRepo, logger)
+	vehicleSvc := service.NewVehicleService(vehicleRepo, logger)
+	routeSvc := service.NewRouteService(routeRepo, logger)
+	payrollSvc := service.NewPayrollService(payrollRepo, earningRepo, statutoryRateRepo, logger)
+	notifSvc := service.NewNotificationService(notificationRepo, logger)
+	_ = service.NewDocumentService(documentRepo, logger)   // Wired when MinIO upload handlers are added
+	_ = service.NewAuditService(auditRepo, logger)         // Wired into middleware hooks
 
-	// --- 10. Initialize handlers ---
+	// --- 11. Initialize handlers ---
 	healthHandler := handler.NewHealthHandler(db, redisClient)
 	authHandler := handler.NewAuthHandler(authSvc)
 	crewHandler := handler.NewCrewHandler(crewSvc)
 	walletHandler := handler.NewWalletHandler(walletSvc)
 	assignmentHandler := handler.NewAssignmentHandler(assignmentSvc)
+	saccoHandler := handler.NewSACCOHandler(saccoSvc)
+	vehicleHandler := handler.NewVehicleHandler(vehicleSvc)
+	routeHandler := handler.NewRouteHandler(routeSvc)
+	payrollHandler := handler.NewPayrollHandler(payrollSvc)
+	notifHandler := handler.NewNotificationHandler(notifSvc)
 
-	// --- 11. Setup Gin router ---
+	// --- 12. Initialize external integration managers (Strategy pattern) ---
+
+	// SMS: Optimize (default) + Africa's Talking (fallback)
+	var smsProviders []sms.Provider
+	if cfg.SMSClientID != "" {
+		smsProviders = append(smsProviders, sms.NewOptimizeProvider(sms.OptimizeConfig{
+			ClientID:           cfg.SMSClientID,
+			ClientSecret:       cfg.SMSClientSecret,
+			TokenURL:           cfg.SMSTokenURL,
+			SMSURL:             cfg.SMSURL,
+			SenderID:           cfg.SMSSenderID,
+			CallbackURL:        cfg.SMSCallbackURL,
+			TokenExpirySeconds: cfg.SMSTokenExpirySec,
+		}, logger))
+	}
+	if cfg.ATAPIKey != "" {
+		smsProviders = append(smsProviders, sms.NewAfricasTalkingProvider(sms.AfricasTalkingConfig{
+			APIKey:    cfg.ATAPIKey,
+			Username:  cfg.ATUsername,
+			Shortcode: cfg.ATShortCode,
+			BaseURL:   cfg.ATBaseURL,
+		}, logger))
+	}
+	var smsMgr *sms.Manager
+	if len(smsProviders) > 0 {
+		smsMgr = sms.NewManager(logger, smsProviders...)
+	} else {
+		slog.Warn("no SMS providers configured — SMS functionality disabled")
+	}
+	_ = smsMgr // Injected into notification service in a future phase
+
+	// Payment: JamboPay
+	var paymentMgr *payment.Manager
+	if cfg.JamboPayClientID != "" {
+		jp := jambopay.NewJamboPayProvider(jambopay.JamboPayConfig{
+			BaseURL:      cfg.JamboPayBaseURL,
+			ClientID:     cfg.JamboPayClientID,
+			ClientSecret: cfg.JamboPayClientSecret,
+		}, logger)
+		paymentMgr = payment.NewManager(logger, jp)
+	} else {
+		slog.Warn("JamboPay not configured — payout functionality disabled")
+	}
+	_ = paymentMgr // Injected into payout service in a future phase
+
+	// Payroll: PerPay
+	var payrollMgr *payroll.Manager
+	if cfg.PerpayClientID != "" {
+		pp := perpay.NewPerPayProvider(perpay.PerPayConfig{
+			BaseURL:      cfg.PerpayBaseURL,
+			ClientID:     cfg.PerpayClientID,
+			ClientSecret: cfg.PerpayClientSecret,
+		}, logger)
+		payrollMgr = payroll.NewManager(logger, pp)
+	} else {
+		slog.Warn("PerPay not configured — payroll submission disabled")
+	}
+	_ = payrollMgr // Injected into payroll service in a future phase
+
+	// Identity: IPRS
+	var identityMgr *identity.Manager
+	if cfg.IPRSClientID != "" {
+		iprsProvider := iprs.NewIPRSProvider(iprs.IPRSConfig{
+			BaseURL:             cfg.IPRSBaseURL,
+			AccessTokenEndpoint: cfg.IPRSTokenEndpoint,
+			ClientID:            cfg.IPRSClientID,
+			ClientSecret:        cfg.IPRSClientSecret,
+		}, logger)
+		identityMgr = identity.NewManager(logger, iprsProvider)
+	} else {
+		slog.Warn("IPRS not configured — identity verification disabled")
+	}
+	_ = identityMgr // Injected into KYC service in a future phase
+
+	// --- 13. Initialize background workers ---
+	scheduler := worker.NewScheduler(logger)
+	dailySummaryJob := worker.NewDailySummaryJob(earningRepo, assignmentRepo, logger)
+	scheduler.Register(dailySummaryJob.AsJob())
+	scheduler.Start()
+
+	// --- 14. Setup Gin router ---
 	if cfg.IsProduction() {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -150,7 +263,7 @@ func main() {
 	router.Use(middleware.Logger(logger))
 	router.Use(middleware.Recovery(logger))
 
-	// --- 12. Register routes ---
+	// --- 14. Register routes ---
 
 	// Health, readiness, and metrics (no auth)
 	router.GET("/health", healthHandler.Health)
@@ -211,9 +324,67 @@ func main() {
 				walletAdmin.POST("/debit", walletHandler.Debit)
 			}
 		}
+
+		// SACCOs (system admin + sacco admin)
+		saccos := secured.Group("/saccos")
+		saccos.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin))
+		{
+			saccos.POST("", saccoHandler.Create)
+			saccos.GET("", saccoHandler.List)
+			saccos.GET("/:id", saccoHandler.GetByID)
+			saccos.PUT("/:id", saccoHandler.Update)
+			saccos.DELETE("/:id", saccoHandler.Delete)
+			saccos.GET("/:id/members", saccoHandler.ListMembers)
+			saccos.POST("/:id/members", saccoHandler.AddMember)
+			saccos.DELETE("/:id/members/:membership_id", saccoHandler.RemoveMember)
+			saccos.GET("/:id/float", saccoHandler.GetFloat)
+			saccos.POST("/:id/float/credit", saccoHandler.CreditFloat)
+			saccos.POST("/:id/float/debit", saccoHandler.DebitFloat)
+		}
+
+		// Vehicles
+		vehicles := secured.Group("/vehicles")
+		vehicles.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin))
+		{
+			vehicles.POST("", vehicleHandler.Create)
+			vehicles.GET("", vehicleHandler.List)
+			vehicles.GET("/:id", vehicleHandler.GetByID)
+			vehicles.PUT("/:id", vehicleHandler.Update)
+			vehicles.DELETE("/:id", vehicleHandler.Delete)
+		}
+
+		// Routes
+		routes := secured.Group("/routes")
+		routes.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin))
+		{
+			routes.POST("", routeHandler.Create)
+			routes.GET("", routeHandler.List)
+			routes.GET("/:id", routeHandler.GetByID)
+			routes.PUT("/:id", routeHandler.Update)
+			routes.DELETE("/:id", routeHandler.Delete)
+		}
+
+		// Payroll (system admin + sacco admin)
+		payrollRoutes := secured.Group("/payroll")
+		payrollRoutes.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin))
+		{
+			payrollRoutes.POST("", payrollHandler.Create)
+			payrollRoutes.GET("", payrollHandler.List)
+			payrollRoutes.GET("/:id", payrollHandler.GetByID)
+			payrollRoutes.GET("/:id/entries", payrollHandler.GetEntries)
+			payrollRoutes.POST("/:id/process", payrollHandler.Process)
+			payrollRoutes.POST("/:id/approve", payrollHandler.Approve)
+		}
+
+		// Notifications (all authenticated users)
+		notifications := secured.Group("/notifications")
+		{
+			notifications.GET("", notifHandler.List)
+			notifications.PUT("/:id/read", notifHandler.MarkRead)
+		}
 	}
 
-	// --- 8. Start HTTP server ---
+	// --- 15. Start HTTP server ---
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Port),
 		Handler:      router,
@@ -233,7 +404,7 @@ func main() {
 		}
 	}()
 
-	// --- 9. Graceful shutdown ---
+	// --- 16. Graceful shutdown ---
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-quit
@@ -244,19 +415,23 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// 1. Stop accepting new HTTP requests, drain in-flight
+	// 1. Stop background workers
+	scheduler.Stop()
+	slog.Info("background workers stopped")
+
+	// 2. Stop accepting new HTTP requests, drain in-flight
 	if err := srv.Shutdown(ctx); err != nil {
 		slog.Error("HTTP server shutdown error", slog.String("error", err.Error()))
 	}
 	slog.Info("HTTP server stopped")
 
-	// 2. Close Redis
+	// 3. Close Redis
 	if err := redisClient.Close(); err != nil {
 		slog.Error("Redis close error", slog.String("error", err.Error()))
 	}
 	slog.Info("Redis connection closed")
 
-	// 3. Close database
+	// 4. Close database
 	sqlDB, err := db.DB()
 	if err == nil {
 		if err := sqlDB.Close(); err != nil {

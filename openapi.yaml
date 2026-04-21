@@ -1,0 +1,568 @@
+openapi: 3.0.3
+info:
+  title: 3rd-Party Payroll Adapter API
+  description: |
+    REST API intermediary between 3rd-party HR applications and the core payroll system.
+    Handles request validation, enrichment, transformation, and callback delivery.
+    
+    ## Key Features
+    - **OAuth 2.0 Authentication**: All endpoints require Bearer token authentication
+    - **Request Correlation**: Every request receives a unique correlation ID for traceability
+    - **Async Processing**: Payroll processing happens asynchronously; endpoint returns 202 Accepted
+    - **Callback Delivery**: Process completion notified via HTTP callback to registered endpoint
+    - **Idempotency**: RFC 9110 Idempotency-Key header support prevents duplicate processing
+    - **Health & Metrics**: MicroProfile Health and Metrics endpoints for operational visibility
+    
+    ## Authentication
+    All requests require OAuth 2.0 Bearer token authentication:
+    ```
+    Authorization: Bearer {access_token}
+    ```
+    
+    ## Request Ordering
+    Requests are processed asynchronously. Poll `/payroll/v1/requests/{correlation_id}/status` 
+    to check processing status, or wait for callback delivery to your registered endpoint.
+  version: 1.0.0
+  contact:
+    name: PerPay Engineering
+    email: projects@netcom.co.ke
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://api.netcom.app
+    description: Production
+  - url: https://staging-api.netcom.app
+    description: Staging
+  - url: http://localhost:8080
+    description: Development (local)
+
+security:
+  - oauth2:
+      - payroll.submit
+      - payroll.status
+
+paths:
+  /auth/issue:
+    post:
+      summary: Generate OAuth 2.0 Bearer Token (JWT)
+      description: |
+        Generate a JWT bearer token for accessing protected endpoints.
+        
+        **Flow:**
+        1. Client sends x_client_id and x_client_secret
+        2. Adapter validates credentials against external authentication service
+        3. If valid: JWT token generated (15-minute TTL) and returned
+        4. Client uses token in Authorization header for subsequent API calls
+        
+        ## Example Usage
+        
+        **Request:**
+        ```
+        POST /auth/issue
+        Content-Type: application/json
+        
+        {
+          "x_client_id": "adp_company_123",
+          "x_client_secret": "your_secret_here"
+        }
+        ```
+        
+        **Response (200 OK):**
+        ```json
+        {
+          "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+          "token_type": "Bearer",
+          "expires_in": 900
+        }
+        ```
+        
+        **Using Token:**
+        ```
+        GET /payroll/v1/requests/{correlation_id}/status
+        Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
+        ```
+      operationId: generateToken
+      tags:
+        - Authentication
+      security: []  # No authentication required for token issuance
+      requestBody:
+        description: OAuth 2.0 client credentials
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - x_client_id
+                - x_client_secret
+              properties:
+                x_client_id:
+                  type: string
+                  description: Client identifier (provided at integration setup)
+                  minLength: 10
+                  maxLength: 100
+                  example: "adp_company_123"
+                x_client_secret:
+                  type: string
+                  description: Client secret (provided at integration setup)
+                  minLength: 32
+                  maxLength: 256
+                  example: "secret_value_12345"
+      responses:
+        '200':
+          description: Token successfully generated
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - access_token
+                  - token_type
+                  - expires_in
+                properties:
+                  access_token:
+                    type: string
+                    description: JWT bearer token (base64 encoded)
+                    example: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJQZXJQYXkiLCJzdWIiOiJhZHBfY29tcGFueV8xMjMiLCJhdWQiOiJwYXlyb2xsLWFkYXB0ZXIiLCJleHAiOjE3MzkyNDMyMDAsImlhdCI6MTczOTI0MjMwMCwiY2xpZW50X25hbWUiOiJBRFAgSFIgUGFydG5lciJ9..."
+                  token_type:
+                    type: string
+                    description: Type of token (always "Bearer")
+                    enum:
+                      - Bearer
+                  expires_in:
+                    type: integer
+                    description: Token lifetime in seconds (900 = 15 minutes)
+                    example: 900
+        '400':
+          description: Invalid credentials or malformed request
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/ErrorResponseSchema.json'
+              examples:
+                missing_field:
+                  summary: Missing required field
+                  value:
+                    error_code: "INVALID_REQUEST"
+                    message: "x_client_id is required"
+                invalid_format:
+                  summary: Invalid credential format
+                  value:
+                    error_code: "INVALID_REQUEST"
+                    message: "x_client_secret must be at least 32 characters"
+        '401':
+          description: Invalid credentials (not recognized by authentication service)
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/ErrorResponseSchema.json'
+              example:
+                error_code: "invalid_client"
+                message: "Client credentials invalid or not found"
+        '503':
+          description: Authentication service unavailable (cannot validate credentials)
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/ErrorResponseSchema.json'
+              example:
+                error_code: "service_unavailable"
+                message: "Authentication service temporarily unavailable. Retry in 30 seconds."
+
+  /payroll/v1/payroll/submit:
+    post:
+      summary: Submit Payroll Request
+      description: |
+        Accept a simplified payroll request from a 3rd-party HR application.
+        Request is validated, enriched with business rules, transformed, and queued for processing.
+        Returns 202 Accepted with correlation ID immediately (non-blocking).
+      operationId: submitPayrollRequest
+      tags:
+        - Payroll Processing
+      requestBody:
+        description: Simplified payroll request from 3rd-party HR system
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/PayrollRequestSchema.json'
+            examples:
+              basic_request:
+                summary: Basic payroll request (Kenya Payroll Format)
+                value:
+                  employee_id: "EMP-12345"
+                  full_name: "Jane Doe"
+                  employee_pin: "A123456789K"
+                  currency: "KES"
+                  pay_period_start_date: "2026-02-01"
+                  pay_period_end_date: "2026-02-28"
+                  pay_components:
+                    - id: "base_salary"
+                      amount: 75000.00
+                      description: "Base monthly salary"
+                    - id: "overtime"
+                      amount: 5000.00
+                      description: "Overtime compensation"
+                  deductions:
+                    - id: "health_insurance"
+                      amount: 250.00
+                      type: "insurance_premium"
+                      pre_tax: true
+                    - id: "sacco_contribution"
+                      amount: 10000.00
+                      type: "cooperative_contribution"
+                      pre_tax: true
+              complex_request:
+                summary: Request with multiple deductions (US Payroll Format)
+                value:
+                  employee_id: "EMP-67890"
+                  full_name: "John Smith"
+                  currency: "USD"
+                  pay_period_start_date: "2026-02-01"
+                  pay_period_end_date: "2026-02-28"
+                  pay_components:
+                    - id: "base_salary"
+                      amount: 120000.00
+                  deductions:
+                    - id: "health_insurance"
+                      amount: 350.00
+                      type: "insurance_premium"
+                      pre_tax: true
+                    - id: "401k"
+                      amount: 1000.00
+                      type: "retirement_plan"
+                      pre_tax: true
+      parameters:
+        - name: X-Correlation-ID
+          in: header
+          description: |
+            Optional correlation ID for request tracking. 
+            If not provided, adapter generates UUID.
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          description: |
+            RFC 9110 idempotency key to prevent duplicate processing.
+            If duplicate request sent within 24h with same key, cached response returned.
+          required: false
+          schema:
+            type: string
+            minLength: 32
+            maxLength: 256
+      responses:
+        '202':
+          description: Request accepted and queued for processing
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/AcceptedResponseSchema.json'
+              example:
+                correlation_id: "550e8400-e29b-41d4-a716-446655440000"
+                status: "received"
+                status_url: "/payroll/v1/requests/550e8400-e29b-41d4-a716-446655440000/status"
+                callback_expected: true
+        '400':
+          description: Invalid request (schema validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/ErrorResponseSchema.json'
+              example:
+                error_code: "INVALID_REQUEST"
+                message: "Validation failed"
+                details:
+                  - field: "pay_components"
+                    issue: "Required field missing"
+                  - field: "pay_period_start_date"
+                    issue: "Must be before end date"
+        '401':
+          description: Authentication failed (missing or invalid OAuth2 token)
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/ErrorResponseSchema.json'
+              example:
+                error_code: "UNAUTHORIZED"
+                message: "Invalid or missing authentication token"
+        '409':
+          description: Duplicate request detected (idempotency cache hit)
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/AcceptedResponseSchema.json'
+          headers:
+            Idempotency-Replay:
+              schema:
+                type: string
+                example: "true"
+              description: Indicates this is a cached response
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/ErrorResponseSchema.json'
+              example:
+                error_code: "RATE_LIMIT_EXCEEDED"
+                message: "Too many requests. Retry after 60 seconds."
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/ErrorResponseSchema.json'
+              example:
+                error_code: "INTERNAL_ERROR"
+                message: "An unexpected error occurred"
+
+  /payroll/v1/requests/{correlation_id}/status:
+    get:
+      summary: Get Request Processing Status
+      description: |
+        Query the current processing status of a submitted payroll request.
+        Use the correlation_id returned from /payroll/submit endpoint.
+      operationId: getRequestStatus
+      tags:
+        - Request Status
+      parameters:
+        - name: correlation_id
+          in: path
+          description: Unique correlation ID returned from submission
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Current processing status of request
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/StatusResponseSchema.json'
+              examples:
+                status_received:
+                  summary: Request received, validation pending
+                  value:
+                    correlation_id: "550e8400-e29b-41d4-a716-446655440000"
+                    status: "received"
+                    created_at: "2026-02-11T10:30:00Z"
+                status_processing:
+                  summary: Being processed by payroll app
+                  value:
+                    correlation_id: "550e8400-e29b-41d4-a716-446655440000"
+                    status: "awaiting_response"
+                    created_at: "2026-02-11T10:30:00Z"
+                    current_step: "waiting_for_payroll_app_processing"
+                status_completed:
+                  summary: Successfully completed
+                  value:
+                    correlation_id: "550e8400-e29b-41d4-a716-446655440000"
+                    status: "completed"
+                    created_at: "2026-02-11T10:30:00Z"
+                    completed_at: "2026-02-11T10:35:45Z"
+                    result_summary:
+                      employee_id: "EMP-12345"
+                      gross_pay: 6250.00
+                      net_pay: 4912.50
+                      total_deductions: 1337.50
+                status_failed:
+                  summary: Processing failed
+                  value:
+                    correlation_id: "550e8400-e29b-41d4-a716-446655440000"
+                    status: "failed"
+                    created_at: "2026-02-11T10:30:00Z"
+                    error:
+                      error_code: "INVALID_PAY_COMPONENTS"
+                      message: "Pay component amount exceeds maximum allowed (999,999,999.99 per component)"
+        '401':
+          description: Unauthorized (invalid token)
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/ErrorResponseSchema.json'
+        '404':
+          description: Correlation ID not found
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/ErrorResponseSchema.json'
+              example:
+                error_code: "NOT_FOUND"
+                message: "No request found with this correlation_id"
+
+  /health:
+    get:
+      summary: Application Health Check
+      description: |
+        MicroProfile Health endpoint. Returns application, readiness, and liveness status.
+        Used by Kubernetes probes and monitoring systems.
+      operationId: getHealth
+      tags:
+        - Health & Monitoring
+      security: []  # No authentication required for health checks
+      responses:
+        '200':
+          description: Application is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum:
+                      - UP
+                      - DOWN
+                    description: Overall application status
+                  checks:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        status:
+                          type: string
+                          enum:
+                            - UP
+                            - DOWN
+                        data:
+                          type: object
+                          additionalProperties: true
+              example:
+                status: "UP"
+                checks:
+                  - name: "Database Connection"
+                    status: "UP"
+                    data:
+                      connection_pool_size: 20
+                      active_connections: 5
+                  - name: "Payroll App Connectivity"
+                    status: "UP"
+                    data:
+                      last_successful_call: "2026-02-11T10:29:15Z"
+                      response_time_ms: 145
+        '503':
+          description: Application unhealthy
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                status: "DOWN"
+                checks:
+                  - name: "Database Connection"
+                    status: "DOWN"
+                    data:
+                      error: "Cannot acquire connection from pool"
+
+  /metrics:
+    get:
+      summary: Application Metrics
+      description: |
+        MicroProfile Metrics endpoint in OpenMetrics format.
+        Compatible with Prometheus/Grafana scraping.
+      operationId: getMetrics
+      tags:
+        - Health & Monitoring
+      security: []  # No authentication required for metrics
+      parameters:
+        - name: names
+          in: query
+          description: Filter metrics by name (comma-separated). If omitted, return all.
+          required: false
+          schema:
+            type: string
+            example: "adapter_requests_total, adapter_request_latency_ms"
+      responses:
+        '200':
+          description: Current metric values in OpenMetrics format
+          content:
+            text/plain:
+              example: |
+                # HELP adapter_requests_total Total payroll requests processed
+                # TYPE adapter_requests_total counter
+                adapter_requests_total{endpoint="/payroll/v1/payroll/submit"} 15042.0
+                adapter_requests_total{endpoint="/payroll/v1/requests/status"} 8291.0
+                
+                # HELP adapter_request_latency_ms Request latency in milliseconds
+                # TYPE adapter_request_latency_ms histogram
+                adapter_request_latency_ms_bucket{endpoint="/payroll/v1/payroll/submit",le="5"} 100.0
+                adapter_request_latency_ms_bucket{endpoint="/payroll/v1/payroll/submit",le="100"} 12000.0
+                adapter_request_latency_ms_bucket{endpoint="/payroll/v1/payroll/submit",le="+Inf"} 15042.0
+                adapter_request_latency_ms_count{endpoint="/payroll/v1/payroll/submit"} 15042.0
+                adapter_request_latency_ms_sum{endpoint="/payroll/v1/payroll/submit"} 451260000.0
+                
+                # HELP adapter_requests_failed_total Total failed requests
+                # TYPE adapter_requests_failed_total counter
+                adapter_requests_failed_total{reason="validation"} 1504.0
+                adapter_requests_failed_total{reason="enrichment"} 75.0
+                adapter_requests_failed_total{reason="callback_delivery"} 43.0
+                
+                # HELP adapter_callback_dlq_depth Number of callbacks in DLQ
+                # TYPE adapter_callback_dlq_depth gauge
+                adapter_callback_dlq_depth 18.0
+
+components:
+  securitySchemes:
+    oauth2:
+      type: oauth2
+      description: |
+        OAuth 2.0 Bearer token (JWT) authentication.
+        
+        **Token Generation:**
+        POST /auth/issue with x_client_id and x_client_secret
+        
+        **Token Usage:**
+        Add "Authorization: Bearer {access_token}" header to all protected endpoints
+        
+        **Token Properties:**
+        - Type: JWT (RS256 signed)
+        - Lifetime: 15 minutes (can be refreshed by requesting new token)
+        - Issuer: "PerPay"
+        - Audience: "payroll-adapter"
+        - Claims: iss, sub (client_id), aud, exp, iat, client_name
+      flows:
+        clientCredentials:
+          tokenUrl: /auth/issue
+          scopes:
+            payroll.submit: Submit payroll requests
+            payroll.status: Query request status
+
+  responses:
+    UnauthorizedError:
+      description: Authentication error
+      content:
+        application/json:
+          schema:
+            $ref: './schemas/ErrorResponseSchema.json'
+    BadRequestError:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: './schemas/ErrorResponseSchema.json'
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: './schemas/ErrorResponseSchema.json'
+
+tags:
+  - name: Authentication
+    description: OAuth 2.0 token generation endpoint
+  - name: Payroll Processing
+    description: Submit and process payroll requests
+  - name: Request Status
+    description: Query request processing status
+  - name: Health & Monitoring
+    description: Operational health and metrics endpoints
+
+x-statusPage: "https://status.netcom.app"
+x-logo:
+  url: "https://netcom.app/logo.png"

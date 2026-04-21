@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/kibsoft/amy-mis/internal/database"
 	"github.com/kibsoft/amy-mis/internal/models"
 	"github.com/kibsoft/amy-mis/internal/repository"
 	"github.com/kibsoft/amy-mis/pkg/errs"
@@ -23,8 +24,16 @@ func NewEarningRepo(db *gorm.DB) *EarningRepo {
 	return &EarningRepo{db: db}
 }
 
+// getDB returns the transaction from context if present, otherwise the default DB.
+func (r *EarningRepo) getDB(ctx context.Context) *gorm.DB {
+	if tx := database.ExtractTx(ctx); tx != nil {
+		return tx.WithContext(ctx)
+	}
+	return r.db.WithContext(ctx)
+}
+
 func (r *EarningRepo) Create(ctx context.Context, earning *models.Earning) error {
-	if err := r.db.WithContext(ctx).Create(earning).Error; err != nil {
+	if err := r.getDB(ctx).Create(earning).Error; err != nil {
 		return fmt.Errorf("create earning: %w", err)
 	}
 	return nil
@@ -34,7 +43,7 @@ func (r *EarningRepo) BulkCreate(ctx context.Context, earnings []models.Earning)
 	var bulkErrors []repository.BulkError
 	created := 0
 
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := r.getDB(ctx).Transaction(func(tx *gorm.DB) error {
 		for i, e := range earnings {
 			if err := tx.Create(&e).Error; err != nil {
 				bulkErrors = append(bulkErrors, repository.BulkError{
@@ -58,7 +67,7 @@ func (r *EarningRepo) BulkCreate(ctx context.Context, earnings []models.Earning)
 
 func (r *EarningRepo) GetByID(ctx context.Context, id uuid.UUID) (*models.Earning, error) {
 	var earning models.Earning
-	if err := r.db.WithContext(ctx).
+	if err := r.getDB(ctx).
 		Preload("Assignment").
 		Preload("CrewMember").
 		Where("id = ?", id).First(&earning).Error; err != nil {
@@ -71,7 +80,7 @@ func (r *EarningRepo) GetByID(ctx context.Context, id uuid.UUID) (*models.Earnin
 }
 
 func (r *EarningRepo) Update(ctx context.Context, earning *models.Earning) error {
-	if err := r.db.WithContext(ctx).Save(earning).Error; err != nil {
+	if err := r.getDB(ctx).Save(earning).Error; err != nil {
 		return fmt.Errorf("update earning: %w", err)
 	}
 	return nil
@@ -81,7 +90,7 @@ func (r *EarningRepo) List(ctx context.Context, filter repository.EarningFilter,
 	var earnings []models.Earning
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&models.Earning{})
+	query := r.getDB(ctx).Model(&models.Earning{})
 
 	if filter.CrewMemberID != nil {
 		query = query.Where("crew_member_id = ?", *filter.CrewMemberID)
@@ -114,7 +123,7 @@ func (r *EarningRepo) List(ctx context.Context, filter repository.EarningFilter,
 
 func (r *EarningRepo) GetDailySummary(ctx context.Context, crewMemberID uuid.UUID, date time.Time) (*models.DailyEarningsSummary, error) {
 	var summary models.DailyEarningsSummary
-	if err := r.db.WithContext(ctx).
+	if err := r.getDB(ctx).
 		Where("crew_member_id = ? AND date = ?", crewMemberID, date).
 		First(&summary).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -128,7 +137,7 @@ func (r *EarningRepo) GetDailySummary(ctx context.Context, crewMemberID uuid.UUI
 // UpsertDailySummary creates or updates a daily earnings summary.
 // Uses PostgreSQL ON CONFLICT for atomic upsert.
 func (r *EarningRepo) UpsertDailySummary(ctx context.Context, summary *models.DailyEarningsSummary) error {
-	if err := r.db.WithContext(ctx).
+	if err := r.getDB(ctx).
 		Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "crew_member_id"}, {Name: "date"}},
 			DoUpdates: clause.AssignmentColumns([]string{

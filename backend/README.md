@@ -10,8 +10,8 @@ AMY MIS digitizes the financial lifecycle of matatu (minibus), boda-boda (motorc
 
 ### Prerequisites
 
-- **Go** 1.21+
-- **PostgreSQL** 15+
+- **Go** 1.25+
+- **PostgreSQL** 16+
 - **Redis** 7+
 - **MinIO** (or S3-compatible storage)
 - **Docker & Docker Compose** (recommended)
@@ -21,8 +21,8 @@ AMY MIS digitizes the financial lifecycle of matatu (minibus), boda-boda (motorc
 ```bash
 git clone https://github.com/Chemokoren/crew.git
 cd crew/backend
-cp .env.example .env
-# Edit .env with your database credentials
+cp .env .env.local
+# Edit .env.local with your credentials
 ```
 
 ### 2. Run with Docker Compose
@@ -100,38 +100,68 @@ curl http://localhost:8080/swagger/index.html  # → Swagger UI
 ## 🏗️ Architecture
 
 ```
-cmd/server/            — Entry point + dependency wiring
+cmd/server/              — Entry point + dependency wiring (15-step startup)
 internal/
-  config/              — Environment configuration + validation
-  database/            — PostgreSQL (GORM) + Redis connections
-  handler/             — HTTP handlers + DTOs (request/response)
-  handler/dto/         — Data Transfer Objects
-  middleware/          — Auth (JWT), RBAC, CORS, rate limiting,
-                         metrics, security headers, logging, recovery
-  models/              — GORM data models (15 entities)
-  repository/          — Data access interfaces
-  repository/postgres/ — GORM repository implementations
-  repository/mock/     — In-memory mocks for testing
-  service/             — Business logic layer
-  worker/              — Background jobs (Asynq)
-  external/            — External API clients (MinIO, etc.)
+  config/                — Environment configuration + validation
+  database/              — PostgreSQL (GORM) + Redis + TxManager
+  handler/               — HTTP handlers + DTOs (request/response)
+  handler/dto/           — Data Transfer Objects
+  middleware/            — Auth (JWT), RBAC, CORS, rate limiting,
+                           metrics, security headers, logging, recovery
+  models/                — GORM data models (15 entities)
+  repository/            — Data access interfaces
+  repository/postgres/   — GORM repository implementations (tx-aware)
+  repository/mock/       — In-memory mocks for testing
+  service/               — Business logic layer (transactional)
+  worker/                — Background jobs (Scheduler + DailySummaryJob)
+  external/
+    sms/                 — SMS Strategy: Optimize (default) + Africa's Talking (fallback)
+    payment/             — Payment Strategy interface
+    jambopay/            — JamboPay v2: M-Pesa B2C, bank, paybill payouts
+    payroll/             — Payroll Strategy interface
+    perpay/              — PerPay: async payroll submission + status polling
+    identity/            — Identity Strategy interface
+    iprs/                — IPRS: national ID verification (OAuth2 via JamboPay IdP)
+    storage/             — MinIO (S3-compatible) file storage
 pkg/
-  errs/                — Shared domain errors
-  jwt/                 — JWT token manager
-  money/               — Cents ↔ KES conversion utilities
-  pagination/          — Pagination helpers
-  types/               — System roles + shared types
-docs/                  — Swagger/OpenAPI generated docs
-migrations/            — PostgreSQL migration files (7 sets)
+  errs/                  — Shared domain errors
+  jwt/                   — JWT token manager
+  money/                 — Cents ↔ KES conversion utilities
+  pagination/            — Pagination helpers
+  types/                 — System roles + shared types
+docs/                    — Swagger/OpenAPI generated docs
+migrations/              — PostgreSQL migration files (7 sets, 22 tables)
 ```
 
 ### Design Principles
 
 - **Clean Architecture**: Handlers → Services → Repositories (all via interfaces)
+- **Strategy Pattern**: All external integrations (SMS, Payment, Payroll, Identity) use a common Provider interface — swap or stack providers without code changes
+- **Transactional Integrity**: Multi-step service operations (registration, assignment completion) wrapped in database transactions via `TxManager`
 - **Financial Safety**: All money stored as `int64` cents — no floats in the pipeline
 - **Wallet Concurrency**: `SELECT ... FOR UPDATE` + optimistic version checks
 - **Idempotency**: Financial endpoints require `Idempotency-Key` header
-- **No Raw Models in API**: DTOs strip internal fields at the boundary
+- **SACCO-Scoped Isolation**: SACCO_ADMIN users see only their own SACCO's data
+- **Ownership Enforcement**: CREW users can only access their own wallet
+
+---
+
+## 🔌 External Integrations
+
+All integrations use the **Strategy design pattern** with automatic fallback chains and runtime provider switching.
+
+| Integration | Provider(s) | Auth Method | Key Operations |
+|------------|-------------|-------------|----------------|
+| **SMS** | Optimize (default), Africa's Talking (fallback) | OAuth2 → JWT / API key header | `Send`, `SendBulk`, runtime `SetPrimary` |
+| **Payment** | JamboPay v2 | OAuth2 client_credentials | `InitiatePayout` (M-Pesa/bank/paybill), `VerifyPayout` (OTP), `CheckBalance` |
+| **Payroll** | PerPay | JWT (15min TTL) | `SubmitPayroll` (async 202), `GetStatus` (polling), idempotency replay |
+| **Identity** | IPRS | OAuth2 via JamboPay IdP (scope=iprs) | `VerifyCitizen` (national ID → name, DOB, photo) |
+
+### Adding a New Provider
+
+1. Implement the interface (e.g. `sms.Provider`)
+2. Register in `main.go`: `smsProviders = append(smsProviders, sms.NewTwilioProvider(cfg, logger))`
+3. Done — it's automatically part of the fallback chain
 
 ---
 
@@ -148,13 +178,13 @@ migrations/            — PostgreSQL migration files (7 sets)
 ## 🔐 Authentication & Authorization
 
 - **JWT** with short-lived access tokens + long-lived refresh tokens
-- **bcrypt** password hashing (cost factor 10)
+- **bcrypt** password hashing (cost factor 12)
 - **Role-Based Access Control (RBAC)**:
 
 | Role | Permissions |
 |------|-------------|
 | `SYSTEM_ADMIN` | Full access to all resources |
-| `SACCO_ADMIN` | Manage crew, vehicles, assignments within SACCO |
+| `SACCO_ADMIN` | Manage crew, vehicles, assignments within own SACCO |
 | `CREW` | View own profile, wallet, transactions |
 | `LENDER` | View loan-related data |
 | `INSURER` | View insurance-related data |
@@ -164,6 +194,8 @@ migrations/            — PostgreSQL migration files (7 sets)
 ## 🛡️ Security
 
 - Rate limiting: 100 requests/minute per IP (sliding window)
+- SACCO-scoped data isolation for multi-tenant security
+- Wallet ownership enforcement for CREW users
 - Security headers: `X-Content-Type-Options`, `X-Frame-Options`, `X-XSS-Protection`
 - CORS with exposed `Idempotency-Key`, `X-Request-Id`, `X-Response-Time`
 - Request ID tracking on every request
@@ -177,13 +209,17 @@ migrations/            — PostgreSQL migration files (7 sets)
 # Run all tests with race detector
 go test ./... -race -count=1 -v
 
-# Run specific test suite
-go test ./internal/service/... -v    # Service layer
-go test ./internal/handler/... -v    # HTTP handlers
-go test ./internal/middleware/... -v  # Auth middleware
+# Run specific test suites
+go test ./internal/service/... -v           # Service layer
+go test ./internal/handler/... -v           # HTTP handlers
+go test ./internal/middleware/... -v        # Auth middleware
+go test ./internal/external/sms/... -v     # SMS providers
+go test ./internal/external/jambopay/... -v # JamboPay client
+go test ./internal/external/perpay/... -v  # PerPay client
+go test ./internal/external/iprs/... -v    # IPRS client
 ```
 
-**104 tests** covering:
+**111 tests** across **16 test packages** covering:
 - Auth flows (register, login, refresh, disabled accounts)
 - Wallet operations (credit, debit, idempotency, insufficient balance)
 - Earning calculations (FIXED, COMMISSION, HYBRID)
@@ -191,6 +227,10 @@ go test ./internal/middleware/... -v  # Auth middleware
 - Concurrent wallet access with race detector
 - HTTP handler responses + RBAC enforcement
 - JWT middleware (missing, invalid, expired tokens)
+- **SMS**: Manager fallback chain, Optimize token caching, Africa's Talking bulk
+- **JamboPay**: OAuth2 auth, M-Pesa/bank payouts, OTP verify, balance check
+- **PerPay**: JWT auth, async submission (202), idempotency replay (409), status polling
+- **IPRS**: OAuth2 scope=iprs, citizen verification, token caching
 
 ---
 
@@ -201,25 +241,64 @@ go test ./internal/middleware/... -v  # Auth middleware
 | `DATABASE_URL` | ✅ | — | PostgreSQL connection string |
 | `REDIS_URL` | ✅ | — | Redis connection string |
 | `JWT_SECRET` | ✅ | — | JWT signing key (≥32 chars) |
-| `JWT_EXPIRY_MINUTES` | | `15` | Access token lifetime |
-| `JWT_REFRESH_DAYS` | | `7` | Refresh token lifetime |
 | `MINIO_ENDPOINT` | ✅ | — | MinIO/S3 endpoint |
 | `MINIO_ACCESS_KEY` | ✅ | — | MinIO access key |
 | `MINIO_SECRET_KEY` | ✅ | — | MinIO secret key |
-| `MINIO_BUCKET` | ✅ | — | Default bucket name |
 | `PORT` | | `8080` | HTTP server port |
-| `ENVIRONMENT` | | `development` | `development` or `production` |
-| `MIGRATIONS_PATH` | | `./migrations` | SQL migrations directory |
+| `ENVIRONMENT` | | `development` | `development`, `staging`, or `production` |
+| `JWT_EXPIRY_MINUTES` | | `15` | Access token lifetime |
+| `JWT_REFRESH_DAYS` | | `7` | Refresh token lifetime |
+| `MINIO_BUCKET` | | `amy-mis` | Default bucket name |
+| `RATE_LIMIT_RPM` | | `100` | Requests per minute per IP |
 
-See [.env.example](.env.example) for a complete template.
+### SMS — Optimize (default)
+| `SMS_CLIENT_ID` | | — | OAuth2 client ID |
+| `SMS_CLIENT_SECRET` | | — | OAuth2 client secret |
+| `SMS_TOKEN_URL` | | — | OAuth2 token endpoint |
+| `SMS_URL` | | — | SMS send endpoint |
+| `SMS_SENDER_ID` | | `AMY-MIS` | Sender name |
+
+### SMS — Africa's Talking (fallback)
+| `AT_API_KEY` | | — | API key |
+| `AT_USERNAME` | | `sandbox` | Username |
+| `AT_SHORTCODE` | | — | Short code |
+
+### JamboPay (payment/payout)
+| `JAMBOPAY_CLIENT_ID` | Prod | — | OAuth2 client ID |
+| `JAMBOPAY_CLIENT_SECRET` | | — | OAuth2 client secret |
+| `JAMBOPAY_BASE_URL` | | — | API base URL |
+
+### PerPay (payroll)
+| `PERPAY_CLIENT_ID` | | — | OAuth2 client ID |
+| `PERPAY_CLIENT_SECRET` | | — | OAuth2 client secret |
+| `PERPAY_BASE_URL` | | — | API base URL |
+
+### IPRS (identity verification)
+| `IPRS_CLIENT_ID` | | — | OAuth2 client ID |
+| `IPRS_CLIENT_SECRET` | | — | OAuth2 client secret |
+| `IPRS_BASE_URL` | | — | API base URL |
+| `IPRS_TOKEN_ENDPOINT` | | — | OAuth2 token endpoint |
+
+See [.env](.env) for a complete template.
+
+---
+
+## ⚡ Background Workers
+
+| Job | Schedule | Description |
+|-----|----------|-------------|
+| `DailySummaryJob` | Every 24h | Aggregates daily earnings per crew member into `daily_earnings_summaries` |
+
+Workers use a goroutine-based scheduler with graceful shutdown integration.
 
 ---
 
 ## 📊 Database
 
-- **15 GORM models** across 7 migration sets
+- **15 GORM models** across 7 migration sets (22 tables)
 - Domains: Users, Crew, SACCOs, Vehicles, Routes, Assignments, Earnings, Wallets, Payroll, Documents, Notifications
 - Automatic migration on startup via `golang-migrate`
+- All repositories are transaction-aware via context-injected `TxManager`
 
 ---
 

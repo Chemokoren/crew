@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/kibsoft/amy-mis/internal/database"
 	"github.com/kibsoft/amy-mis/internal/models"
 	"github.com/kibsoft/amy-mis/internal/repository"
 )
@@ -16,6 +17,7 @@ type AssignmentService struct {
 	assignmentRepo repository.AssignmentRepository
 	earningRepo    repository.EarningRepository
 	walletSvc      *WalletService
+	txMgr          *database.TxManager
 	logger         *slog.Logger
 }
 
@@ -24,12 +26,14 @@ func NewAssignmentService(
 	assignmentRepo repository.AssignmentRepository,
 	earningRepo repository.EarningRepository,
 	walletSvc *WalletService,
+	txMgr *database.TxManager,
 	logger *slog.Logger,
 ) *AssignmentService {
 	return &AssignmentService{
 		assignmentRepo: assignmentRepo,
 		earningRepo:    earningRepo,
 		walletSvc:      walletSvc,
+		txMgr:          txMgr,
 		logger:         logger,
 	}
 }
@@ -93,6 +97,8 @@ func (s *AssignmentService) CreateAssignment(ctx context.Context, input CreateAs
 }
 
 // CompleteAssignment marks an assignment as COMPLETED and calculates earnings.
+// The entire flow (update assignment + create earning + credit wallet) runs
+// inside a database transaction to ensure atomicity.
 func (s *AssignmentService) CompleteAssignment(ctx context.Context, assignmentID uuid.UUID, totalRevenueCents int64) (*models.Earning, error) {
 	assignment, err := s.assignmentRepo.GetByID(ctx, assignmentID)
 	if err != nil {
@@ -126,15 +132,7 @@ func (s *AssignmentService) CompleteAssignment(ctx context.Context, assignmentID
 		return nil, fmt.Errorf("%w: calculated earnings must be positive (got %d cents)", ErrValidation, amountCents)
 	}
 
-	// Mark assignment completed
 	now := time.Now()
-	assignment.Status = models.AssignmentCompleted
-	assignment.ShiftEnd = &now
-	if err := s.assignmentRepo.Update(ctx, assignment); err != nil {
-		return nil, fmt.Errorf("update assignment: %w", err)
-	}
-
-	// Create earning record
 	earning := &models.Earning{
 		AssignmentID: assignment.ID,
 		CrewMemberID: assignment.CrewMemberID,
@@ -145,22 +143,45 @@ func (s *AssignmentService) CompleteAssignment(ctx context.Context, assignmentID
 		EarnedAt:     now,
 	}
 
-	if err := s.earningRepo.Create(ctx, earning); err != nil {
-		return nil, fmt.Errorf("create earning: %w", err)
+	// Wrap the multi-step completion in a transaction
+	completeFn := func(txCtx context.Context) error {
+		// Mark assignment completed
+		assignment.Status = models.AssignmentCompleted
+		assignment.ShiftEnd = &now
+		if err := s.assignmentRepo.Update(txCtx, assignment); err != nil {
+			return fmt.Errorf("update assignment: %w", err)
+		}
+
+		// Create earning record
+		if err := s.earningRepo.Create(txCtx, earning); err != nil {
+			return fmt.Errorf("create earning: %w", err)
+		}
+
+		// Credit wallet automatically
+		idempotencyKey := fmt.Sprintf("earn-%s", earning.ID.String())
+		_, err := s.walletSvc.Credit(txCtx, CreditInput{
+			CrewMemberID:   assignment.CrewMemberID,
+			AmountCents:    amountCents,
+			Category:       models.TxCatEarning,
+			IdempotencyKey: idempotencyKey,
+			Reference:      earning.ID.String(),
+			Description:    earning.Description,
+		})
+		if err != nil {
+			return fmt.Errorf("credit wallet for earning: %w", err)
+		}
+
+		return nil
 	}
 
-	// Credit wallet automatically
-	idempotencyKey := fmt.Sprintf("earn-%s", earning.ID.String())
-	_, err = s.walletSvc.Credit(ctx, CreditInput{
-		CrewMemberID:   assignment.CrewMemberID,
-		AmountCents:    amountCents,
-		Category:       models.TxCatEarning,
-		IdempotencyKey: idempotencyKey,
-		Reference:      earning.ID.String(),
-		Description:    earning.Description,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("credit wallet for earning: %w", err)
+	if s.txMgr != nil {
+		if err := s.txMgr.RunInTx(ctx, completeFn); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := completeFn(ctx); err != nil {
+			return nil, err
+		}
 	}
 
 	s.logger.Info("assignment completed + earning credited",
