@@ -173,7 +173,7 @@ func (s *SACCOService) GetFloat(ctx context.Context, saccoID uuid.UUID) (*models
 }
 
 type FloatOperationInput struct {
-	SaccoID        uuid.UUID `json:"sacco_id" binding:"required"`
+	SaccoID        uuid.UUID `json:"sacco_id"`
 	AmountCents    int64     `json:"amount_cents" binding:"required,min=1"`
 	IdempotencyKey string    `json:"idempotency_key" binding:"required"`
 	Reference      string    `json:"reference"`
