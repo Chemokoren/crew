@@ -222,7 +222,10 @@ func main() {
 	} else {
 		slog.Warn("JamboPay not configured — payout functionality disabled")
 	}
-	_ = paymentMgr // Injected into payout service in a future phase
+	
+	// Initialize PayoutService after paymentMgr is available
+	payoutSvc := service.NewPayoutService(walletSvc, paymentMgr, logger)
+	payoutHandler := handler.NewPayoutHandler(payoutSvc)
 
 	// Payroll: PerPay
 	var payrollMgr *payroll.Manager
@@ -331,6 +334,8 @@ func main() {
 				walletAdmin.POST("/credit", walletHandler.Credit)
 				walletAdmin.POST("/debit", walletHandler.Debit)
 			}
+			
+			wallets.POST("/:crew_member_id/payout", payoutHandler.Payout)
 		}
 
 		// SACCOs (system admin + sacco admin)

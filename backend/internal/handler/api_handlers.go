@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/kibsoft/amy-mis/internal/external/payment"
 	"github.com/kibsoft/amy-mis/internal/handler/dto"
 	"github.com/kibsoft/amy-mis/internal/middleware"
 	"github.com/kibsoft/amy-mis/internal/repository"
@@ -343,6 +344,60 @@ func (h *WalletHandler) ListTransactions(c *gin.Context) {
 	ListResponse(c, dto.WalletTxListToResponse(txs), buildMeta(page, perPage, total))
 }
 
+// --- Payout Handler ---
+
+type PayoutHandler struct {
+	payoutSvc *service.PayoutService
+}
+
+func NewPayoutHandler(svc *service.PayoutService) *PayoutHandler {
+	return &PayoutHandler{payoutSvc: svc}
+}
+
+// POST /api/v1/wallets/:crew_member_id/payout
+func (h *PayoutHandler) Payout(c *gin.Context) {
+	idempotencyKey := c.GetHeader("Idempotency-Key")
+	if idempotencyKey == "" {
+		BadRequest(c, "Idempotency-Key header is required for financial operations")
+		return
+	}
+
+	crewMemberID, err := uuid.Parse(c.Param("crew_member_id"))
+	if err != nil {
+		BadRequest(c, "Invalid crew member ID")
+		return
+	}
+
+	if denied := enforceWalletAccess(c, crewMemberID); denied {
+		return
+	}
+
+	var req dto.PayoutWalletRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		BadRequest(c, err.Error())
+		return
+	}
+
+	result, err := h.payoutSvc.InitiatePayout(c.Request.Context(), service.PayoutInput{
+		CrewMemberID:   crewMemberID,
+		AmountCents:    req.AmountCents,
+		Channel:        payment.PayoutChannel(req.Channel),
+		RecipientName:  req.RecipientName,
+		RecipientPhone: req.RecipientPhone,
+		BankAccount:    req.BankAccount,
+		BankCode:       req.BankCode,
+		PaybillNumber:  req.PaybillNumber,
+		PaybillRef:     req.PaybillRef,
+		IdempotencyKey: idempotencyKey,
+	})
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+
+	SuccessResponse(c, http.StatusCreated, result)
+}
+
 // --- Crew Handler ---
 
 // CrewHandler handles crew member endpoints.
@@ -410,6 +465,7 @@ func (h *CrewHandler) UpdateKYC(c *gin.Context) {
 	crew, err := h.crewSvc.UpdateKYCStatus(c.Request.Context(), service.UpdateKYCInput{
 		CrewMemberID: id,
 		Status:       req.KYCStatus,
+		SerialNumber: req.SerialNumber,
 	})
 	if err != nil {
 		MapServiceError(c, err)

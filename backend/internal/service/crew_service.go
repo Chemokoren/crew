@@ -70,6 +70,7 @@ func (s *CrewService) GetCrewMember(ctx context.Context, id uuid.UUID) (*models.
 type UpdateKYCInput struct {
 	CrewMemberID uuid.UUID
 	Status       models.KYCStatus `json:"kyc_status" validate:"required,oneof=PENDING VERIFIED REJECTED"`
+	SerialNumber string
 }
 
 // UpdateKYCStatus changes a crew member's KYC status.
@@ -81,6 +82,20 @@ func (s *CrewService) UpdateKYCStatus(ctx context.Context, input UpdateKYCInput)
 
 	crew.KYCStatus = input.Status
 	if input.Status == models.KYCVerified {
+		// Automatic IPRS verification if IDP is configured
+		if s.idp != nil && input.SerialNumber != "" {
+			details, err := s.idp.VerifyCitizen(ctx, identity.VerifyRequest{
+				IDNumber:     crew.NationalID,
+				SerialNumber: input.SerialNumber,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("iprs verification failed: %w", err)
+			}
+			if !details.Verified {
+				return nil, fmt.Errorf("iprs verification failed: invalid credentials")
+			}
+		}
+
 		now := time.Now()
 		crew.KYCVerifiedAt = &now
 	}

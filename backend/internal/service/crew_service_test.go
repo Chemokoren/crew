@@ -121,3 +121,33 @@ func TestCrewService_DeactivateCrewMember(t *testing.T) {
 		t.Errorf("expected crew to be inactive")
 	}
 }
+
+func TestCrewService_UpdateKYCStatus_WithIPRS(t *testing.T) {
+	repo := mock.NewCrewRepo()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	mockIDP := &MockIPRSProvider{ShouldFail: false}
+	svc := service.NewCrewService(repo, mockIDP, logger)
+
+	crew, _ := svc.CreateCrewMember(context.Background(), service.CreateCrewInput{
+		NationalID: "87654321",
+		FirstName:  "John",
+		LastName:   "Doe",
+		Role:       models.RoleConductor,
+	})
+
+	updated, err := svc.UpdateKYCStatus(context.Background(), service.UpdateKYCInput{
+		CrewMemberID: crew.ID,
+		Status:       models.KYCVerified,
+		SerialNumber: "SERIAL_123",
+	})
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if updated.KYCStatus != models.KYCVerified {
+		t.Errorf("expected kyc verified, got %s", updated.KYCStatus)
+	}
+	if updated.KYCVerifiedAt == nil {
+		t.Errorf("expected kyc verified at to be set")
+	}
+}

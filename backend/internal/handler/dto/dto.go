@@ -119,7 +119,8 @@ type CreateCrewRequest struct {
 }
 
 type UpdateKYCRequest struct {
-	KYCStatus models.KYCStatus `json:"kyc_status" binding:"required,oneof=PENDING VERIFIED REJECTED"`
+	KYCStatus    models.KYCStatus `json:"kyc_status" binding:"required,oneof=PENDING VERIFIED REJECTED"`
+	SerialNumber string           `json:"serial_number,omitempty"` // Required for IPRS verification when status is VERIFIED
 }
 
 // --- SACCO DTOs ---
@@ -346,4 +347,16 @@ type DebitWalletRequest struct {
 	Category     models.TransactionCategory `json:"category" binding:"required"`
 	Reference    string                     `json:"reference"`
 	Description  string                     `json:"description"`
+}
+
+type PayoutWalletRequest struct {
+	CrewMemberID   uuid.UUID `json:"crew_member_id" binding:"required"`
+	AmountCents    int64     `json:"amount_cents" binding:"required,min=1"`
+	Channel        string    `json:"channel" binding:"required,oneof=MOMO_B2C BANK MOMO_B2B"`
+	RecipientName  string    `json:"recipient_name" binding:"required"`
+	RecipientPhone string    `json:"recipient_phone"`
+	BankAccount    string    `json:"bank_account"`
+	BankCode       string    `json:"bank_code"`
+	PaybillNumber  string    `json:"paybill_number"`
+	PaybillRef     string    `json:"paybill_ref"`
 }
