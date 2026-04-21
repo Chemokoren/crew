@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/kibsoft/amy-mis/internal/external/payroll"
 	"github.com/kibsoft/amy-mis/internal/models"
 	"github.com/kibsoft/amy-mis/internal/repository"
 )
@@ -16,6 +17,8 @@ type PayrollService struct {
 	payrollRepo repository.PayrollRepository
 	earningRepo repository.EarningRepository
 	rateRepo    repository.StatutoryRateRepository
+	crewRepo    repository.CrewRepository
+	payrollMgr  *payroll.Manager
 	logger      *slog.Logger
 }
 
@@ -23,12 +26,16 @@ func NewPayrollService(
 	payrollRepo repository.PayrollRepository,
 	earningRepo repository.EarningRepository,
 	rateRepo repository.StatutoryRateRepository,
+	crewRepo repository.CrewRepository,
+	payrollMgr *payroll.Manager,
 	logger *slog.Logger,
 ) *PayrollService {
 	return &PayrollService{
 		payrollRepo: payrollRepo,
 		earningRepo: earningRepo,
 		rateRepo:    rateRepo,
+		crewRepo:    crewRepo,
+		payrollMgr:  payrollMgr,
 		logger:      logger,
 	}
 }
@@ -160,6 +167,71 @@ func (s *PayrollService) ApprovePayrollRun(ctx context.Context, runID, approverI
 	if err := s.payrollRepo.Update(ctx, run); err != nil {
 		return nil, fmt.Errorf("approve run: %w", err)
 	}
+	return run, nil
+}
+
+// SubmitPayrollRun submits all entries in an approved run to PerPay.
+func (s *PayrollService) SubmitPayrollRun(ctx context.Context, runID uuid.UUID) (*models.PayrollRun, error) {
+	run, err := s.payrollRepo.GetByID(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+	if run.Status != models.PayrollApproved {
+		return nil, fmt.Errorf("run must be APPROVED to submit (current: %s)", run.Status)
+	}
+
+	if s.payrollMgr == nil {
+		return nil, fmt.Errorf("payroll manager not configured")
+	}
+
+	entries, err := s.payrollRepo.GetEntries(ctx, runID)
+	if err != nil {
+		return nil, fmt.Errorf("get entries: %w", err)
+	}
+
+	// Submit each entry
+	for _, entry := range entries {
+		crew, err := s.crewRepo.GetByID(ctx, entry.CrewMemberID)
+		if err != nil {
+			s.logger.Error("failed to get crew member for payroll submission", slog.String("crew_id", entry.CrewMemberID.String()), slog.Any("err", err))
+			continue
+		}
+
+		req := payroll.SubmitRequest{
+			EmployeeID:     crew.ID.String(),
+			FullName:       crew.FirstName + " " + crew.LastName,
+			EmployeePIN:    crew.NationalID,
+			Currency:       run.Currency,
+			PayPeriodStart: run.PeriodStart.Format("2006-01-02"),
+			PayPeriodEnd:   run.PeriodEnd.Format("2006-01-02"),
+			IdempotencyKey: fmt.Sprintf("payroll-%s-%s", runID.String(), crew.ID.String()),
+			PayComponents: []payroll.PayComponent{
+				{ID: "GROSS", Amount: float64(entry.GrossEarningsCents) / 100.0, Description: "Gross Earnings"},
+			},
+			Deductions: []payroll.Deduction{
+				{ID: "SHA", Amount: float64(entry.SHADeductionCents) / 100.0, Type: "STATUTORY", PreTax: true},
+				{ID: "NSSF", Amount: float64(entry.NSSFDeductionCents) / 100.0, Type: "STATUTORY", PreTax: true},
+				{ID: "HOUSING_LEVY", Amount: float64(entry.HousingLevyDeductionCents) / 100.0, Type: "STATUTORY", PreTax: true},
+			},
+		}
+		
+		_, err = s.payrollMgr.SubmitPayroll(ctx, req)
+		if err != nil {
+			s.logger.Error("failed to submit payroll to PerPay", slog.String("crew_id", crew.ID.String()), slog.Any("err", err))
+			// Continue with other entries despite failure
+		}
+	}
+
+	now := time.Now()
+	run.Status = models.PayrollSubmitted
+	run.SubmittedAt = &now
+	run.PerpayReference = fmt.Sprintf("run-%s", runID.String()) // Or another bulk reference if supported
+	
+	if err := s.payrollRepo.Update(ctx, run); err != nil {
+		return nil, fmt.Errorf("update run status: %w", err)
+	}
+
+	s.logger.Info("payroll run submitted", slog.String("run_id", runID.String()))
 	return run, nil
 }
 

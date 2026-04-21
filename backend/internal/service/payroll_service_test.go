@@ -24,8 +24,9 @@ func TestPayrollService(t *testing.T) {
 		{Name: "HOUSING_LEVY", RateType: models.RatePercentage, Rate: 0.015, IsActive: true},
 	}
 	rateRepo := mock.NewStatutoryRateRepo(rates)
+	crewRepo := mock.NewCrewRepo()
 
-	svc := service.NewPayrollService(payrollRepo, earningRepo, rateRepo, logger)
+	svc := service.NewPayrollService(payrollRepo, earningRepo, rateRepo, crewRepo, nil, logger)
 
 	t.Run("Create Payroll Run", func(t *testing.T) {
 		ctx := context.Background()

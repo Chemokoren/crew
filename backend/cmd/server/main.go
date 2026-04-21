@@ -191,7 +191,6 @@ func main() {
 	saccoSvc := service.NewSACCOService(saccoRepo, membershipRepo, floatRepo, logger)
 	vehicleSvc := service.NewVehicleService(vehicleRepo, logger)
 	routeSvc := service.NewRouteService(routeRepo, logger)
-	payrollSvc := service.NewPayrollService(payrollRepo, earningRepo, statutoryRateRepo, logger)
 	docSvc := service.NewDocumentService(documentRepo, logger)
 	_ = service.NewAuditService(auditRepo, logger) // Wired into middleware hooks
 
@@ -204,7 +203,6 @@ func main() {
 	saccoHandler := handler.NewSACCOHandler(saccoSvc)
 	vehicleHandler := handler.NewVehicleHandler(vehicleSvc)
 	routeHandler := handler.NewRouteHandler(routeSvc)
-	payrollHandler := handler.NewPayrollHandler(payrollSvc)
 	notifHandler := handler.NewNotificationHandler(notifSvc)
 	docHandler := handler.NewDocumentHandler(docSvc, minioClient)
 	earningHandler := handler.NewEarningHandler(earningRepo)
@@ -242,7 +240,9 @@ func main() {
 	} else {
 		slog.Warn("PerPay not configured — payroll submission disabled")
 	}
-	_ = payrollMgr // Injected into payroll service in a future phase
+
+	payrollSvc := service.NewPayrollService(payrollRepo, earningRepo, statutoryRateRepo, crewRepo, payrollMgr, logger)
+	payrollHandler := handler.NewPayrollHandler(payrollSvc)
 
 	// Identity: IPRS
 	var identityMgr *identity.Manager
