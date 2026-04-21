@@ -2,16 +2,42 @@ package service_test
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/kibsoft/amy-mis/internal/external/payroll"
 	"github.com/kibsoft/amy-mis/internal/models"
 	"github.com/kibsoft/amy-mis/internal/repository/mock"
 	"github.com/kibsoft/amy-mis/internal/service"
 )
+
+// --- Mock Payroll Provider ---
+type MockPayrollProvider struct {
+	ShouldFail bool
+	SubmitReqs []payroll.SubmitRequest
+}
+
+func (m *MockPayrollProvider) Name() string { return "mock_perpay" }
+
+func (m *MockPayrollProvider) SubmitPayroll(ctx context.Context, req payroll.SubmitRequest) (*payroll.SubmitResult, error) {
+	if m.ShouldFail {
+		return nil, fmt.Errorf("mock error")
+	}
+	m.SubmitReqs = append(m.SubmitReqs, req)
+	return &payroll.SubmitResult{
+		Provider:      m.Name(),
+		CorrelationID: "corr-123",
+		Status:        "received",
+	}, nil
+}
+
+func (m *MockPayrollProvider) GetStatus(ctx context.Context, correlationID string) (*payroll.StatusResult, error) {
+	return nil, nil
+}
 
 func TestPayrollService(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -26,7 +52,10 @@ func TestPayrollService(t *testing.T) {
 	rateRepo := mock.NewStatutoryRateRepo(rates)
 	crewRepo := mock.NewCrewRepo()
 
-	svc := service.NewPayrollService(payrollRepo, earningRepo, rateRepo, crewRepo, nil, logger)
+	mockProvider := &MockPayrollProvider{}
+	payrollMgr := payroll.NewManager(logger, mockProvider)
+
+	svc := service.NewPayrollService(payrollRepo, earningRepo, rateRepo, crewRepo, payrollMgr, logger)
 
 	t.Run("Create Payroll Run", func(t *testing.T) {
 		ctx := context.Background()
@@ -108,6 +137,53 @@ func TestPayrollService(t *testing.T) {
 		}
 		if len(entries) != 2 {
 			t.Errorf("expected 2 entries")
+		}
+
+		// 4. Approve Run
+		approverID := uuid.New()
+		approved, err := svc.ApprovePayrollRun(ctx, run.ID, approverID)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if approved.Status != models.PayrollApproved {
+			t.Errorf("expected APPROVED status")
+		}
+
+		// Mock the crew members so SubmitPayrollRun can fetch them
+		_ = crewRepo.Create(ctx, &models.CrewMember{ID: crewID1, FirstName: "John", LastName: "Doe", NationalID: "12345678"})
+		_ = crewRepo.Create(ctx, &models.CrewMember{ID: crewID2, FirstName: "Jane", LastName: "Smith", NationalID: "87654321"})
+
+		// 5. Submit Payroll Run
+		submitted, err := svc.SubmitPayrollRun(ctx, run.ID)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if submitted.Status != models.PayrollSubmitted {
+			t.Errorf("expected SUBMITTED status")
+		}
+		if len(mockProvider.SubmitReqs) != 2 {
+			t.Errorf("expected 2 submissions to PerPay, got %d", len(mockProvider.SubmitReqs))
+		}
+
+		// Verify payload of one of the requests
+		var req1 payroll.SubmitRequest
+		for _, req := range mockProvider.SubmitReqs {
+			if req.EmployeeID == crewID1.String() {
+				req1 = req
+			}
+		}
+		if req1.EmployeeID == "" {
+			t.Errorf("missing request for crewID1")
+		}
+		if req1.EmployeePIN != "12345678" {
+			t.Errorf("expected EmployeePIN 12345678, got %s", req1.EmployeePIN)
+		}
+		if len(req1.PayComponents) != 1 || req1.PayComponents[0].Amount != 10000.00 {
+			t.Errorf("expected Gross 10000.00 KES")
+		}
+		if len(req1.Deductions) != 3 {
+			t.Errorf("expected 3 deductions")
 		}
 	})
 }
