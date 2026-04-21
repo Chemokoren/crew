@@ -141,9 +141,20 @@ func main() {
 	// --- 9. Initialize JWT manager ---
 	jwtManager := jwt.NewManager(cfg.JWTSecret, cfg.JWTExpiryMinutes, cfg.JWTRefreshDays)
 
-	// --- 10. Initialize services ---
+	// --- 10. Initialize external integration managers (Identity) ---
+	var iprsProvider *iprs.IPRSProvider
+	if cfg.IPRSClientID != "" {
+		iprsProvider = iprs.NewIPRSProvider(iprs.IPRSConfig{
+			BaseURL:             cfg.IPRSBaseURL,
+			AccessTokenEndpoint: cfg.IPRSTokenEndpoint,
+			ClientID:            cfg.IPRSClientID,
+			ClientSecret:        cfg.IPRSClientSecret,
+		}, logger)
+	}
+
+	// --- 11. Initialize services ---
 	authSvc := service.NewAuthService(userRepo, crewRepo, jwtManager, txMgr, logger)
-	crewSvc := service.NewCrewService(crewRepo, logger)
+	crewSvc := service.NewCrewService(crewRepo, iprsProvider, logger)
 	walletSvc := service.NewWalletService(walletRepo, crewRepo, logger)
 	assignmentSvc := service.NewAssignmentService(assignmentRepo, earningRepo, walletSvc, txMgr, logger)
 	saccoSvc := service.NewSACCOService(saccoRepo, membershipRepo, floatRepo, logger)
@@ -151,10 +162,10 @@ func main() {
 	routeSvc := service.NewRouteService(routeRepo, logger)
 	payrollSvc := service.NewPayrollService(payrollRepo, earningRepo, statutoryRateRepo, logger)
 	notifSvc := service.NewNotificationService(notificationRepo, logger)
-	_ = service.NewDocumentService(documentRepo, logger)   // Wired when MinIO upload handlers are added
-	_ = service.NewAuditService(auditRepo, logger)         // Wired into middleware hooks
+	docSvc := service.NewDocumentService(documentRepo, logger)
+	_ = service.NewAuditService(auditRepo, logger) // Wired into middleware hooks
 
-	// --- 11. Initialize handlers ---
+	// --- 12. Initialize handlers ---
 	healthHandler := handler.NewHealthHandler(db, redisClient)
 	authHandler := handler.NewAuthHandler(authSvc)
 	crewHandler := handler.NewCrewHandler(crewSvc)
@@ -165,6 +176,8 @@ func main() {
 	routeHandler := handler.NewRouteHandler(routeSvc)
 	payrollHandler := handler.NewPayrollHandler(payrollSvc)
 	notifHandler := handler.NewNotificationHandler(notifSvc)
+	docHandler := handler.NewDocumentHandler(docSvc, minioClient)
+	earningHandler := handler.NewEarningHandler(earningRepo)
 
 	// --- 12. Initialize external integration managers (Strategy pattern) ---
 
@@ -227,13 +240,7 @@ func main() {
 
 	// Identity: IPRS
 	var identityMgr *identity.Manager
-	if cfg.IPRSClientID != "" {
-		iprsProvider := iprs.NewIPRSProvider(iprs.IPRSConfig{
-			BaseURL:             cfg.IPRSBaseURL,
-			AccessTokenEndpoint: cfg.IPRSTokenEndpoint,
-			ClientID:            cfg.IPRSClientID,
-			ClientSecret:        cfg.IPRSClientSecret,
-		}, logger)
+	if iprsProvider != nil {
 		identityMgr = identity.NewManager(logger, iprsProvider)
 	} else {
 		slog.Warn("IPRS not configured — identity verification disabled")
@@ -298,6 +305,7 @@ func main() {
 			crew.GET("", crewHandler.List)
 			crew.GET("/:id", crewHandler.GetByID)
 			crew.PUT("/:id/kyc", crewHandler.UpdateKYC)
+			crew.POST("/:id/verify", crewHandler.VerifyNationalID)
 			crew.DELETE("/:id", crewHandler.Deactivate)
 		}
 
@@ -376,11 +384,29 @@ func main() {
 			payrollRoutes.POST("/:id/approve", payrollHandler.Approve)
 		}
 
+		// Documents
+		documents := secured.Group("/documents")
+		documents.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin))
+		{
+			documents.POST("/upload", docHandler.Upload)
+			documents.GET("/:id/download", docHandler.Download)
+			documents.GET("", docHandler.List)
+			documents.DELETE("/:id", docHandler.Delete)
+		}
+
+		// Earnings
+		earnings := secured.Group("/earnings")
+		{
+			earnings.GET("", earningHandler.List)
+			earnings.GET("/summary/:crew_member_id", earningHandler.SummaryDashboard)
+		}
+
 		// Notifications (all authenticated users)
 		notifications := secured.Group("/notifications")
 		{
 			notifications.GET("", notifHandler.List)
 			notifications.PUT("/:id/read", notifHandler.MarkRead)
+			notifications.PUT("/preferences", notifHandler.UpdatePreferences)
 		}
 	}
 

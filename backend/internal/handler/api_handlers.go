@@ -464,6 +464,31 @@ func (h *CrewHandler) Deactivate(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, gin.H{"message": "Crew member deactivated"})
 }
 
+// POST /api/v1/crew/:id/verify
+func (h *CrewHandler) VerifyNationalID(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		BadRequest(c, "Invalid crew member ID")
+		return
+	}
+
+	var req struct {
+		SerialNumber string `json:"serial_number" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		BadRequest(c, err.Error())
+		return
+	}
+
+	crew, err := h.crewSvc.VerifyNationalID(c.Request.Context(), id, req.SerialNumber)
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+
+	SuccessResponse(c, http.StatusOK, dto.CrewToResponse(crew))
+}
+
 // --- Helpers ---
 
 func buildMeta(page, perPage int, total int64) pagination.Meta {

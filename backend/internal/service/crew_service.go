@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/kibsoft/amy-mis/internal/external/identity"
 	"github.com/kibsoft/amy-mis/internal/models"
 	"github.com/kibsoft/amy-mis/internal/repository"
 )
@@ -14,12 +15,13 @@ import (
 // CrewService manages crew member business logic.
 type CrewService struct {
 	crewRepo repository.CrewRepository
+	idp      identity.Provider
 	logger   *slog.Logger
 }
 
 // NewCrewService creates a new CrewService.
-func NewCrewService(crewRepo repository.CrewRepository, logger *slog.Logger) *CrewService {
-	return &CrewService{crewRepo: crewRepo, logger: logger}
+func NewCrewService(crewRepo repository.CrewRepository, idp identity.Provider, logger *slog.Logger) *CrewService {
+	return &CrewService{crewRepo: crewRepo, idp: idp, logger: logger}
 }
 
 // CreateCrewInput holds the data for creating a crew member.
@@ -114,4 +116,35 @@ func (s *CrewService) DeactivateCrewMember(ctx context.Context, id uuid.UUID) er
 
 	s.logger.Info("crew member deactivated", slog.String("crew_id", crew.CrewID))
 	return nil
+}
+
+// VerifyNationalID validates a crew member's national ID via IPRS.
+func (s *CrewService) VerifyNationalID(ctx context.Context, id uuid.UUID, serialNumber string) (*models.CrewMember, error) {
+	if s.idp == nil {
+		return nil, fmt.Errorf("identity provider not configured")
+	}
+
+	crew, err := s.crewRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	details, err := s.idp.VerifyCitizen(ctx, identity.VerifyRequest{
+		IDNumber:     crew.NationalID,
+		SerialNumber: serialNumber,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("iprs verify: %w", err)
+	}
+
+	if details.Verified {
+		crew.KYCStatus = models.KYCVerified
+		now := time.Now()
+		crew.KYCVerifiedAt = &now
+		if err := s.crewRepo.Update(ctx, crew); err != nil {
+			return nil, fmt.Errorf("update kyc status: %w", err)
+		}
+	}
+
+	return crew, nil
 }

@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"time"
 
@@ -83,4 +84,15 @@ func (m *MinIOClient) ObjectExists(ctx context.Context, objectKey string) (bool,
 		return false, err
 	}
 	return true, nil
+}
+
+// UploadFile uploads a file directly to MinIO.
+func (m *MinIOClient) UploadFile(ctx context.Context, objectKey string, reader io.Reader, objectSize int64, contentType string) (string, error) {
+	_, err := m.client.PutObject(ctx, m.bucket, objectKey, reader, objectSize, minio.PutObjectOptions{
+		ContentType: contentType,
+	})
+	if err != nil {
+		return "", fmt.Errorf("upload to minio: %w", err)
+	}
+	return objectKey, nil
 }
