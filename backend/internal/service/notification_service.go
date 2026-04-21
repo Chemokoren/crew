@@ -35,6 +35,15 @@ func NewNotificationService(
 	}
 }
 
+// SendToCrewMember looks up the user for a crew member and dispatches a notification.
+func (s *NotificationService) SendToCrewMember(ctx context.Context, crewMemberID uuid.UUID, channel models.NotificationChannel, title, body string) (*models.Notification, error) {
+	user, err := s.userRepo.GetByCrewMemberID(ctx, crewMemberID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user for crew member: %w", err)
+	}
+	return s.SendNotification(ctx, user.ID, channel, title, body)
+}
+
 // SendNotification creates and dispatches a notification to a user.
 func (s *NotificationService) SendNotification(ctx context.Context, userID uuid.UUID, channel models.NotificationChannel, title, body string) (*models.Notification, error) {
 	now := time.Now()

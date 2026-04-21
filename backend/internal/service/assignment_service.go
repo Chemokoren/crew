@@ -198,7 +198,7 @@ func (s *AssignmentService) CompleteAssignment(ctx context.Context, assignmentID
 		
 		// Run notification dispatch in background
 		go func() {
-			_, err := s.notifSvc.SendNotification(context.Background(), assignment.CrewMemberID, models.ChannelSMS, "Shift Completed", body)
+			_, err := s.notifSvc.SendToCrewMember(context.Background(), assignment.CrewMemberID, models.ChannelSMS, "Shift Completed", body)
 			if err != nil {
 				s.logger.Error("failed to dispatch completion SMS", slog.String("error", err.Error()))
 			}

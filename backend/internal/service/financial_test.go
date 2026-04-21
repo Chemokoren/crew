@@ -289,3 +289,45 @@ func TestConcurrentCredits(t *testing.T) {
 	wg.Wait()
 	// No panic = pass. Exact balance depends on optimistic lock conflicts.
 }
+
+func TestCompleteAssignment_TriggersNotification(t *testing.T) {
+	crewRepo := mock.NewCrewRepo()
+	walletRepo := mock.NewWalletRepo()
+	notifRepo := mock.NewNotificationRepo()
+	userRepo := mock.NewUserRepo()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	walletSvc := NewWalletService(walletRepo, crewRepo, logger)
+	notifSvc := NewNotificationService(notifRepo, userRepo, nil, logger)
+	assignmentSvc := NewAssignmentService(newMockAssignmentRepo(), &mockEarningRepo{}, walletSvc, notifSvc, nil, logger)
+
+	ctx := context.Background()
+	crew := makeCrewForTest(t, crewRepo)
+	
+	user := &models.User{
+		ID:           uuid.New(),
+		Phone:        "+254712345678",
+		CrewMemberID: &crew.ID,
+	}
+	userRepo.Create(ctx, user)
+
+	a, _ := assignmentSvc.CreateAssignment(ctx, CreateAssignmentInput{
+		CrewMemberID: crew.ID, VehicleID: uuid.New(), SaccoID: uuid.New(),
+		ShiftDate: time.Now(), ShiftStart: time.Now(),
+		EarningModel: models.EarningFixed, FixedAmountCents: 250000,
+	})
+
+	_, err := assignmentSvc.CompleteAssignment(ctx, a.ID, 0)
+	if err != nil {
+		t.Fatalf("complete: %v", err)
+	}
+
+	time.Sleep(50 * time.Millisecond)
+
+	notifs, count, _ := notifRepo.ListByUser(ctx, user.ID, repository.NotificationFilter{}, 1, 10)
+	if count != 1 {
+		t.Errorf("expected 1 notification, got %d", count)
+	} else if notifs[0].Channel != models.ChannelSMS {
+		t.Errorf("expected SMS channel, got %s", notifs[0].Channel)
+	}
+}
