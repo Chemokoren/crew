@@ -1,5 +1,25 @@
 // AMY MIS — Backend Server
 // A Workforce Financial Operating System for Informal Economies
+
+// @title AMY MIS API
+// @version 1.0
+// @description Workforce Financial Operating System for Kenya's informal transport sector.
+// @description Manages crew assignments, earnings, wallets, payroll, and SACCO operations.
+
+// @contact.name AMY MIS Engineering
+// @contact.email engineering@amy-mis.co.ke
+
+// @license.name MIT
+// @license.url https://opensource.org/licenses/MIT
+
+// @host localhost:8080
+// @BasePath /api/v1
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Enter "Bearer {token}" (without quotes)
+
 package main
 
 import (
@@ -22,6 +42,11 @@ import (
 	"github.com/kibsoft/amy-mis/internal/service"
 	"github.com/kibsoft/amy-mis/pkg/jwt"
 	"github.com/kibsoft/amy-mis/pkg/types"
+
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
+
+	_ "github.com/kibsoft/amy-mis/docs" // swagger docs
 )
 
 func main() {
@@ -131,6 +156,9 @@ func main() {
 	router.GET("/health", healthHandler.Health)
 	router.GET("/ready", healthHandler.Ready)
 	router.GET("/metrics", middleware.MetricsHandler())
+
+	// Swagger API documentation
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	// API v1 — public endpoints
 	v1 := router.Group("/api/v1")
