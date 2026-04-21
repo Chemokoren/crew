@@ -225,6 +225,17 @@ func (r *WalletRepo) GetByCrewMemberID(_ context.Context, crewMemberID uuid.UUID
 	return nil, errs.ErrNotFound
 }
 
+func (r *WalletRepo) GetWalletByID(_ context.Context, id uuid.UUID) (*models.Wallet, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	w, ok := r.wallets[id]
+	if !ok {
+		return nil, errs.ErrNotFound
+	}
+	copy := *w
+	return &copy, nil
+}
+
 func (r *WalletRepo) CreditWallet(_ context.Context, walletID uuid.UUID, version int, amountCents int64,
 	category models.TransactionCategory, idempotencyKey, reference, description string) (*models.WalletTransaction, error) {
 	r.mu.Lock()
@@ -334,6 +345,18 @@ func (r *WalletRepo) GetByIdempotencyKey(_ context.Context, key string) (*models
 		}
 	}
 	return nil, errs.ErrNotFound
+}
+
+func (r *WalletRepo) UpdateTransaction(_ context.Context, tx *models.WalletTransaction) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i, existing := range r.txs {
+		if existing.ID == tx.ID {
+			r.txs[i] = tx
+			return nil
+		}
+	}
+	return errs.ErrNotFound
 }
 
 // --- SACCORepo Mock ---

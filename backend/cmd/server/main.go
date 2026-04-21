@@ -134,6 +134,7 @@ func main() {
 	notificationRepo := pgRepo.NewNotificationRepo(db)
 	auditRepo := pgRepo.NewAuditLogRepo(db)
 	statutoryRateRepo := pgRepo.NewStatutoryRateRepo(db)
+	webhookRepo := pgRepo.NewWebhookEventRepo(db)
 
 	// --- 8. Initialize transaction manager ---
 	txMgr := database.NewTxManager(db)
@@ -253,6 +254,9 @@ func main() {
 	}
 	_ = identityMgr // Injected into KYC service in a future phase
 
+	webhookSvc := service.NewWebhookService(webhookRepo, payoutSvc, payrollSvc, walletRepo, payrollRepo, logger)
+	webhookHandler := handler.NewWebhookHandler(webhookSvc)
+
 	// --- 13. Initialize background workers ---
 	scheduler := worker.NewScheduler(logger)
 	dailySummaryJob := worker.NewDailySummaryJob(earningRepo, assignmentRepo, logger)
@@ -294,6 +298,12 @@ func main() {
 		auth.POST("/register", authHandler.Register)
 		auth.POST("/login", authHandler.Login)
 		auth.POST("/refresh", authHandler.Refresh)
+	}
+
+	webhooks := v1.Group("/webhooks")
+	{
+		webhooks.POST("/jambopay", webhookHandler.HandleJamboPay)
+		webhooks.POST("/perpay", webhookHandler.HandlePerpay)
 	}
 
 	// API v1 — authenticated endpoints

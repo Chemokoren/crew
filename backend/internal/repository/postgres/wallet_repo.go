@@ -52,6 +52,17 @@ func (r *WalletRepo) GetByCrewMemberID(ctx context.Context, crewMemberID uuid.UU
 	return &wallet, nil
 }
 
+func (r *WalletRepo) GetWalletByID(ctx context.Context, id uuid.UUID) (*models.Wallet, error) {
+	var wallet models.Wallet
+	if err := r.getDB(ctx).Where("id = ?", id).First(&wallet).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errs.ErrNotFound
+		}
+		return nil, fmt.Errorf("get wallet by id: %w", err)
+	}
+	return &wallet, nil
+}
+
 // CreditWallet atomically credits a wallet using SELECT FOR UPDATE + version check.
 func (r *WalletRepo) CreditWallet(
 	ctx context.Context,
@@ -244,4 +255,11 @@ func (r *WalletRepo) GetByIdempotencyKey(ctx context.Context, key string) (*mode
 		return nil, fmt.Errorf("get by idempotency key: %w", err)
 	}
 	return &tx, nil
+}
+
+func (r *WalletRepo) UpdateTransaction(ctx context.Context, tx *models.WalletTransaction) error {
+	if err := r.db.WithContext(ctx).Save(tx).Error; err != nil {
+		return fmt.Errorf("update transaction: %w", err)
+	}
+	return nil
 }

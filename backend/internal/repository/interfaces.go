@@ -133,6 +133,7 @@ type EarningRepository interface {
 type WalletRepository interface {
 	Create(ctx context.Context, wallet *models.Wallet) error
 	GetByCrewMemberID(ctx context.Context, crewMemberID uuid.UUID) (*models.Wallet, error)
+	GetWalletByID(ctx context.Context, id uuid.UUID) (*models.Wallet, error)
 
 	// CreditWallet atomically updates balance and creates a transaction.
 	// Returns ErrOptimisticLock if version mismatch.
@@ -146,6 +147,7 @@ type WalletRepository interface {
 
 	GetTransactions(ctx context.Context, walletID uuid.UUID, filter TxFilter, page, perPage int) ([]models.WalletTransaction, int64, error)
 	GetByIdempotencyKey(ctx context.Context, key string) (*models.WalletTransaction, error)
+	UpdateTransaction(ctx context.Context, tx *models.WalletTransaction) error
 }
 
 // PayrollRepository handles payroll data access.
