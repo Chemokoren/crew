@@ -63,6 +63,17 @@ func (r *UserRepo) GetByPhone(_ context.Context, phone string) (*models.User, er
 	return nil, errs.ErrNotFound
 }
 
+func (r *UserRepo) GetByCrewMemberID(_ context.Context, crewMemberID uuid.UUID) (*models.User, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, u := range r.users {
+		if u.CrewMemberID != nil && *u.CrewMemberID == crewMemberID {
+			return u, nil
+		}
+	}
+	return nil, errs.ErrNotFound
+}
+
 func (r *UserRepo) Update(_ context.Context, user *models.User) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

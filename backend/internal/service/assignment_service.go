@@ -17,6 +17,7 @@ type AssignmentService struct {
 	assignmentRepo repository.AssignmentRepository
 	earningRepo    repository.EarningRepository
 	walletSvc      *WalletService
+	notifSvc       *NotificationService
 	txMgr          *database.TxManager
 	logger         *slog.Logger
 }
@@ -26,6 +27,7 @@ func NewAssignmentService(
 	assignmentRepo repository.AssignmentRepository,
 	earningRepo repository.EarningRepository,
 	walletSvc *WalletService,
+	notifSvc *NotificationService,
 	txMgr *database.TxManager,
 	logger *slog.Logger,
 ) *AssignmentService {
@@ -33,6 +35,7 @@ func NewAssignmentService(
 		assignmentRepo: assignmentRepo,
 		earningRepo:    earningRepo,
 		walletSvc:      walletSvc,
+		notifSvc:       notifSvc,
 		txMgr:          txMgr,
 		logger:         logger,
 	}
@@ -189,6 +192,18 @@ func (s *AssignmentService) CompleteAssignment(ctx context.Context, assignmentID
 		slog.Int64("earned_cents", amountCents),
 		slog.String("earning_model", string(assignment.EarningModel)),
 	)
+
+	if s.notifSvc != nil {
+		body := fmt.Sprintf("Your shift on %s is completed. You earned KES %.2f.", assignment.ShiftDate.Format("2006-01-02"), float64(amountCents)/100.0)
+		
+		// Run notification dispatch in background
+		go func() {
+			_, err := s.notifSvc.SendNotification(context.Background(), assignment.CrewMemberID, models.ChannelSMS, "Shift Completed", body)
+			if err != nil {
+				s.logger.Error("failed to dispatch completion SMS", slog.String("error", err.Error()))
+			}
+		}()
+	}
 
 	return earning, nil
 }

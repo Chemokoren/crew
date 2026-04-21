@@ -65,6 +65,7 @@ type UserRepository interface {
 	Create(ctx context.Context, user *models.User) error
 	GetByID(ctx context.Context, id uuid.UUID) (*models.User, error)
 	GetByPhone(ctx context.Context, phone string) (*models.User, error)
+	GetByCrewMemberID(ctx context.Context, crewMemberID uuid.UUID) (*models.User, error)
 	Update(ctx context.Context, user *models.User) error
 	List(ctx context.Context, page, perPage int) ([]models.User, int64, error)
 }

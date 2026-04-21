@@ -104,7 +104,7 @@ func newAssignmentTestEnv() (*AssignmentService, *WalletService, *mock.CrewRepo)
 	walletRepo := mock.NewWalletRepo()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	walletSvc := NewWalletService(walletRepo, crewRepo, logger)
-	assignmentSvc := NewAssignmentService(newMockAssignmentRepo(), &mockEarningRepo{}, walletSvc, nil, logger)
+	assignmentSvc := NewAssignmentService(newMockAssignmentRepo(), &mockEarningRepo{}, walletSvc, nil, nil, logger)
 	return assignmentSvc, walletSvc, crewRepo
 }
 

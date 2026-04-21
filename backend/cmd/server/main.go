@@ -152,34 +152,7 @@ func main() {
 		}, logger)
 	}
 
-	// --- 11. Initialize services ---
-	authSvc := service.NewAuthService(userRepo, crewRepo, jwtManager, txMgr, logger)
-	crewSvc := service.NewCrewService(crewRepo, iprsProvider, logger)
-	walletSvc := service.NewWalletService(walletRepo, crewRepo, logger)
-	assignmentSvc := service.NewAssignmentService(assignmentRepo, earningRepo, walletSvc, txMgr, logger)
-	saccoSvc := service.NewSACCOService(saccoRepo, membershipRepo, floatRepo, logger)
-	vehicleSvc := service.NewVehicleService(vehicleRepo, logger)
-	routeSvc := service.NewRouteService(routeRepo, logger)
-	payrollSvc := service.NewPayrollService(payrollRepo, earningRepo, statutoryRateRepo, logger)
-	notifSvc := service.NewNotificationService(notificationRepo, logger)
-	docSvc := service.NewDocumentService(documentRepo, logger)
-	_ = service.NewAuditService(auditRepo, logger) // Wired into middleware hooks
-
-	// --- 12. Initialize handlers ---
-	healthHandler := handler.NewHealthHandler(db, redisClient)
-	authHandler := handler.NewAuthHandler(authSvc)
-	crewHandler := handler.NewCrewHandler(crewSvc)
-	walletHandler := handler.NewWalletHandler(walletSvc)
-	assignmentHandler := handler.NewAssignmentHandler(assignmentSvc)
-	saccoHandler := handler.NewSACCOHandler(saccoSvc)
-	vehicleHandler := handler.NewVehicleHandler(vehicleSvc)
-	routeHandler := handler.NewRouteHandler(routeSvc)
-	payrollHandler := handler.NewPayrollHandler(payrollSvc)
-	notifHandler := handler.NewNotificationHandler(notifSvc)
-	docHandler := handler.NewDocumentHandler(docSvc, minioClient)
-	earningHandler := handler.NewEarningHandler(earningRepo)
-
-	// --- 12. Initialize external integration managers (Strategy pattern) ---
+	// --- 11. Initialize external integration managers (Strategy pattern) ---
 
 	// SMS: Optimize (default) + Africa's Talking (fallback)
 	var smsProviders []sms.Provider
@@ -208,7 +181,37 @@ func main() {
 	} else {
 		slog.Warn("no SMS providers configured — SMS functionality disabled")
 	}
-	_ = smsMgr // Injected into notification service in a future phase
+
+	// --- 12. Initialize services ---
+	notifSvc := service.NewNotificationService(notificationRepo, userRepo, smsMgr, logger)
+	authSvc := service.NewAuthService(userRepo, crewRepo, jwtManager, txMgr, logger)
+	crewSvc := service.NewCrewService(crewRepo, iprsProvider, logger)
+	walletSvc := service.NewWalletService(walletRepo, crewRepo, logger)
+	assignmentSvc := service.NewAssignmentService(assignmentRepo, earningRepo, walletSvc, notifSvc, txMgr, logger)
+	saccoSvc := service.NewSACCOService(saccoRepo, membershipRepo, floatRepo, logger)
+	vehicleSvc := service.NewVehicleService(vehicleRepo, logger)
+	routeSvc := service.NewRouteService(routeRepo, logger)
+	payrollSvc := service.NewPayrollService(payrollRepo, earningRepo, statutoryRateRepo, logger)
+	docSvc := service.NewDocumentService(documentRepo, logger)
+	_ = service.NewAuditService(auditRepo, logger) // Wired into middleware hooks
+
+	// --- 13. Initialize handlers ---
+	healthHandler := handler.NewHealthHandler(db, redisClient)
+	authHandler := handler.NewAuthHandler(authSvc)
+	crewHandler := handler.NewCrewHandler(crewSvc)
+	walletHandler := handler.NewWalletHandler(walletSvc)
+	assignmentHandler := handler.NewAssignmentHandler(assignmentSvc)
+	saccoHandler := handler.NewSACCOHandler(saccoSvc)
+	vehicleHandler := handler.NewVehicleHandler(vehicleSvc)
+	routeHandler := handler.NewRouteHandler(routeSvc)
+	payrollHandler := handler.NewPayrollHandler(payrollSvc)
+	notifHandler := handler.NewNotificationHandler(notifSvc)
+	docHandler := handler.NewDocumentHandler(docSvc, minioClient)
+	earningHandler := handler.NewEarningHandler(earningRepo)
+
+	// Payment: JamboPay
+
+
 
 	// Payment: JamboPay
 	var paymentMgr *payment.Manager

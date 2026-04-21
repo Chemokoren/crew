@@ -15,8 +15,9 @@ import (
 
 func TestNotificationService_DispatchAndList(t *testing.T) {
 	repo := mock.NewNotificationRepo()
+	userRepo := mock.NewUserRepo()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	svc := service.NewNotificationService(repo, logger)
+	svc := service.NewNotificationService(repo, userRepo, nil, logger)
 
 	userID := uuid.New()
 
@@ -39,8 +40,9 @@ func TestNotificationService_DispatchAndList(t *testing.T) {
 
 func TestNotificationService_MarkRead(t *testing.T) {
 	repo := mock.NewNotificationRepo()
+	userRepo := mock.NewUserRepo()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	svc := service.NewNotificationService(repo, logger)
+	svc := service.NewNotificationService(repo, userRepo, nil, logger)
 
 	userID := uuid.New()
 	svc.SendNotification(context.Background(), userID, models.NotificationChannel("PUSH"), "Title", "Message")

@@ -59,6 +59,17 @@ func (r *UserRepo) GetByPhone(ctx context.Context, phone string) (*models.User, 
 	return &user, nil
 }
 
+func (r *UserRepo) GetByCrewMemberID(ctx context.Context, crewMemberID uuid.UUID) (*models.User, error) {
+	var user models.User
+	if err := r.getDB(ctx).Where("crew_member_id = ?", crewMemberID).First(&user).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errs.ErrNotFound
+		}
+		return nil, fmt.Errorf("get user by crew_member_id: %w", err)
+	}
+	return &user, nil
+}
+
 func (r *UserRepo) Update(ctx context.Context, user *models.User) error {
 	if err := r.getDB(ctx).Save(user).Error; err != nil {
 		return fmt.Errorf("update user: %w", err)

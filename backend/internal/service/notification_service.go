@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/kibsoft/amy-mis/internal/external/sms"
 	"github.com/kibsoft/amy-mis/internal/models"
 	"github.com/kibsoft/amy-mis/internal/repository"
 )
@@ -15,31 +16,81 @@ import (
 // NotificationService handles notification dispatch and management.
 type NotificationService struct {
 	notifRepo repository.NotificationRepository
+	userRepo  repository.UserRepository
+	smsMgr    *sms.Manager
 	logger    *slog.Logger
 }
 
 func NewNotificationService(
 	notifRepo repository.NotificationRepository,
-	logger *slog.Logger,
+	userRepo  repository.UserRepository,
+	smsMgr    *sms.Manager,
+	logger    *slog.Logger,
 ) *NotificationService {
-	return &NotificationService{notifRepo: notifRepo, logger: logger}
+	return &NotificationService{
+		notifRepo: notifRepo,
+		userRepo:  userRepo,
+		smsMgr:    smsMgr,
+		logger:    logger,
+	}
 }
 
 // SendNotification creates and dispatches a notification to a user.
 func (s *NotificationService) SendNotification(ctx context.Context, userID uuid.UUID, channel models.NotificationChannel, title, body string) (*models.Notification, error) {
 	now := time.Now()
+	status := models.NotifPending
+
+	if channel == models.ChannelInApp {
+		status = models.NotifSent
+	}
+
 	n := &models.Notification{
 		UserID:  userID,
 		Channel: channel,
 		Title:   title,
 		Body:    body,
-		Status:  models.NotifSent,
-		SentAt:  &now,
+		Status:  status,
 	}
+	
 	if err := s.notifRepo.Create(ctx, n); err != nil {
 		return nil, fmt.Errorf("create notification: %w", err)
 	}
-	s.logger.Info("notification sent", slog.String("user_id", userID.String()), slog.String("channel", string(channel)))
+
+	if channel == models.ChannelSMS {
+		if s.smsMgr == nil {
+			s.logger.Warn("SMS channel requested but SMS manager is nil", slog.String("user_id", userID.String()))
+			n.Status = models.NotifFailed
+		} else {
+			user, err := s.userRepo.GetByID(ctx, userID)
+			if err != nil {
+				s.logger.Error("failed to get user for SMS", slog.String("error", err.Error()))
+				n.Status = models.NotifFailed
+			} else if user.Phone == "" {
+				s.logger.Error("user has no phone number", slog.String("user_id", userID.String()))
+				n.Status = models.NotifFailed
+			} else {
+				res, err := s.smsMgr.Send(ctx, user.Phone, body)
+				if err != nil || !res.Success {
+					s.logger.Error("failed to send SMS", slog.Any("error", err), slog.Any("result", res))
+					n.Status = models.NotifFailed
+				} else {
+					n.Status = models.NotifSent
+					n.SentAt = &now
+				}
+			}
+		}
+		// Update status based on delivery attempt
+		if err := s.notifRepo.Update(ctx, n); err != nil {
+			s.logger.Error("failed to update notification status", slog.String("error", err.Error()))
+		}
+	} else if channel == models.ChannelInApp {
+		n.SentAt = &now
+		if err := s.notifRepo.Update(ctx, n); err != nil {
+			s.logger.Error("failed to update notification status", slog.String("error", err.Error()))
+		}
+	}
+
+	s.logger.Info("notification processed", slog.String("user_id", userID.String()), slog.String("channel", string(channel)), slog.String("status", string(n.Status)))
 	return n, nil
 }
 
