@@ -29,6 +29,7 @@ const (
 	LoanRepaying  LoanStatus = "REPAYING"
 	LoanCompleted LoanStatus = "COMPLETED"
 	LoanDefaulted LoanStatus = "DEFAULTED"
+	LoanRejected  LoanStatus = "REJECTED"
 )
 
 // LoanApplication represents a crew member's loan request.

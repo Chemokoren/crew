@@ -241,3 +241,39 @@ type StatutoryRateRepository interface {
 	Create(ctx context.Context, rate *models.StatutoryRate) error
 	Update(ctx context.Context, rate *models.StatutoryRate) error
 }
+
+// CreditScoreRepository handles credit score data access.
+type CreditScoreRepository interface {
+	GetByCrewMemberID(ctx context.Context, crewMemberID uuid.UUID) (*models.CreditScore, error)
+	Upsert(ctx context.Context, score *models.CreditScore) error
+}
+
+// LoanApplicationFilter specifies filtering for loan queries.
+type LoanApplicationFilter struct {
+	CrewMemberID *uuid.UUID
+	Status       string
+	LenderID     *uuid.UUID
+}
+
+// LoanApplicationRepository handles loan application data access.
+type LoanApplicationRepository interface {
+	Create(ctx context.Context, loan *models.LoanApplication) error
+	GetByID(ctx context.Context, id uuid.UUID) (*models.LoanApplication, error)
+	Update(ctx context.Context, loan *models.LoanApplication) error
+	List(ctx context.Context, filter LoanApplicationFilter, page, perPage int) ([]models.LoanApplication, int64, error)
+}
+
+// InsurancePolicyFilter specifies filtering for insurance queries.
+type InsurancePolicyFilter struct {
+	CrewMemberID *uuid.UUID
+	Status       string
+}
+
+// InsurancePolicyRepository handles insurance policy data access.
+type InsurancePolicyRepository interface {
+	Create(ctx context.Context, policy *models.InsurancePolicy) error
+	GetByID(ctx context.Context, id uuid.UUID) (*models.InsurancePolicy, error)
+	Update(ctx context.Context, policy *models.InsurancePolicy) error
+	List(ctx context.Context, filter InsurancePolicyFilter, page, perPage int) ([]models.InsurancePolicy, int64, error)
+}
+

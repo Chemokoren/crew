@@ -43,6 +43,7 @@ const (
 	TxCatDeduction  TransactionCategory = "DEDUCTION"
 	TxCatTopUp      TransactionCategory = "TOP_UP"
 	TxCatReversal   TransactionCategory = "REVERSAL"
+	TxCatLoan       TransactionCategory = "LOAN"
 )
 
 type TransactionStatus string
