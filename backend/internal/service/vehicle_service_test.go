@@ -82,3 +82,45 @@ func TestVehicleService_ListVehicles(t *testing.T) {
 		t.Errorf("expected length 2, got %d", len(vehicles))
 	}
 }
+
+func TestVehicleService_GetVehicle(t *testing.T) {
+	repo := mock.NewVehicleRepo()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	svc := service.NewVehicleService(repo, logger)
+
+	saccoID := uuid.New()
+	vehicle, _ := svc.CreateVehicle(context.Background(), service.CreateVehicleInput{
+		RegistrationNo: "KAZ 123Z",
+		SaccoID:        saccoID,
+	})
+
+	fetched, err := svc.GetVehicle(context.Background(), vehicle.ID)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if fetched.RegistrationNo != "KAZ 123Z" {
+		t.Errorf("expected KAZ 123Z, got %s", fetched.RegistrationNo)
+	}
+}
+
+func TestVehicleService_DeleteVehicle(t *testing.T) {
+	repo := mock.NewVehicleRepo()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	svc := service.NewVehicleService(repo, logger)
+
+	saccoID := uuid.New()
+	vehicle, _ := svc.CreateVehicle(context.Background(), service.CreateVehicleInput{
+		RegistrationNo: "KAB 123B",
+		SaccoID:        saccoID,
+	})
+
+	err := svc.DeleteVehicle(context.Background(), vehicle.ID)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	_, err = svc.GetVehicle(context.Background(), vehicle.ID)
+	if err == nil {
+		t.Errorf("expected error when getting deleted vehicle")
+	}
+}

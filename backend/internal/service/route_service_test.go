@@ -79,3 +79,45 @@ func TestRouteService_ListRoutes(t *testing.T) {
 		t.Errorf("expected length 2, got %d", len(routes))
 	}
 }
+
+func TestRouteService_GetRoute(t *testing.T) {
+	repo := mock.NewRouteRepo()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	svc := service.NewRouteService(repo, logger)
+
+	route, _ := svc.CreateRoute(context.Background(), service.CreateRouteInput{
+		Name:       "R1",
+		StartPoint: "A",
+		EndPoint:   "B",
+	})
+
+	fetched, err := svc.GetRoute(context.Background(), route.ID)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if fetched.Name != "R1" {
+		t.Errorf("expected R1, got %s", fetched.Name)
+	}
+}
+
+func TestRouteService_DeleteRoute(t *testing.T) {
+	repo := mock.NewRouteRepo()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	svc := service.NewRouteService(repo, logger)
+
+	route, _ := svc.CreateRoute(context.Background(), service.CreateRouteInput{
+		Name:       "R1",
+		StartPoint: "A",
+		EndPoint:   "B",
+	})
+
+	err := svc.DeleteRoute(context.Background(), route.ID)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	_, err = svc.GetRoute(context.Background(), route.ID)
+	if err == nil {
+		t.Errorf("expected error when getting deleted route")
+	}
+}
