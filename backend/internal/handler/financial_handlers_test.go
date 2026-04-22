@@ -23,7 +23,7 @@ func TestLoanHandler_Apply(t *testing.T) {
 	creditScoreRepo := mock.NewCreditScoreRepo()
 	walletRepo := mock.NewWalletRepo()
 
-	loanSvc := service.NewLoanService(loanRepo, creditScoreRepo, walletRepo)
+	loanSvc := service.NewLoanService(loanRepo, creditScoreRepo, walletRepo, nil)
 
 	loanHandler := NewLoanHandler(loanSvc)
 

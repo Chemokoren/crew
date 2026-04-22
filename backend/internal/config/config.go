@@ -70,6 +70,10 @@ type Config struct {
 
 	// CORS
 	CORSAllowedOrigins string // Comma-separated allowed origins (default: *)
+
+	// Webhook Signature Verification
+	WebhookJamboPaySecret string // HMAC-SHA256 secret for JamboPay webhook verification
+	WebhookPerpaySecret   string // HMAC-SHA256 secret for PerPay webhook verification
 }
 
 // Load reads configuration from environment variables.
@@ -126,6 +130,10 @@ func Load() (*Config, error) {
 
 		RateLimitRPM:       getEnvInt("RATE_LIMIT_RPM", 100),
 		CORSAllowedOrigins: getEnv("CORS_ALLOWED_ORIGINS", "*"),
+
+		// Webhook Secrets
+		WebhookJamboPaySecret: os.Getenv("WEBHOOK_JAMBOPAY_SECRET"),
+		WebhookPerpaySecret:   os.Getenv("WEBHOOK_PERPAY_SECRET"),
 	}
 
 	if err := cfg.validate(); err != nil {

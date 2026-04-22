@@ -117,7 +117,7 @@ func main() {
 		slog.Error("failed to connect to MinIO", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
-	_ = minioClient // Injected into document handlers in a future phase
+
 
 	// --- 7. Initialize repositories ---
 	userRepo := pgRepo.NewUserRepo(db)
@@ -199,8 +199,8 @@ func main() {
 	routeSvc := service.NewRouteService(routeRepo, logger)
 	docSvc := service.NewDocumentService(documentRepo, logger)
 	creditSvc := service.NewCreditService(creditScoreRepo, earningRepo, assignmentRepo)
-	loanSvc := service.NewLoanService(loanRepo, creditScoreRepo, walletRepo)
-	insuranceSvc := service.NewInsuranceService(insuranceRepo)
+	loanSvc := service.NewLoanService(loanRepo, creditScoreRepo, walletRepo, txMgr)
+	insuranceSvc := service.NewInsuranceService(insuranceRepo, logger)
 
 	// --- 13. Initialize handlers ---
 	healthHandler := handler.NewHealthHandler(db, redisClient)
@@ -217,9 +217,6 @@ func main() {
 	creditHandler := handler.NewCreditHandler(creditSvc)
 	loanHandler := handler.NewLoanHandler(loanSvc)
 	insuranceHandler := handler.NewInsuranceHandler(insuranceSvc)
-
-	// Payment: JamboPay
-
 
 
 	// Payment: JamboPay
@@ -262,10 +259,11 @@ func main() {
 	} else {
 		slog.Warn("IPRS not configured — identity verification disabled")
 	}
-	_ = identityMgr // Injected into KYC service in a future phase
+	// identityMgr will be injected into KYC service in a future phase
+	_ = identityMgr
 
 	webhookSvc := service.NewWebhookService(webhookRepo, payoutSvc, payrollSvc, walletRepo, payrollRepo, logger)
-	webhookHandler := handler.NewWebhookHandler(webhookSvc)
+	webhookHandler := handler.NewWebhookHandler(webhookSvc, cfg.WebhookJamboPaySecret, cfg.WebhookPerpaySecret)
 
 	// --- 13. Initialize background workers ---
 	scheduler := worker.NewScheduler(logger, redisClient)
@@ -281,7 +279,7 @@ func main() {
 	router := gin.New()
 
 	// Global middleware
-	router.Use(middleware.CORS())
+	router.Use(middleware.CORS(cfg.CORSAllowedOrigins))
 	router.Use(middleware.SecureHeaders())
 	router.Use(middleware.RequestID())
 	router.Use(otelgin.Middleware("amy-mis-api")) // OTEL distributed traces
@@ -412,6 +410,7 @@ func main() {
 			payrollRoutes.GET("/:id/entries", payrollHandler.GetEntries)
 			payrollRoutes.POST("/:id/process", payrollHandler.Process)
 			payrollRoutes.POST("/:id/approve", payrollHandler.Approve)
+			payrollRoutes.POST("/:id/submit", payrollHandler.Submit)
 		}
 
 		// Documents

@@ -1,6 +1,9 @@
 package handler
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"net/http"
 
@@ -9,11 +12,34 @@ import (
 )
 
 type WebhookHandler struct {
-	webhookSvc *service.WebhookService
+	webhookSvc     *service.WebhookService
+	jamboPaySecret string
+	perpaySecret   string
 }
 
-func NewWebhookHandler(webhookSvc *service.WebhookService) *WebhookHandler {
-	return &WebhookHandler{webhookSvc: webhookSvc}
+func NewWebhookHandler(webhookSvc *service.WebhookService, jamboPaySecret, perpaySecret string) *WebhookHandler {
+	return &WebhookHandler{
+		webhookSvc:     webhookSvc,
+		jamboPaySecret: jamboPaySecret,
+		perpaySecret:   perpaySecret,
+	}
+}
+
+// verifySignature validates an HMAC-SHA256 signature against the payload.
+// Returns true if:
+//   - No secret is configured (development mode, gracefully skip verification)
+//   - The provided signature matches the expected HMAC
+func verifySignature(payload []byte, signature, secret string) bool {
+	if secret == "" {
+		return true // Skip verification if no secret configured (development)
+	}
+	if signature == "" {
+		return false // Signature required when secret is configured
+	}
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(payload)
+	expected := hex.EncodeToString(mac.Sum(nil))
+	return hmac.Equal([]byte(expected), []byte(signature))
 }
 
 // HandleJamboPay godoc
@@ -31,6 +57,13 @@ func (h *WebhookHandler) HandleJamboPay(c *gin.Context) {
 		return
 	}
 	defer c.Request.Body.Close()
+
+	// Verify HMAC-SHA256 signature from JamboPay
+	signature := c.GetHeader("X-JamboPay-Signature")
+	if !verifySignature(payload, signature, h.jamboPaySecret) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid webhook signature"})
+		return
+	}
 
 	if err := h.webhookSvc.ProcessJamboPayWebhook(c.Request.Context(), payload); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -55,6 +88,13 @@ func (h *WebhookHandler) HandlePerpay(c *gin.Context) {
 		return
 	}
 	defer c.Request.Body.Close()
+
+	// Verify HMAC-SHA256 signature from PerPay
+	signature := c.GetHeader("X-Perpay-Signature")
+	if !verifySignature(payload, signature, h.perpaySecret) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid webhook signature"})
+		return
+	}
 
 	if err := h.webhookSvc.ProcessPerpayWebhook(c.Request.Context(), payload); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

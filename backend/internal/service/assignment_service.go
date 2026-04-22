@@ -196,13 +196,11 @@ func (s *AssignmentService) CompleteAssignment(ctx context.Context, assignmentID
 	if s.notifSvc != nil {
 		body := fmt.Sprintf("Your shift on %s is completed. You earned KES %.2f.", assignment.ShiftDate.Format("2006-01-02"), float64(amountCents)/100.0)
 		
-		// Run notification dispatch in background
-		go func() {
-			_, err := s.notifSvc.SendToCrewMember(context.Background(), assignment.CrewMemberID, models.ChannelSMS, "Shift Completed", body)
-			if err != nil {
-				s.logger.Error("failed to dispatch completion SMS", slog.String("error", err.Error()))
-			}
-		}()
+		// Dispatch notification synchronously — failures are best-effort and logged, not returned.
+		// If async is needed at scale, publish to a message queue instead of goroutine.
+		if _, err := s.notifSvc.SendToCrewMember(ctx, assignment.CrewMemberID, models.ChannelSMS, "Shift Completed", body); err != nil {
+			s.logger.Error("failed to dispatch completion SMS", slog.String("error", err.Error()))
+		}
 	}
 
 	return earning, nil

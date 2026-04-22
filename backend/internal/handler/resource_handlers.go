@@ -604,15 +604,37 @@ func (h *PayrollHandler) Approve(c *gin.Context) {
 		BadRequest(c, "Invalid payroll run ID")
 		return
 	}
-	// Use a dummy approver for now — in production, extract from JWT claims
-	var req struct {
-		ApproverID uuid.UUID `json:"approver_id" binding:"required"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		BadRequest(c, err.Error())
+
+	// Extract approver identity from JWT claims — never trust client-provided approver IDs
+	claims := middleware.GetClaims(c)
+	if claims == nil {
+		Unauthorized(c, "Authentication required")
 		return
 	}
-	run, err := h.payrollSvc.ApprovePayrollRun(c.Request.Context(), id, req.ApproverID)
+
+	run, err := h.payrollSvc.ApprovePayrollRun(c.Request.Context(), id, claims.UserID)
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, run)
+}
+
+// Submit godoc
+// @Summary Submit
+// @Description Submit PayrollHandler — submits an approved payroll run to the external payroll provider (PerPay)
+// @Tags Payroll
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/payroll/{id}/submit [post]
+func (h *PayrollHandler) Submit(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		BadRequest(c, "Invalid payroll run ID")
+		return
+	}
+	run, err := h.payrollSvc.SubmitPayrollRun(c.Request.Context(), id)
 	if err != nil {
 		MapServiceError(c, err)
 		return

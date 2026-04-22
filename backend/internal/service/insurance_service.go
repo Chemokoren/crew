@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,11 +18,12 @@ type InsuranceService interface {
 }
 
 type insuranceService struct {
-	repo repository.InsurancePolicyRepository
+	repo   repository.InsurancePolicyRepository
+	logger *slog.Logger
 }
 
-func NewInsuranceService(repo repository.InsurancePolicyRepository) InsuranceService {
-	return &insuranceService{repo: repo}
+func NewInsuranceService(repo repository.InsurancePolicyRepository, logger *slog.Logger) InsuranceService {
+	return &insuranceService{repo: repo, logger: logger}
 }
 
 func (s *insuranceService) CreatePolicy(ctx context.Context, crewMemberID uuid.UUID, provider, policyType, frequency string, premiumCents int64, startDate, endDate time.Time) (*models.InsurancePolicy, error) {
@@ -40,6 +42,11 @@ func (s *insuranceService) CreatePolicy(ctx context.Context, crewMemberID uuid.U
 	if err := s.repo.Create(ctx, policy); err != nil {
 		return nil, err
 	}
+	s.logger.Info("insurance policy created",
+		slog.String("id", policy.ID.String()),
+		slog.String("provider", provider),
+		slog.String("type", policyType),
+	)
 	return policy, nil
 }
 
@@ -58,5 +65,9 @@ func (s *insuranceService) MarkPolicyLapsed(ctx context.Context, id uuid.UUID) e
 	}
 
 	policy.Status = models.PolicyLapsed
-	return s.repo.Update(ctx, policy)
+	if err := s.repo.Update(ctx, policy); err != nil {
+		return err
+	}
+	s.logger.Info("insurance policy lapsed", slog.String("id", id.String()))
+	return nil
 }

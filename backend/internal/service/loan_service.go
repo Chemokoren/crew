@@ -3,9 +3,11 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/kibsoft/amy-mis/internal/database"
 	"github.com/kibsoft/amy-mis/internal/models"
 	"github.com/kibsoft/amy-mis/internal/repository"
 )
@@ -28,17 +30,20 @@ type loanService struct {
 	loanRepo   repository.LoanApplicationRepository
 	creditRepo repository.CreditScoreRepository
 	walletRepo repository.WalletRepository
+	txMgr      *database.TxManager
 }
 
 func NewLoanService(
 	loanRepo repository.LoanApplicationRepository,
 	creditRepo repository.CreditScoreRepository,
 	walletRepo repository.WalletRepository,
+	txMgr *database.TxManager,
 ) LoanService {
 	return &loanService{
 		loanRepo:   loanRepo,
 		creditRepo: creditRepo,
 		walletRepo: walletRepo,
+		txMgr:      txMgr,
 	}
 }
 
@@ -98,28 +103,43 @@ func (s *loanService) DisburseLoan(ctx context.Context, loanID uuid.UUID) (*mode
 		return nil, ErrInvalidStatus
 	}
 
-	// 1. Credit the crew member's wallet
-	wallet, err := s.walletRepo.GetByCrewMemberID(ctx, loan.CrewMemberID)
-	if err != nil {
-		return nil, err
+	// Wrap wallet credit + loan status update in a single transaction
+	// to prevent inconsistent state (credit without status change → double disbursement)
+	disburseFn := func(txCtx context.Context) error {
+		wallet, err := s.walletRepo.GetByCrewMemberID(txCtx, loan.CrewMemberID)
+		if err != nil {
+			return fmt.Errorf("get wallet for disbursement: %w", err)
+		}
+
+		idempotencyKey := "LOAN_DISBURSE_" + loan.ID.String()
+		_, err = s.walletRepo.CreditWallet(txCtx, wallet.ID, wallet.Version, loan.AmountApprovedCents,
+			models.TxCatLoan, idempotencyKey, loan.ID.String(), "Loan Disbursement")
+		if err != nil {
+			return fmt.Errorf("credit wallet for disbursement: %w", err)
+		}
+
+		now := time.Now()
+		dueAt := now.AddDate(0, 0, loan.TenureDays)
+		loan.Status = models.LoanDisbursed
+		loan.DisbursedAt = &now
+		loan.DueAt = &dueAt
+
+		if err := s.loanRepo.Update(txCtx, loan); err != nil {
+			return fmt.Errorf("update loan status: %w", err)
+		}
+
+		return nil
 	}
 
-	idempotencyKey := "LOAN_DISBURSE_" + loan.ID.String()
-	_, err = s.walletRepo.CreditWallet(ctx, wallet.ID, wallet.Version, loan.AmountApprovedCents,
-		models.TxCatLoan, idempotencyKey, loan.ID.String(), "Loan Disbursement")
-	if err != nil {
-		return nil, err
-	}
-
-	// 2. Update loan status
-	now := time.Now()
-	dueAt := now.AddDate(0, 0, loan.TenureDays)
-	loan.Status = models.LoanDisbursed
-	loan.DisbursedAt = &now
-	loan.DueAt = &dueAt
-
-	if err := s.loanRepo.Update(ctx, loan); err != nil {
-		return nil, err
+	if s.txMgr != nil {
+		if err := s.txMgr.RunInTx(ctx, disburseFn); err != nil {
+			return nil, err
+		}
+	} else {
+		// Fallback for tests without a real DB
+		if err := disburseFn(ctx); err != nil {
+			return nil, err
+		}
 	}
 
 	return loan, nil

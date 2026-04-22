@@ -81,10 +81,39 @@ func (s *PayoutService) InitiatePayout(ctx context.Context, input PayoutInput) (
 
 	result, err := s.payManager.InitiatePayout(ctx, req)
 	if err != nil {
-		s.logger.Error("payout failed after debit, requires manual reconciliation",
+		s.logger.Error("payout provider failed, initiating automatic reversal",
 			slog.String("tx_id", tx.ID.String()),
 			slog.String("error", err.Error()),
 		)
+
+		// Automatically reverse the debit to prevent lost funds
+		_, reverseErr := s.walletSvc.Credit(ctx, CreditInput{
+			CrewMemberID:   input.CrewMemberID,
+			AmountCents:    input.AmountCents,
+			Category:       models.TxCatReversal,
+			IdempotencyKey: "rev-payout-" + input.IdempotencyKey,
+			Reference:      tx.ID.String(),
+			Description:    "Automatic reversal: payout provider failed",
+		})
+		if reverseErr != nil {
+			// Critical: reversal also failed — requires manual intervention
+			s.logger.Error("CRITICAL: payout reversal failed, manual reconciliation required",
+				slog.String("original_tx_id", tx.ID.String()),
+				slog.Int64("amount_cents", input.AmountCents),
+				slog.String("crew_member_id", input.CrewMemberID.String()),
+				slog.String("reversal_error", reverseErr.Error()),
+			)
+			s.auditSvc.Log(ctx, input.CrewMemberID, "PAYOUT_REVERSAL_FAILED", "payout", &tx.ID, nil,
+				map[string]interface{}{"amount_cents": input.AmountCents, "error": reverseErr.Error()}, "", "")
+		} else {
+			s.logger.Info("payout debit reversed successfully",
+				slog.String("original_tx_id", tx.ID.String()),
+				slog.Int64("amount_cents", input.AmountCents),
+			)
+			s.auditSvc.Log(ctx, input.CrewMemberID, "PAYOUT_REVERSED", "payout", &tx.ID, nil,
+				map[string]interface{}{"amount_cents": input.AmountCents, "reason": "provider_failure"}, "", "")
+		}
+
 		return nil, fmt.Errorf("payout initiation failed: %w", err)
 	}
 

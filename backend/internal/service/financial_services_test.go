@@ -52,7 +52,7 @@ func TestLoanService(t *testing.T) {
 	crewRepo := mock.NewCrewRepo()
 	walletSvc := NewWalletService(walletRepo, crewRepo, auditSvc, logger)
 
-	svc := NewLoanService(loanRepo, creditRepo, walletRepo)
+	svc := NewLoanService(loanRepo, creditRepo, walletRepo, nil) // nil txMgr for unit tests
 	ctx := context.Background()
 
 	// Pre-create crew member and wallet
@@ -112,7 +112,7 @@ func TestLoanService(t *testing.T) {
 
 func TestInsuranceService(t *testing.T) {
 	repo := mock.NewInsurancePolicyRepo()
-	svc := NewInsuranceService(repo)
+	svc := NewInsuranceService(repo, slog.New(slog.NewTextHandler(os.Stdout, nil)))
 	ctx := context.Background()
 	crewID := uuid.New()
 

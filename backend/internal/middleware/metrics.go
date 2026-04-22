@@ -3,6 +3,7 @@ package middleware
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -73,10 +74,36 @@ func MetricsHandler() gin.HandlerFunc {
 	}
 }
 
-// CORS adds permissive CORS headers for development.
-func CORS() gin.HandlerFunc {
+// CORS adds CORS headers based on the configured allowed origins.
+// If allowedOrigins is "*", all origins are permitted (development only).
+// Otherwise, only origins in the comma-separated list are allowed.
+func CORS(allowedOrigins string) gin.HandlerFunc {
+	allowed := make(map[string]bool)
+	if allowedOrigins != "*" {
+		for _, o := range strings.Split(allowedOrigins, ",") {
+			trimmed := strings.TrimSpace(o)
+			if trimmed != "" {
+				allowed[trimmed] = true
+			}
+		}
+	}
+
 	return func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
+		origin := c.GetHeader("Origin")
+
+		if allowedOrigins == "*" {
+			c.Header("Access-Control-Allow-Origin", "*")
+		} else if allowed[origin] {
+			c.Header("Access-Control-Allow-Origin", origin)
+			c.Header("Vary", "Origin")
+		} else {
+			// Origin not allowed — don't set ACAO header
+			if c.Request.Method == "OPTIONS" {
+				c.AbortWithStatus(http.StatusForbidden)
+				return
+			}
+		}
+
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Authorization, Idempotency-Key")
 		c.Header("Access-Control-Expose-Headers", "X-Request-Id, X-Response-Time")

@@ -21,7 +21,7 @@ func TestWebhookHandler(t *testing.T) {
 	walletRepo := mock.NewWalletRepo()
 
 	webhookSvc := service.NewWebhookService(webhookRepo, nil, nil, walletRepo, nil, logger)
-	webhookHandler := handler.NewWebhookHandler(webhookSvc)
+	webhookHandler := handler.NewWebhookHandler(webhookSvc, "", "") // empty secrets = skip HMAC in tests
 
 	r := gin.New()
 	r.POST("/webhooks/jambopay", webhookHandler.HandleJamboPay)

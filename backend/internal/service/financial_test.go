@@ -276,8 +276,6 @@ func TestCompleteAssignment_TriggersNotification(t *testing.T) {
 		t.Fatalf("complete: %v", err)
 	}
 
-	time.Sleep(50 * time.Millisecond)
-
 	notifs, count, _ := notifRepo.ListByUser(ctx, user.ID, repository.NotificationFilter{}, 1, 10)
 	if count != 1 {
 		t.Errorf("expected 1 notification, got %d", count)
