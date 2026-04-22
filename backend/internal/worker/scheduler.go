@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"sync"
 	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
 // Job represents a named background task that runs on a schedule.
@@ -21,14 +23,16 @@ type Job struct {
 type Scheduler struct {
 	jobs   []Job
 	logger *slog.Logger
+	redis  *redis.Client
 	wg     sync.WaitGroup
 	cancel context.CancelFunc
 }
 
 // NewScheduler creates a new background job scheduler.
-func NewScheduler(logger *slog.Logger) *Scheduler {
+func NewScheduler(logger *slog.Logger, redisClient *redis.Client) *Scheduler {
 	return &Scheduler{
 		logger: logger,
+		redis:  redisClient,
 	}
 }
 
@@ -82,6 +86,20 @@ func (s *Scheduler) runJob(ctx context.Context, job Job) {
 			s.logger.Info("job stopping", slog.String("job", job.Name))
 			return
 		case <-ticker.C:
+			// Attempt to acquire distributed lock for this job run
+			lockKey := "worker_lock:" + job.Name
+			// Lock expires slightly before the next interval to allow the next run
+			lockDuration := job.Interval - (1 * time.Second)
+			if lockDuration <= 0 {
+				lockDuration = job.Interval / 2
+			}
+
+			acquired, err := s.redis.SetNX(ctx, lockKey, time.Now().String(), lockDuration).Result()
+			if err != nil || !acquired {
+				s.logger.Debug("job skipped (lock not acquired)", slog.String("job", job.Name))
+				continue // Another instance is running it
+			}
+
 			start := time.Now()
 			s.logger.Info("job started", slog.String("job", job.Name))
 

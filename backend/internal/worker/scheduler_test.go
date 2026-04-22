@@ -10,11 +10,27 @@ import (
 	"time"
 
 	"github.com/kibsoft/amy-mis/internal/worker"
+	"github.com/redis/go-redis/v9"
 )
 
+func getTestRedis(t *testing.T) *redis.Client {
+	opts := &redis.Options{Addr: "localhost:6379"}
+	client := redis.NewClient(opts)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := client.Ping(ctx).Err(); err != nil {
+		t.Skip("skipping scheduler test: redis not running on localhost:6379")
+	}
+	client.FlushDB(ctx)
+	return client
+}
+
 func TestScheduler(t *testing.T) {
+	client := getTestRedis(t)
+	defer client.Close()
+
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	scheduler := worker.NewScheduler(logger)
+	scheduler := worker.NewScheduler(logger, client)
 
 	var runCount int32
 
@@ -46,8 +62,11 @@ func TestScheduler(t *testing.T) {
 }
 
 func TestScheduler_ErrorHandling(t *testing.T) {
+	client := getTestRedis(t)
+	defer client.Close()
+
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	scheduler := worker.NewScheduler(logger)
+	scheduler := worker.NewScheduler(logger, client)
 
 	job := worker.Job{
 		Name:     "error_job",

@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"github.com/kibsoft/amy-mis/internal/config"
 	"github.com/kibsoft/amy-mis/internal/database"
 	"github.com/kibsoft/amy-mis/internal/external/identity"
@@ -258,7 +259,7 @@ func main() {
 	webhookHandler := handler.NewWebhookHandler(webhookSvc)
 
 	// --- 13. Initialize background workers ---
-	scheduler := worker.NewScheduler(logger)
+	scheduler := worker.NewScheduler(logger, redisClient)
 	dailySummaryJob := worker.NewDailySummaryJob(earningRepo, assignmentRepo, logger)
 	scheduler.Register(dailySummaryJob.AsJob())
 	scheduler.Start()
@@ -274,6 +275,7 @@ func main() {
 	router.Use(middleware.CORS())
 	router.Use(middleware.SecureHeaders())
 	router.Use(middleware.RequestID())
+	router.Use(otelgin.Middleware("amy-mis-api")) // OTEL distributed traces
 	router.Use(middleware.RateLimit(redisClient, 100, time.Minute)) // 100 req/min per IP
 	router.Use(middleware.Timeout(30 * time.Second))
 	router.Use(middleware.MetricsMiddleware())

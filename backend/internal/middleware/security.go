@@ -15,18 +15,19 @@ func RateLimit(redisClient *redis.Client, rate int, window time.Duration) gin.Ha
 		key := "rate_limit:" + c.ClientIP()
 		ctx := c.Request.Context()
 
-		// Increment the counter for this IP
-		count, err := redisClient.Incr(ctx, key).Result()
+		// Use TxPipeline for guaranteed atomicity (no partial failures leaving keys stranded forever)
+		pipe := redisClient.TxPipeline()
+		incrCmd := pipe.Incr(ctx, key)
+		pipe.Expire(ctx, key, window)
+		_, err := pipe.Exec(ctx)
+
 		if err != nil {
-			// Fail open if Redis is down
+			// Fail open if Redis is down or pipe fails
 			c.Next()
 			return
 		}
 
-		// Set expiration on the first request in the window
-		if count == 1 {
-			redisClient.Expire(ctx, key, window)
-		}
+		count := incrCmd.Val()
 
 		if count > int64(rate) {
 			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
