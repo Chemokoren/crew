@@ -17,7 +17,7 @@ func TestCreditService(t *testing.T) {
 	
 	// Create fully mocked env
 	mockEarningRepo := &mockEarningRepo{} // From financial_test.go
-	mockAssignmentRepo := newMockAssignmentRepo()
+	mockAssignmentRepo := mock.NewAssignmentRepo()
 
 	svc := NewCreditService(creditRepo, mockEarningRepo, mockAssignmentRepo)
 	ctx := context.Background()

@@ -17,54 +17,6 @@ import (
 
 // --- Mock Assignment & Earning Repos for service tests ---
 
-type mockAssignmentRepo struct {
-	mu          sync.Mutex
-	assignments map[uuid.UUID]*models.Assignment
-}
-
-func newMockAssignmentRepo() *mockAssignmentRepo {
-	return &mockAssignmentRepo{assignments: make(map[uuid.UUID]*models.Assignment)}
-}
-
-func (r *mockAssignmentRepo) Create(_ context.Context, a *models.Assignment) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if a.ID == uuid.Nil {
-		a.ID = uuid.New()
-	}
-	r.assignments[a.ID] = a
-	return nil
-}
-
-func (r *mockAssignmentRepo) BulkCreate(_ context.Context, as []models.Assignment) (int, []repository.BulkError, error) {
-	return 0, nil, nil
-}
-
-func (r *mockAssignmentRepo) GetByID(_ context.Context, id uuid.UUID) (*models.Assignment, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	a, ok := r.assignments[id]
-	if !ok {
-		return nil, ErrNotFound
-	}
-	return a, nil
-}
-
-func (r *mockAssignmentRepo) Update(_ context.Context, a *models.Assignment) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.assignments[a.ID] = a
-	return nil
-}
-
-func (r *mockAssignmentRepo) List(_ context.Context, _ repository.AssignmentFilter, _, _ int) ([]models.Assignment, int64, error) {
-	return nil, 0, nil
-}
-
-func (r *mockAssignmentRepo) HasActiveAssignment(_ context.Context, _ uuid.UUID, _ time.Time) (bool, error) {
-	return false, nil
-}
-
 type mockEarningRepo struct {
 	mu       sync.Mutex
 	earnings []*models.Earning
@@ -105,7 +57,7 @@ func newAssignmentTestEnv() (*AssignmentService, *WalletService, *mock.CrewRepo)
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	auditSvc := NewAuditService(mock.NewAuditRepo(), logger)
 	walletSvc := NewWalletService(walletRepo, crewRepo, auditSvc, logger)
-	assignmentSvc := NewAssignmentService(newMockAssignmentRepo(), &mockEarningRepo{}, walletSvc, nil, nil, logger)
+	assignmentSvc := NewAssignmentService(mock.NewAssignmentRepo(), &mockEarningRepo{}, walletSvc, nil, nil, logger)
 	return assignmentSvc, walletSvc, crewRepo
 }
 
@@ -301,7 +253,7 @@ func TestCompleteAssignment_TriggersNotification(t *testing.T) {
 
 	walletSvc := NewWalletService(walletRepo, crewRepo, auditSvc, logger)
 	notifSvc := NewNotificationService(notifRepo, userRepo, nil, logger)
-	assignmentSvc := NewAssignmentService(newMockAssignmentRepo(), &mockEarningRepo{}, walletSvc, notifSvc, nil, logger)
+	assignmentSvc := NewAssignmentService(mock.NewAssignmentRepo(), &mockEarningRepo{}, walletSvc, notifSvc, nil, logger)
 
 	ctx := context.Background()
 	crew := makeCrewForTest(t, crewRepo)
