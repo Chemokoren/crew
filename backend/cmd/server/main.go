@@ -136,6 +136,9 @@ func main() {
 	auditRepo := pgRepo.NewAuditLogRepo(db)
 	statutoryRateRepo := pgRepo.NewStatutoryRateRepo(db)
 	webhookRepo := pgRepo.NewWebhookEventRepo(db)
+	creditScoreRepo := pgRepo.NewCreditScoreRepo(db)
+	loanRepo := pgRepo.NewLoanApplicationRepo(db)
+	insuranceRepo := pgRepo.NewInsurancePolicyRepo(db)
 
 	// --- 8. Initialize transaction manager ---
 	txMgr := database.NewTxManager(db)
@@ -195,6 +198,9 @@ func main() {
 	vehicleSvc := service.NewVehicleService(vehicleRepo, logger)
 	routeSvc := service.NewRouteService(routeRepo, logger)
 	docSvc := service.NewDocumentService(documentRepo, logger)
+	creditSvc := service.NewCreditService(creditScoreRepo, earningRepo, assignmentRepo)
+	loanSvc := service.NewLoanService(loanRepo, creditScoreRepo, walletRepo)
+	insuranceSvc := service.NewInsuranceService(insuranceRepo)
 
 	// --- 13. Initialize handlers ---
 	healthHandler := handler.NewHealthHandler(db, redisClient)
@@ -208,6 +214,9 @@ func main() {
 	notifHandler := handler.NewNotificationHandler(notifSvc)
 	docHandler := handler.NewDocumentHandler(docSvc, minioClient)
 	earningHandler := handler.NewEarningHandler(earningRepo)
+	creditHandler := handler.NewCreditHandler(creditSvc)
+	loanHandler := handler.NewLoanHandler(loanSvc)
+	insuranceHandler := handler.NewInsuranceHandler(insuranceSvc)
 
 	// Payment: JamboPay
 
@@ -428,6 +437,41 @@ func main() {
 			notifications.GET("", notifHandler.List)
 			notifications.PUT("/:id/read", notifHandler.MarkRead)
 			notifications.PUT("/preferences", notifHandler.UpdatePreferences)
+		}
+
+		// Financials: Credit
+		credit := secured.Group("/credit")
+		{
+			credit.GET("/:crew_member_id", creditHandler.GetScore)
+			credit.POST("/:crew_member_id/calculate", creditHandler.CalculateScore)
+		}
+
+		// Financials: Loans
+		loans := secured.Group("/loans")
+		{
+			loans.POST("", loanHandler.Apply)
+			loans.GET("", loanHandler.List)
+			
+			loanAdmin := loans.Group("")
+			loanAdmin.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleLender))
+			{
+				loanAdmin.POST("/:id/approve", loanHandler.Approve)
+				loanAdmin.POST("/:id/reject", loanHandler.Reject)
+				loanAdmin.POST("/:id/disburse", loanHandler.Disburse)
+			}
+		}
+
+		// Financials: Insurance
+		insurance := secured.Group("/insurance")
+		{
+			insurance.GET("", insuranceHandler.List)
+			
+			insuranceAdmin := insurance.Group("")
+			insuranceAdmin.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleInsurer))
+			{
+				insuranceAdmin.POST("", insuranceHandler.Create)
+				insuranceAdmin.POST("/:id/lapse", insuranceHandler.Lapse)
+			}
 		}
 	}
 
