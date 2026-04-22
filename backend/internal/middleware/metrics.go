@@ -6,45 +6,57 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-// Metrics tracks basic request/response metrics in-memory.
-// For production, wire these into Prometheus via prometheus/client_golang.
-type Metrics struct {
-	TotalRequests    int64
-	TotalErrors      int64
-	ActiveRequests   int64
-	RequestDurations map[string][]time.Duration // path -> durations
-}
+var (
+	httpRequestsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "http_requests_total",
+			Help: "Total number of HTTP requests",
+		},
+		[]string{"method", "path", "status"},
+	)
 
-var globalMetrics = &Metrics{
-	RequestDurations: make(map[string][]time.Duration),
-}
+	httpRequestDuration = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "http_request_duration_seconds",
+			Help:    "Duration of HTTP requests in seconds",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"method", "path"},
+	)
 
-// MetricsMiddleware tracks request count, duration, and active connections.
+	httpActiveRequests = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "http_active_requests",
+			Help: "Current number of active HTTP requests",
+		},
+	)
+)
+
+// MetricsMiddleware tracks request count, duration, and active connections via Prometheus.
 func MetricsMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
-		globalMetrics.ActiveRequests++
+		httpActiveRequests.Inc()
 
 		c.Next()
 
 		duration := time.Since(start)
-		globalMetrics.ActiveRequests--
-		globalMetrics.TotalRequests++
+		httpActiveRequests.Dec()
 
-		status := c.Writer.Status()
-		if status >= 400 {
-			globalMetrics.TotalErrors++
-		}
-
+		status := strconv.Itoa(c.Writer.Status())
 		path := c.FullPath()
 		if path == "" {
 			path = c.Request.URL.Path
 		}
-		globalMetrics.RequestDurations[path] = append(
-			globalMetrics.RequestDurations[path], duration,
-		)
+		method := c.Request.Method
+
+		httpRequestsTotal.WithLabelValues(method, path, status).Inc()
+		httpRequestDuration.WithLabelValues(method, path).Observe(duration.Seconds())
 
 		// Set response headers for observability
 		c.Header("X-Response-Time", duration.String())
@@ -52,38 +64,14 @@ func MetricsMiddleware() gin.HandlerFunc {
 	}
 }
 
-// MetricsHandler returns a simple JSON metrics endpoint.
+// MetricsHandler returns the Prometheus metrics endpoint.
 // GET /metrics
 func MetricsHandler() gin.HandlerFunc {
+	h := promhttp.Handler()
 	return func(c *gin.Context) {
-		pathStats := make(map[string]interface{})
-		for path, durations := range globalMetrics.RequestDurations {
-			if len(durations) == 0 {
-				continue
-			}
-			var total time.Duration
-			for _, d := range durations {
-				total += d
-			}
-			avg := total / time.Duration(len(durations))
-			pathStats[path] = gin.H{
-				"count":    len(durations),
-				"avg_ms":   float64(avg.Microseconds()) / 1000.0,
-				"total_ms": float64(total.Microseconds()) / 1000.0,
-			}
-		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"total_requests":  globalMetrics.TotalRequests,
-			"total_errors":    globalMetrics.TotalErrors,
-			"active_requests": globalMetrics.ActiveRequests,
-			"paths":           pathStats,
-			"uptime":          time.Since(startTime).String(),
-		})
+		h.ServeHTTP(c.Writer, c.Request)
 	}
 }
-
-var startTime = time.Now()
 
 // CORS adds permissive CORS headers for development.
 func CORS() gin.HandlerFunc {

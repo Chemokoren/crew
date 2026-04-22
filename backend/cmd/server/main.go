@@ -274,7 +274,7 @@ func main() {
 	router.Use(middleware.CORS())
 	router.Use(middleware.SecureHeaders())
 	router.Use(middleware.RequestID())
-	router.Use(middleware.RateLimit(100, time.Minute)) // 100 req/min per IP
+	router.Use(middleware.RateLimit(redisClient, 100, time.Minute)) // 100 req/min per IP
 	router.Use(middleware.Timeout(30 * time.Second))
 	router.Use(middleware.MetricsMiddleware())
 	router.Use(middleware.Logger(logger))
