@@ -91,3 +91,14 @@ func (r *UserRepo) List(ctx context.Context, page, perPage int) ([]models.User, 
 
 	return users, total, nil
 }
+
+func (r *UserRepo) CountUsers(ctx context.Context) (total int64, active int64, err error) {
+	db := r.getDB(ctx)
+	if err := db.Model(&models.User{}).Count(&total).Error; err != nil {
+		return 0, 0, fmt.Errorf("count users: %w", err)
+	}
+	if err := db.Model(&models.User{}).Where("is_active = ?", true).Count(&active).Error; err != nil {
+		return total, 0, fmt.Errorf("count active users: %w", err)
+	}
+	return total, active, nil
+}

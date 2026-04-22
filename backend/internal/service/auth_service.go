@@ -244,3 +244,95 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*j
 func (s *AuthService) GetUserByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
 	return s.userRepo.GetByID(ctx, id)
 }
+
+// DisableAccount deactivates a user account (admin only).
+func (s *AuthService) DisableAccount(ctx context.Context, userID uuid.UUID) error {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	user.IsActive = false
+	if err := s.userRepo.Update(ctx, user); err != nil {
+		return fmt.Errorf("disable account: %w", err)
+	}
+	s.logger.Info("account disabled", slog.String("user_id", userID.String()))
+	return nil
+}
+
+// EnableAccount re-activates a disabled user account (admin only).
+func (s *AuthService) EnableAccount(ctx context.Context, userID uuid.UUID) error {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	user.IsActive = true
+	if err := s.userRepo.Update(ctx, user); err != nil {
+		return fmt.Errorf("enable account: %w", err)
+	}
+	s.logger.Info("account enabled", slog.String("user_id", userID.String()))
+	return nil
+}
+
+// AdminResetPassword resets a user's password (admin-initiated, no old password required).
+func (s *AuthService) AdminResetPassword(ctx context.Context, userID uuid.UUID, newPassword string) error {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), 12)
+	if err != nil {
+		return fmt.Errorf("hash password: %w", err)
+	}
+	user.PasswordHash = string(hash)
+	if err := s.userRepo.Update(ctx, user); err != nil {
+		return fmt.Errorf("reset password: %w", err)
+	}
+	s.logger.Info("password reset by admin", slog.String("user_id", userID.String()))
+	return nil
+}
+
+// ChangePassword allows an authenticated user to change their own password.
+func (s *AuthService) ChangePassword(ctx context.Context, userID uuid.UUID, oldPassword, newPassword string) error {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(oldPassword)); err != nil {
+		return ErrInvalidCredentials
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), 12)
+	if err != nil {
+		return fmt.Errorf("hash password: %w", err)
+	}
+	user.PasswordHash = string(hash)
+	if err := s.userRepo.Update(ctx, user); err != nil {
+		return fmt.Errorf("change password: %w", err)
+	}
+	s.logger.Info("password changed", slog.String("user_id", userID.String()))
+	return nil
+}
+
+// SystemStats holds system-wide statistics.
+type SystemStats struct {
+	TotalUsers  int64 `json:"total_users"`
+	ActiveUsers int64 `json:"active_users"`
+	TotalCrew   int64 `json:"total_crew"`
+}
+
+// GetSystemStats returns system-wide statistics for the admin dashboard.
+func (s *AuthService) GetSystemStats(ctx context.Context) (*SystemStats, error) {
+	total, active, err := s.userRepo.CountUsers(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("count users: %w", err)
+	}
+	crewCount, err := s.crewRepo.Count(ctx)
+	if err != nil {
+		crewCount = 0 // non-fatal
+	}
+	return &SystemStats{
+		TotalUsers:  total,
+		ActiveUsers: active,
+		TotalCrew:   crewCount,
+	}, nil
+}
+

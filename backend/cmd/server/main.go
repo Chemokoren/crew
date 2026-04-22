@@ -133,6 +133,7 @@ func main() {
 	floatRepo := pgRepo.NewSACCOFloatRepo(db)
 	documentRepo := pgRepo.NewDocumentRepo(db)
 	notificationRepo := pgRepo.NewNotificationRepo(db)
+	notificationPrefRepo := pgRepo.NewNotificationPreferenceRepo(db)
 	auditRepo := pgRepo.NewAuditLogRepo(db)
 	statutoryRateRepo := pgRepo.NewStatutoryRateRepo(db)
 	webhookRepo := pgRepo.NewWebhookEventRepo(db)
@@ -189,7 +190,7 @@ func main() {
 
 	// --- 12. Initialize services ---
 	auditSvc := service.NewAuditService(auditRepo, logger)
-	notifSvc := service.NewNotificationService(notificationRepo, userRepo, smsMgr, logger)
+	notifSvc := service.NewNotificationService(notificationRepo, notificationPrefRepo, userRepo, smsMgr, logger)
 	authSvc := service.NewAuthService(userRepo, crewRepo, jwtManager, txMgr, logger)
 	crewSvc := service.NewCrewService(crewRepo, iprsProvider, logger)
 	walletSvc := service.NewWalletService(walletRepo, crewRepo, auditSvc, logger)
@@ -217,6 +218,7 @@ func main() {
 	creditHandler := handler.NewCreditHandler(creditSvc)
 	loanHandler := handler.NewLoanHandler(loanSvc)
 	insuranceHandler := handler.NewInsuranceHandler(insuranceSvc)
+	adminHandler := handler.NewAdminHandler(authSvc, notifSvc, auditRepo, statutoryRateRepo)
 
 
 	// Payment: JamboPay
@@ -265,10 +267,20 @@ func main() {
 	webhookSvc := service.NewWebhookService(webhookRepo, payoutSvc, payrollSvc, walletRepo, payrollRepo, logger)
 	webhookHandler := handler.NewWebhookHandler(webhookSvc, cfg.WebhookJamboPaySecret, cfg.WebhookPerpaySecret)
 
-	// --- 13. Initialize background workers ---
 	scheduler := worker.NewScheduler(logger, redisClient)
 	dailySummaryJob := worker.NewDailySummaryJob(earningRepo, assignmentRepo, logger)
 	scheduler.Register(dailySummaryJob.AsJob())
+
+	// New background jobs
+	insuranceLapseJob := worker.NewInsuranceLapseJob(insuranceRepo, logger)
+	scheduler.Register(insuranceLapseJob.AsJob())
+
+	payrollAutoSubmitJob := worker.NewPayrollAutoSubmitJob(payrollSvc, payrollRepo, logger)
+	scheduler.Register(payrollAutoSubmitJob.AsJob())
+
+	walletReconJob := worker.NewWalletReconciliationJob(walletRepo, logger)
+	scheduler.Register(walletReconJob.AsJob())
+
 	scheduler.Start()
 
 	// --- 14. Setup Gin router ---
@@ -307,6 +319,7 @@ func main() {
 		auth.POST("/register", authHandler.Register)
 		auth.POST("/login", authHandler.Login)
 		auth.POST("/refresh", authHandler.Refresh)
+		auth.POST("/change-password", adminHandler.ChangePassword) // Password change for all users
 	}
 
 	webhooks := v1.Group("/webhooks")
@@ -332,6 +345,8 @@ func main() {
 			crew.PUT("/:id/kyc", crewHandler.UpdateKYC)
 			crew.POST("/:id/verify", crewHandler.VerifyNationalID)
 			crew.DELETE("/:id", crewHandler.Deactivate)
+			crew.POST("/bulk-import", crewHandler.BulkImport)
+			crew.GET("/search", crewHandler.SearchByNationalID)
 		}
 
 		// Assignments
@@ -342,6 +357,8 @@ func main() {
 			assignments.GET("", assignmentHandler.List)
 			assignments.GET("/:id", assignmentHandler.GetByID)
 			assignments.POST("/:id/complete", assignmentHandler.Complete)
+			assignments.POST("/:id/cancel", assignmentHandler.Cancel)
+			assignments.POST("/:id/reassign", assignmentHandler.Reassign)
 		}
 
 		// Wallets (system admin only for direct credit/debit; crew can view own)
@@ -349,6 +366,7 @@ func main() {
 		{
 			wallets.GET("/:crew_member_id", walletHandler.GetBalance)
 			wallets.GET("/:crew_member_id/transactions", walletHandler.ListTransactions)
+			wallets.GET("/:crew_member_id/export", walletHandler.ExportCSV)
 
 			walletAdmin := wallets.Group("")
 			walletAdmin.Use(middleware.RequireRole(types.RoleSystemAdmin))
@@ -435,6 +453,7 @@ func main() {
 		{
 			notifications.GET("", notifHandler.List)
 			notifications.PUT("/:id/read", notifHandler.MarkRead)
+			notifications.GET("/preferences", notifHandler.GetPreferences)
 			notifications.PUT("/preferences", notifHandler.UpdatePreferences)
 		}
 
@@ -471,6 +490,21 @@ func main() {
 				insuranceAdmin.POST("", insuranceHandler.Create)
 				insuranceAdmin.POST("/:id/lapse", insuranceHandler.Lapse)
 			}
+		}
+
+		// Admin dashboard
+		admin := secured.Group("/admin")
+		admin.Use(middleware.RequireRole(types.RoleSystemAdmin))
+		{
+			admin.GET("/stats", adminHandler.SystemStats)
+			admin.POST("/users/:id/disable", adminHandler.DisableAccount)
+			admin.POST("/users/:id/enable", adminHandler.EnableAccount)
+			admin.POST("/users/:id/reset-password", adminHandler.ResetPassword)
+			admin.GET("/audit-logs", adminHandler.ListAuditLogs)
+			admin.GET("/statutory-rates", adminHandler.ListStatutoryRates)
+			admin.GET("/notifications/templates", adminHandler.ListTemplates)
+			admin.POST("/notifications/templates", adminHandler.CreateTemplate)
+			admin.PUT("/notifications/templates", adminHandler.UpdateTemplate)
 		}
 	}
 

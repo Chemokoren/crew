@@ -203,6 +203,60 @@ func (h *AssignmentHandler) List(c *gin.Context) {
 	ListResponse(c, dto.AssignmentListToResponse(assignments), buildMeta(page, perPage, total))
 }
 
+// Cancel godoc
+// @Summary Cancel an assignment
+// @Tags Assignment
+// @Param id path string true "Assignment ID"
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/assignments/{id}/cancel [post]
+func (h *AssignmentHandler) Cancel(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		BadRequest(c, "Invalid assignment ID")
+		return
+	}
+	var req struct {
+		Reason string `json:"reason" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		BadRequest(c, err.Error())
+		return
+	}
+	result, err := h.assignmentSvc.CancelAssignment(c.Request.Context(), id, req.Reason)
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, result)
+}
+
+// Reassign godoc
+// @Summary Reassign an assignment to a different crew member
+// @Tags Assignment
+// @Param id path string true "Assignment ID"
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/assignments/{id}/reassign [post]
+func (h *AssignmentHandler) Reassign(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		BadRequest(c, "Invalid assignment ID")
+		return
+	}
+	var req struct {
+		NewCrewMemberID uuid.UUID `json:"new_crew_member_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		BadRequest(c, err.Error())
+		return
+	}
+	result, err := h.assignmentSvc.ReassignAssignment(c.Request.Context(), id, req.NewCrewMemberID)
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, result)
+}
+
 // --- Wallet Handler ---
 
 // WalletHandler handles wallet and transaction endpoints.
@@ -461,6 +515,52 @@ func (h *PayoutHandler) Payout(c *gin.Context) {
 	SuccessResponse(c, http.StatusCreated, result)
 }
 
+// ExportCSV godoc
+// @Summary Export wallet transactions as CSV
+// @Tags Wallet
+// @Produce text/csv
+// @Param crew_member_id path string true "Crew Member ID"
+// @Success 200 {string} string "CSV file"
+// @Router /api/v1/wallets/{crew_member_id}/export [get]
+func (h *WalletHandler) ExportCSV(c *gin.Context) {
+	crewMemberID, err := uuid.Parse(c.Param("crew_member_id"))
+	if err != nil {
+		BadRequest(c, "Invalid crew member ID")
+		return
+	}
+	if enforceWalletAccess(c, crewMemberID) {
+		return
+	}
+
+	wallet, err := h.walletSvc.GetBalance(c.Request.Context(), crewMemberID)
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+
+	txns, _, err := h.walletSvc.GetTransactions(c.Request.Context(), wallet.ID, repository.TxFilter{}, 1, 10000)
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+
+	c.Header("Content-Type", "text/csv")
+	c.Header("Content-Disposition", "attachment; filename=wallet_statement.csv")
+	c.Writer.WriteString("Date,Type,Category,Amount (KES),Balance After (KES),Description,Reference\n")
+	for _, tx := range txns {
+		line := fmt.Sprintf("%s,%s,%s,%.2f,%.2f,%s,%s\n",
+			tx.CreatedAt.Format("2006-01-02 15:04:05"),
+			tx.TransactionType,
+			tx.Category,
+			float64(tx.AmountCents)/100.0,
+			float64(tx.BalanceAfterCents)/100.0,
+			tx.Description,
+			tx.Reference,
+		)
+		c.Writer.WriteString(line)
+	}
+}
+
 // --- Crew Handler ---
 
 // CrewHandler handles crew member endpoints.
@@ -647,6 +747,61 @@ func (h *CrewHandler) VerifyNationalID(c *gin.Context) {
 		return
 	}
 
+	SuccessResponse(c, http.StatusOK, dto.CrewToResponse(crew))
+}
+
+// BulkImport godoc
+// @Summary Bulk import crew members
+// @Tags Crew
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/crew/bulk-import [post]
+func (h *CrewHandler) BulkImport(c *gin.Context) {
+	var req struct {
+		Members []dto.CreateCrewRequest `json:"members" binding:"required,min=1"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		BadRequest(c, err.Error())
+		return
+	}
+
+	inputs := make([]service.CreateCrewInput, len(req.Members))
+	for i, m := range req.Members {
+		inputs[i] = service.CreateCrewInput{
+			NationalID: m.NationalID,
+			FirstName:  m.FirstName,
+			LastName:   m.LastName,
+			Role:       m.Role,
+		}
+	}
+
+	result, err := h.crewSvc.BulkImport(c.Request.Context(), inputs)
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, result)
+}
+
+// SearchByNationalID godoc
+// @Summary Search crew member by national ID
+// @Tags Crew
+// @Produce json
+// @Param national_id query string true "National ID"
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/crew/search [get]
+func (h *CrewHandler) SearchByNationalID(c *gin.Context) {
+	nationalID := c.Query("national_id")
+	if nationalID == "" {
+		BadRequest(c, "national_id query parameter is required")
+		return
+	}
+	crew, err := h.crewSvc.GetByNationalID(c.Request.Context(), nationalID)
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
 	SuccessResponse(c, http.StatusOK, dto.CrewToResponse(crew))
 }
 

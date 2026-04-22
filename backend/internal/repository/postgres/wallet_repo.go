@@ -263,3 +263,18 @@ func (r *WalletRepo) UpdateTransaction(ctx context.Context, tx *models.WalletTra
 	}
 	return nil
 }
+
+func (r *WalletRepo) List(ctx context.Context, page, perPage int) ([]models.Wallet, int64, error) {
+	var wallets []models.Wallet
+	var total int64
+
+	db := r.getDB(ctx)
+	db.Model(&models.Wallet{}).Count(&total)
+
+	offset := (page - 1) * perPage
+	if err := db.Offset(offset).Limit(perPage).Order("created_at DESC").Find(&wallets).Error; err != nil {
+		return nil, 0, fmt.Errorf("list wallets: %w", err)
+	}
+
+	return wallets, total, nil
+}

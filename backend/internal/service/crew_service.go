@@ -163,3 +163,53 @@ func (s *CrewService) VerifyNationalID(ctx context.Context, id uuid.UUID, serial
 
 	return crew, nil
 }
+
+// GetByNationalID searches for a crew member by national ID.
+func (s *CrewService) GetByNationalID(ctx context.Context, nationalID string) (*models.CrewMember, error) {
+	return s.crewRepo.GetByNationalID(ctx, nationalID)
+}
+
+// BulkImportResult holds the outcome of a bulk import operation.
+type BulkImportResult struct {
+	Imported int                    `json:"imported"`
+	Errors   []repository.BulkError `json:"errors,omitempty"`
+}
+
+// BulkImport creates multiple crew members in a single operation.
+func (s *CrewService) BulkImport(ctx context.Context, inputs []CreateCrewInput) (*BulkImportResult, error) {
+	var crewMembers []models.CrewMember
+	for _, input := range inputs {
+		crewID, err := s.crewRepo.NextCrewID(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("generate crew id: %w", err)
+		}
+
+		crewMembers = append(crewMembers, models.CrewMember{
+			CrewID:     crewID,
+			NationalID: input.NationalID,
+			FirstName:  input.FirstName,
+			LastName:   input.LastName,
+			Role:       input.Role,
+			KYCStatus:  models.KYCPending,
+			IsActive:   true,
+		})
+	}
+
+	bulkErrors, err := s.crewRepo.BulkCreate(ctx, crewMembers)
+	if err != nil {
+		return nil, fmt.Errorf("bulk create: %w", err)
+	}
+
+	imported := len(crewMembers) - len(bulkErrors)
+	s.logger.Info("bulk import complete",
+		slog.Int("total", len(crewMembers)),
+		slog.Int("imported", imported),
+		slog.Int("errors", len(bulkErrors)),
+	)
+
+	return &BulkImportResult{
+		Imported: imported,
+		Errors:   bulkErrors,
+	}, nil
+}
+

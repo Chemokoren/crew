@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -11,11 +12,13 @@ import (
 	"github.com/kibsoft/amy-mis/internal/external/sms"
 	"github.com/kibsoft/amy-mis/internal/models"
 	"github.com/kibsoft/amy-mis/internal/repository"
+	"github.com/kibsoft/amy-mis/pkg/errs"
 )
 
 // NotificationService handles notification dispatch and management.
 type NotificationService struct {
 	notifRepo repository.NotificationRepository
+	prefRepo  repository.NotificationPreferenceRepository
 	userRepo  repository.UserRepository
 	smsMgr    *sms.Manager
 	logger    *slog.Logger
@@ -23,12 +26,14 @@ type NotificationService struct {
 
 func NewNotificationService(
 	notifRepo repository.NotificationRepository,
-	userRepo  repository.UserRepository,
-	smsMgr    *sms.Manager,
-	logger    *slog.Logger,
+	prefRepo repository.NotificationPreferenceRepository,
+	userRepo repository.UserRepository,
+	smsMgr *sms.Manager,
+	logger *slog.Logger,
 ) *NotificationService {
 	return &NotificationService{
 		notifRepo: notifRepo,
+		prefRepo:  prefRepo,
 		userRepo:  userRepo,
 		smsMgr:    smsMgr,
 		logger:    logger,
@@ -46,6 +51,27 @@ func (s *NotificationService) SendToCrewMember(ctx context.Context, crewMemberID
 
 // SendNotification creates and dispatches a notification to a user.
 func (s *NotificationService) SendNotification(ctx context.Context, userID uuid.UUID, channel models.NotificationChannel, title, body string) (*models.Notification, error) {
+	// Check user preferences
+	pref, err := s.prefRepo.GetByUserID(ctx, userID)
+	if err == nil {
+		// Preference found, check opt-in
+		canSend := true
+		switch channel {
+		case models.ChannelSMS:
+			canSend = pref.SMSOptIn
+		case models.ChannelPush:
+			canSend = pref.PushOptIn
+		case models.ChannelInApp:
+			canSend = pref.InAppOptIn
+		}
+		if !canSend {
+			s.logger.Info("skipping notification: user opted out", slog.String("user_id", userID.String()), slog.String("channel", string(channel)))
+			return nil, nil // Silently skip
+		}
+	} else if !errors.Is(err, errs.ErrNotFound) {
+		s.logger.Warn("failed to fetch notification preferences", slog.String("error", err.Error()))
+	}
+
 	now := time.Now()
 	status := models.NotifPending
 
@@ -120,6 +146,38 @@ func (s *NotificationService) ListNotifications(ctx context.Context, userID uuid
 
 func (s *NotificationService) MarkRead(ctx context.Context, id uuid.UUID) error {
 	return s.notifRepo.MarkRead(ctx, id)
+}
+
+func (s *NotificationService) CreateTemplate(ctx context.Context, t *models.NotificationTemplate) error {
+	return s.notifRepo.CreateTemplate(ctx, t)
+}
+
+func (s *NotificationService) UpdateTemplate(ctx context.Context, t *models.NotificationTemplate) error {
+	return s.notifRepo.UpdateTemplate(ctx, t)
+}
+
+func (s *NotificationService) ListTemplates(ctx context.Context) ([]models.NotificationTemplate, error) {
+	return s.notifRepo.ListTemplates(ctx)
+}
+
+func (s *NotificationService) GetPreferences(ctx context.Context, userID uuid.UUID) (*models.NotificationPreference, error) {
+	p, err := s.prefRepo.GetByUserID(ctx, userID)
+	if err != nil && errors.Is(err, errs.ErrNotFound) {
+		// Return default preferences
+		return &models.NotificationPreference{
+			UserID:         userID,
+			SMSOptIn:       true,
+			PushOptIn:      true,
+			InAppOptIn:     true,
+			MarketingOptIn: false,
+		}, nil
+	}
+	return p, err
+}
+
+func (s *NotificationService) UpdatePreferences(ctx context.Context, p *models.NotificationPreference) error {
+	p.UpdatedAt = time.Now()
+	return s.prefRepo.Upsert(ctx, p)
 }
 
 func renderTemplate(tmpl string, vars map[string]string) string {

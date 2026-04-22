@@ -68,6 +68,7 @@ type UserRepository interface {
 	GetByCrewMemberID(ctx context.Context, crewMemberID uuid.UUID) (*models.User, error)
 	Update(ctx context.Context, user *models.User) error
 	List(ctx context.Context, page, perPage int) ([]models.User, int64, error)
+	CountUsers(ctx context.Context) (total int64, active int64, err error)
 }
 
 // CrewRepository handles crew member data access.
@@ -75,10 +76,13 @@ type CrewRepository interface {
 	Create(ctx context.Context, crew *models.CrewMember) error
 	GetByID(ctx context.Context, id uuid.UUID) (*models.CrewMember, error)
 	GetByCrewID(ctx context.Context, crewID string) (*models.CrewMember, error)
+	GetByNationalID(ctx context.Context, nationalID string) (*models.CrewMember, error)
 	Update(ctx context.Context, crew *models.CrewMember) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	List(ctx context.Context, filter CrewFilter, page, perPage int) ([]models.CrewMember, int64, error)
 	NextCrewID(ctx context.Context) (string, error)
+	Count(ctx context.Context) (int64, error)
+	BulkCreate(ctx context.Context, members []models.CrewMember) ([]BulkError, error)
 }
 
 // SACCORepository handles SACCO data access.
@@ -148,6 +152,7 @@ type WalletRepository interface {
 	GetTransactions(ctx context.Context, walletID uuid.UUID, filter TxFilter, page, perPage int) ([]models.WalletTransaction, int64, error)
 	GetByIdempotencyKey(ctx context.Context, key string) (*models.WalletTransaction, error)
 	UpdateTransaction(ctx context.Context, tx *models.WalletTransaction) error
+	List(ctx context.Context, page, perPage int) ([]models.Wallet, int64, error)
 }
 
 // PayrollRepository handles payroll data access.
@@ -218,6 +223,14 @@ type NotificationRepository interface {
 	MarkRead(ctx context.Context, id uuid.UUID) error
 	GetTemplate(ctx context.Context, eventName string) (*models.NotificationTemplate, error)
 	CreateTemplate(ctx context.Context, t *models.NotificationTemplate) error
+	UpdateTemplate(ctx context.Context, t *models.NotificationTemplate) error
+	ListTemplates(ctx context.Context) ([]models.NotificationTemplate, error)
+}
+
+// NotificationPreferenceRepository handles user notification settings.
+type NotificationPreferenceRepository interface {
+	GetByUserID(ctx context.Context, userID uuid.UUID) (*models.NotificationPreference, error)
+	Upsert(ctx context.Context, p *models.NotificationPreference) error
 }
 
 // AuditLogRepository handles audit log data access (append-only).

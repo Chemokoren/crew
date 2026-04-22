@@ -97,3 +97,18 @@ func (r *NotificationRepo) CreateTemplate(ctx context.Context, t *models.Notific
 	}
 	return nil
 }
+
+func (r *NotificationRepo) UpdateTemplate(ctx context.Context, t *models.NotificationTemplate) error {
+	if err := r.db.WithContext(ctx).Save(t).Error; err != nil {
+		return fmt.Errorf("update template: %w", err)
+	}
+	return nil
+}
+
+func (r *NotificationRepo) ListTemplates(ctx context.Context) ([]models.NotificationTemplate, error) {
+	var templates []models.NotificationTemplate
+	if err := r.db.WithContext(ctx).Find(&templates).Error; err != nil {
+		return nil, fmt.Errorf("list templates: %w", err)
+	}
+	return templates, nil
+}

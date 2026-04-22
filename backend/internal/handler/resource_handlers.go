@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/kibsoft/amy-mis/internal/middleware"
+	"github.com/kibsoft/amy-mis/internal/models"
 	"github.com/kibsoft/amy-mis/internal/repository"
 	"github.com/kibsoft/amy-mis/internal/service"
 )
@@ -688,22 +689,35 @@ func (h *NotificationHandler) MarkRead(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, gin.H{"message": "Notification marked as read"})
 }
 
+func (h *NotificationHandler) GetPreferences(c *gin.Context) {
+	claims := middleware.GetClaims(c)
+	if claims == nil {
+		Unauthorized(c, "Authentication required")
+		return
+	}
+	prefs, err := h.notifSvc.GetPreferences(c.Request.Context(), claims.UserID)
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, prefs)
+}
+
 func (h *NotificationHandler) UpdatePreferences(c *gin.Context) {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
 		Unauthorized(c, "Authentication required")
 		return
 	}
-	// Stub for updating preferences since NotificationPreference model doesn't exist yet
-	var req struct {
-		EmailEnabled bool `json:"email_enabled"`
-		SMSEnabled   bool `json:"sms_enabled"`
-		PushEnabled  bool `json:"push_enabled"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
+	var p models.NotificationPreference
+	if err := c.ShouldBindJSON(&p); err != nil {
 		BadRequest(c, err.Error())
 		return
 	}
-	// Ideally call: h.notifSvc.UpdatePreferences(ctx, claims.UserID, req)
-	SuccessResponse(c, http.StatusOK, gin.H{"message": "Preferences updated", "preferences": req})
+	p.UserID = claims.UserID
+	if err := h.notifSvc.UpdatePreferences(c.Request.Context(), &p); err != nil {
+		MapServiceError(c, err)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, p)
 }

@@ -3,6 +3,7 @@ package mock
 import (
 	"context"
 	"errors"
+	"sync"
 
 	"github.com/google/uuid"
 	"github.com/kibsoft/amy-mis/internal/models"
@@ -97,9 +98,48 @@ func (m *NotificationRepo) MarkRead(ctx context.Context, id uuid.UUID) error {
 }
 
 func (m *NotificationRepo) GetTemplate(ctx context.Context, eventName string) (*models.NotificationTemplate, error) {
-	return nil, errors.New("not implemented")
+	return &models.NotificationTemplate{
+		EventName:     eventName,
+		TitleTemplate: "Test Title",
+		BodyTemplate:  "Test Body",
+		IsActive:      true,
+	}, nil
 }
 
 func (m *NotificationRepo) CreateTemplate(ctx context.Context, t *models.NotificationTemplate) error {
-	return errors.New("not implemented")
+	return nil
+}
+
+func (m *NotificationRepo) UpdateTemplate(ctx context.Context, t *models.NotificationTemplate) error {
+	return nil
+}
+
+func (m *NotificationRepo) ListTemplates(ctx context.Context) ([]models.NotificationTemplate, error) {
+	return []models.NotificationTemplate{}, nil
+}
+
+// Mock NotificationPreferenceRepository
+type NotificationPreferenceRepo struct {
+	mu    sync.RWMutex
+	Prefs map[uuid.UUID]*models.NotificationPreference
+}
+
+func NewNotificationPreferenceRepo() *NotificationPreferenceRepo {
+	return &NotificationPreferenceRepo{Prefs: make(map[uuid.UUID]*models.NotificationPreference)}
+}
+
+func (m *NotificationPreferenceRepo) GetByUserID(ctx context.Context, userID uuid.UUID) (*models.NotificationPreference, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if p, ok := m.Prefs[userID]; ok {
+		return p, nil
+	}
+	return nil, errors.New("not found")
+}
+
+func (m *NotificationPreferenceRepo) Upsert(ctx context.Context, p *models.NotificationPreference) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.Prefs[p.UserID] = p
+	return nil
 }

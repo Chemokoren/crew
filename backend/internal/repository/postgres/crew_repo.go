@@ -116,3 +116,32 @@ func (r *CrewRepo) NextCrewID(ctx context.Context) (string, error) {
 	}
 	return fmt.Sprintf("CRW-%05d", nextVal), nil
 }
+
+func (r *CrewRepo) GetByNationalID(ctx context.Context, nationalID string) (*models.CrewMember, error) {
+	var crew models.CrewMember
+	if err := r.getDB(ctx).Where("national_id = ?", nationalID).First(&crew).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errs.ErrNotFound
+		}
+		return nil, fmt.Errorf("get crew by national_id: %w", err)
+	}
+	return &crew, nil
+}
+
+func (r *CrewRepo) Count(ctx context.Context) (int64, error) {
+	var count int64
+	if err := r.getDB(ctx).Model(&models.CrewMember{}).Count(&count).Error; err != nil {
+		return 0, fmt.Errorf("count crew: %w", err)
+	}
+	return count, nil
+}
+
+func (r *CrewRepo) BulkCreate(ctx context.Context, members []models.CrewMember) ([]repository.BulkError, error) {
+	var bulkErrors []repository.BulkError
+	for i, m := range members {
+		if err := r.getDB(ctx).Create(&m).Error; err != nil {
+			bulkErrors = append(bulkErrors, repository.BulkError{Index: i, Error: err.Error()})
+		}
+	}
+	return bulkErrors, nil
+}

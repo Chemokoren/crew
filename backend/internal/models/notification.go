@@ -51,3 +51,16 @@ type NotificationTemplate struct {
 }
 
 func (NotificationTemplate) TableName() string { return "notification_templates" }
+
+// NotificationPreference stores user-specific opt-in/opt-out settings for channels.
+type NotificationPreference struct {
+	ID               uuid.UUID `json:"id" gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
+	UserID           uuid.UUID `json:"user_id" gorm:"type:uuid;uniqueIndex;not null"`
+	SMSOptIn         bool      `json:"sms_opt_in" gorm:"default:true"`
+	PushOptIn        bool      `json:"push_opt_in" gorm:"default:true"`
+	InAppOptIn       bool      `json:"in_app_opt_in" gorm:"default:true"`
+	MarketingOptIn   bool      `json:"marketing_opt_in" gorm:"default:false"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
+func (NotificationPreference) TableName() string { return "notification_preferences" }

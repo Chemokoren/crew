@@ -215,3 +215,47 @@ func (s *AssignmentService) ListAssignments(ctx context.Context, filter reposito
 func (s *AssignmentService) GetAssignment(ctx context.Context, id uuid.UUID) (*models.Assignment, error) {
 	return s.assignmentRepo.GetByID(ctx, id)
 }
+
+// CancelAssignment cancels a pending or assigned shift.
+func (s *AssignmentService) CancelAssignment(ctx context.Context, assignmentID uuid.UUID, reason string) (*models.Assignment, error) {
+	assignment, err := s.assignmentRepo.GetByID(ctx, assignmentID)
+	if err != nil {
+		return nil, err
+	}
+	if assignment.Status == models.AssignmentCompleted {
+		return nil, ErrInvalidStatus
+	}
+	assignment.Status = models.AssignmentCancelled
+	assignment.Notes = assignment.Notes + " | Cancelled: " + reason
+	if err := s.assignmentRepo.Update(ctx, assignment); err != nil {
+		return nil, fmt.Errorf("cancel assignment: %w", err)
+	}
+	s.logger.Info("assignment cancelled",
+		slog.String("assignment_id", assignmentID.String()),
+		slog.String("reason", reason),
+	)
+	return assignment, nil
+}
+
+// ReassignAssignment reassigns a shift to a different crew member.
+func (s *AssignmentService) ReassignAssignment(ctx context.Context, assignmentID, newCrewMemberID uuid.UUID) (*models.Assignment, error) {
+	assignment, err := s.assignmentRepo.GetByID(ctx, assignmentID)
+	if err != nil {
+		return nil, err
+	}
+	if assignment.Status == models.AssignmentCompleted || assignment.Status == models.AssignmentCancelled {
+		return nil, ErrInvalidStatus
+	}
+	oldCrewID := assignment.CrewMemberID
+	assignment.CrewMemberID = newCrewMemberID
+	assignment.Notes = assignment.Notes + fmt.Sprintf(" | Reassigned from %s", oldCrewID.String())
+	if err := s.assignmentRepo.Update(ctx, assignment); err != nil {
+		return nil, fmt.Errorf("reassign assignment: %w", err)
+	}
+	s.logger.Info("assignment reassigned",
+		slog.String("assignment_id", assignmentID.String()),
+		slog.String("from", oldCrewID.String()),
+		slog.String("to", newCrewMemberID.String()),
+	)
+	return assignment, nil
+}
