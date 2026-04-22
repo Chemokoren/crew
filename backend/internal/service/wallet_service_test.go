@@ -14,8 +14,10 @@ import (
 func newTestWalletService() (*WalletService, *mock.WalletRepo, *mock.CrewRepo) {
 	walletRepo := mock.NewWalletRepo()
 	crewRepo := mock.NewCrewRepo()
+	auditRepo := mock.NewAuditRepo()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	return NewWalletService(walletRepo, crewRepo, logger), walletRepo, crewRepo
+	auditSvc := NewAuditService(auditRepo, logger)
+	return NewWalletService(walletRepo, crewRepo, auditSvc, logger), walletRepo, crewRepo
 }
 
 func setupCrewMember(t *testing.T, crewRepo *mock.CrewRepo) *models.CrewMember {

@@ -14,14 +14,16 @@ import (
 type PayoutService struct {
 	walletSvc  *WalletService
 	payManager *payment.Manager
+	auditSvc   *AuditService
 	logger     *slog.Logger
 }
 
 // NewPayoutService creates a new PayoutService.
-func NewPayoutService(walletSvc *WalletService, payManager *payment.Manager, logger *slog.Logger) *PayoutService {
+func NewPayoutService(walletSvc *WalletService, payManager *payment.Manager, auditSvc *AuditService, logger *slog.Logger) *PayoutService {
 	return &PayoutService{
 		walletSvc:  walletSvc,
 		payManager: payManager,
+		auditSvc:   auditSvc,
 		logger:     logger,
 	}
 }
@@ -90,6 +92,9 @@ func (s *PayoutService) InitiatePayout(ctx context.Context, input PayoutInput) (
 		slog.String("tx_id", tx.ID.String()),
 		slog.String("provider_ref", result.Reference),
 	)
+
+	// Audit trail for payout initiation
+	s.auditSvc.Log(ctx, input.CrewMemberID, "PAYOUT_INITIATED", "payout", &tx.ID, nil, result, "", "")
 
 	return result, nil
 }

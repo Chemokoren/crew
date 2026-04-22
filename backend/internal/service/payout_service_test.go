@@ -40,11 +40,13 @@ func TestPayoutService_InitiatePayout(t *testing.T) {
 	crewRepo := mock.NewCrewRepo()
 	walletRepo := mock.NewWalletRepo()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	walletSvc := service.NewWalletService(walletRepo, crewRepo, logger)
+	auditRepo := mock.NewAuditRepo()
+	auditSvc := service.NewAuditService(auditRepo, logger)
+	walletSvc := service.NewWalletService(walletRepo, crewRepo, auditSvc, logger)
 
 	mockProvider := &MockPaymentProvider{ShouldFail: false}
 	payManager := payment.NewManager(logger, mockProvider)
-	payoutSvc := service.NewPayoutService(walletSvc, payManager, logger)
+	payoutSvc := service.NewPayoutService(walletSvc, payManager, auditSvc, logger)
 
 	crew := &models.CrewMember{ID: uuid.New(), CrewID: "CRW-01", KYCStatus: models.KYCVerified}
 	crewRepo.Create(context.Background(), crew)
@@ -84,11 +86,13 @@ func TestPayoutService_InitiatePayout_FailsIfInsufficientBalance(t *testing.T) {
 	crewRepo := mock.NewCrewRepo()
 	walletRepo := mock.NewWalletRepo()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	walletSvc := service.NewWalletService(walletRepo, crewRepo, logger)
+	auditRepo := mock.NewAuditRepo()
+	auditSvc := service.NewAuditService(auditRepo, logger)
+	walletSvc := service.NewWalletService(walletRepo, crewRepo, auditSvc, logger)
 
 	mockProvider := &MockPaymentProvider{ShouldFail: false}
 	payManager := payment.NewManager(logger, mockProvider)
-	payoutSvc := service.NewPayoutService(walletSvc, payManager, logger)
+	payoutSvc := service.NewPayoutService(walletSvc, payManager, auditSvc, logger)
 
 	crew := &models.CrewMember{ID: uuid.New(), CrewID: "CRW-01", KYCStatus: models.KYCVerified}
 	crewRepo.Create(context.Background(), crew)

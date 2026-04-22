@@ -29,7 +29,10 @@ func setupSACCOTestEnv() (*gin.Engine, *mock.SACCOFloatRepo, uuid.UUID, string) 
 	membershipRepo := mock.NewMembershipRepo()
 	floatRepo := mock.NewSACCOFloatRepo()
 
-	saccoSvc := service.NewSACCOService(saccoRepo, membershipRepo, floatRepo, logger)
+	auditRepo := mock.NewAuditRepo()
+	auditSvc := service.NewAuditService(auditRepo, logger)
+
+	saccoSvc := service.NewSACCOService(saccoRepo, membershipRepo, floatRepo, auditSvc, logger)
 	saccoHandler := handler.NewSACCOHandler(saccoSvc)
 
 	router := gin.New()

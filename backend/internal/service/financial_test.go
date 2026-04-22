@@ -103,7 +103,8 @@ func newAssignmentTestEnv() (*AssignmentService, *WalletService, *mock.CrewRepo)
 	crewRepo := mock.NewCrewRepo()
 	walletRepo := mock.NewWalletRepo()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	walletSvc := NewWalletService(walletRepo, crewRepo, logger)
+	auditSvc := NewAuditService(mock.NewAuditRepo(), logger)
+	walletSvc := NewWalletService(walletRepo, crewRepo, auditSvc, logger)
 	assignmentSvc := NewAssignmentService(newMockAssignmentRepo(), &mockEarningRepo{}, walletSvc, nil, nil, logger)
 	return assignmentSvc, walletSvc, crewRepo
 }
@@ -296,8 +297,9 @@ func TestCompleteAssignment_TriggersNotification(t *testing.T) {
 	notifRepo := mock.NewNotificationRepo()
 	userRepo := mock.NewUserRepo()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	auditSvc := NewAuditService(mock.NewAuditRepo(), logger)
 
-	walletSvc := NewWalletService(walletRepo, crewRepo, logger)
+	walletSvc := NewWalletService(walletRepo, crewRepo, auditSvc, logger)
 	notifSvc := NewNotificationService(notifRepo, userRepo, nil, logger)
 	assignmentSvc := NewAssignmentService(newMockAssignmentRepo(), &mockEarningRepo{}, walletSvc, notifSvc, nil, logger)
 

@@ -24,9 +24,11 @@ func TestWebhookService_JamboPayReversal(t *testing.T) {
 	webhookRepo := mock.NewWebhookEventRepo()
 	
 	// Create a WalletService and PayoutService
-	walletSvc := service.NewWalletService(walletRepo, crewRepo, logger)
+	auditRepo := mock.NewAuditRepo()
+	auditSvc := service.NewAuditService(auditRepo, logger)
+	walletSvc := service.NewWalletService(walletRepo, crewRepo, auditSvc, logger)
 	paymentMgr := payment.NewManager(logger, &MockPaymentProvider{})
-	payoutSvc := service.NewPayoutService(walletSvc, paymentMgr, logger)
+	payoutSvc := service.NewPayoutService(walletSvc, paymentMgr, auditSvc, logger)
 	
 	// We pass nil for payrollRepo and payrollSvc because they aren't strictly required for JamboPay webhook tests right now
 	webhookSvc := service.NewWebhookService(webhookRepo, payoutSvc, nil, walletRepo, nil, logger)

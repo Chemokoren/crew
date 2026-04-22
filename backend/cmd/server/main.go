@@ -184,16 +184,16 @@ func main() {
 	}
 
 	// --- 12. Initialize services ---
+	auditSvc := service.NewAuditService(auditRepo, logger)
 	notifSvc := service.NewNotificationService(notificationRepo, userRepo, smsMgr, logger)
 	authSvc := service.NewAuthService(userRepo, crewRepo, jwtManager, txMgr, logger)
 	crewSvc := service.NewCrewService(crewRepo, iprsProvider, logger)
-	walletSvc := service.NewWalletService(walletRepo, crewRepo, logger)
+	walletSvc := service.NewWalletService(walletRepo, crewRepo, auditSvc, logger)
 	assignmentSvc := service.NewAssignmentService(assignmentRepo, earningRepo, walletSvc, notifSvc, txMgr, logger)
-	saccoSvc := service.NewSACCOService(saccoRepo, membershipRepo, floatRepo, logger)
+	saccoSvc := service.NewSACCOService(saccoRepo, membershipRepo, floatRepo, auditSvc, logger)
 	vehicleSvc := service.NewVehicleService(vehicleRepo, logger)
 	routeSvc := service.NewRouteService(routeRepo, logger)
 	docSvc := service.NewDocumentService(documentRepo, logger)
-	_ = service.NewAuditService(auditRepo, logger) // Wired into middleware hooks
 
 	// --- 13. Initialize handlers ---
 	healthHandler := handler.NewHealthHandler(db, redisClient)
@@ -226,7 +226,7 @@ func main() {
 	}
 	
 	// Initialize PayoutService after paymentMgr is available
-	payoutSvc := service.NewPayoutService(walletSvc, paymentMgr, logger)
+	payoutSvc := service.NewPayoutService(walletSvc, paymentMgr, auditSvc, logger)
 	payoutHandler := handler.NewPayoutHandler(payoutSvc)
 
 	// Payroll: PerPay

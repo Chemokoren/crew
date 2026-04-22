@@ -18,7 +18,10 @@ func TestSACCOService(t *testing.T) {
 	membershipRepo := mock.NewMembershipRepo()
 	floatRepo := mock.NewSACCOFloatRepo()
 
-	svc := service.NewSACCOService(saccoRepo, membershipRepo, floatRepo, logger)
+	auditRepo := mock.NewAuditRepo()
+	auditSvc := service.NewAuditService(auditRepo, logger)
+
+	svc := service.NewSACCOService(saccoRepo, membershipRepo, floatRepo, auditSvc, logger)
 
 	t.Run("Create and Get SACCO", func(t *testing.T) {
 		ctx := context.Background()

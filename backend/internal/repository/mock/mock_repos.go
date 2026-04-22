@@ -587,3 +587,39 @@ func (r *SACCOFloatRepo) GetTransactions(_ context.Context, floatID uuid.UUID, f
 	return all, int64(len(all)), nil
 }
 
+// --- AuditLogRepo Mock ---
+
+type AuditRepo struct {
+	mu   sync.RWMutex
+	Logs []models.AuditLog
+}
+
+func NewAuditRepo() *AuditRepo {
+	return &AuditRepo{
+		Logs: make([]models.AuditLog, 0),
+	}
+}
+
+func (r *AuditRepo) Create(_ context.Context, log *models.AuditLog) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.Logs = append(r.Logs, *log)
+	return nil
+}
+
+func (r *AuditRepo) List(_ context.Context, resource string, resourceID *uuid.UUID, page, perPage int) ([]models.AuditLog, int64, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var res []models.AuditLog
+	for _, l := range r.Logs {
+		if resource != "" && l.Resource != resource {
+			continue
+		}
+		if resourceID != nil && l.ResourceID != nil && *l.ResourceID != *resourceID {
+			continue
+		}
+		res = append(res, l)
+	}
+	return res, int64(len(res)), nil
+}
+

@@ -15,6 +15,7 @@ type SACCOService struct {
 	saccoRepo      repository.SACCORepository
 	membershipRepo repository.MembershipRepository
 	floatRepo      repository.SACCOFloatRepository
+	auditSvc       *AuditService
 	logger         *slog.Logger
 }
 
@@ -22,12 +23,14 @@ func NewSACCOService(
 	saccoRepo repository.SACCORepository,
 	membershipRepo repository.MembershipRepository,
 	floatRepo repository.SACCOFloatRepository,
+	auditSvc *AuditService,
 	logger *slog.Logger,
 ) *SACCOService {
 	return &SACCOService{
 		saccoRepo:      saccoRepo,
 		membershipRepo: membershipRepo,
 		floatRepo:      floatRepo,
+		auditSvc:       auditSvc,
 		logger:         logger,
 	}
 }
@@ -184,7 +187,11 @@ func (s *SACCOService) CreditFloat(ctx context.Context, input FloatOperationInpu
 	if err != nil {
 		return nil, err
 	}
-	return s.floatRepo.CreditFloat(ctx, sf.ID, sf.Version, input.AmountCents, input.IdempotencyKey, input.Reference)
+	tx, err := s.floatRepo.CreditFloat(ctx, sf.ID, sf.Version, input.AmountCents, input.IdempotencyKey, input.Reference)
+	if err == nil {
+		s.auditSvc.Log(ctx, input.SaccoID, "CREDIT_FLOAT", "sacco_float", &sf.ID, nil, tx, "", "")
+	}
+	return tx, err
 }
 
 func (s *SACCOService) DebitFloat(ctx context.Context, input FloatOperationInput) (*models.SACCOFloatTransaction, error) {
@@ -192,7 +199,11 @@ func (s *SACCOService) DebitFloat(ctx context.Context, input FloatOperationInput
 	if err != nil {
 		return nil, err
 	}
-	return s.floatRepo.DebitFloat(ctx, sf.ID, sf.Version, input.AmountCents, input.IdempotencyKey, input.Reference)
+	tx, err := s.floatRepo.DebitFloat(ctx, sf.ID, sf.Version, input.AmountCents, input.IdempotencyKey, input.Reference)
+	if err == nil {
+		s.auditSvc.Log(ctx, input.SaccoID, "DEBIT_FLOAT", "sacco_float", &sf.ID, nil, tx, "", "")
+	}
+	return tx, err
 }
 
 func (s *SACCOService) ListFloatTransactions(ctx context.Context, saccoID uuid.UUID, filter repository.SACCOFloatFilter, page, perPage int) ([]models.SACCOFloatTransaction, int64, error) {

@@ -14,6 +14,7 @@ import (
 type WalletService struct {
 	walletRepo repository.WalletRepository
 	crewRepo   repository.CrewRepository
+	auditSvc   *AuditService
 	logger     *slog.Logger
 }
 
@@ -21,11 +22,13 @@ type WalletService struct {
 func NewWalletService(
 	walletRepo repository.WalletRepository,
 	crewRepo repository.CrewRepository,
+	auditSvc *AuditService,
 	logger *slog.Logger,
 ) *WalletService {
 	return &WalletService{
 		walletRepo: walletRepo,
 		crewRepo:   crewRepo,
+		auditSvc:   auditSvc,
 		logger:     logger,
 	}
 }
@@ -108,6 +111,9 @@ func (s *WalletService) Credit(ctx context.Context, input CreditInput) (*models.
 		slog.String("idempotency_key", input.IdempotencyKey),
 	)
 
+	// Log audit trail
+	s.auditSvc.Log(ctx, input.CrewMemberID, "CREDIT", "wallet", &wallet.ID, nil, tx, "", "")
+
 	return tx, nil
 }
 
@@ -152,6 +158,9 @@ func (s *WalletService) Debit(ctx context.Context, input DebitInput) (*models.Wa
 		slog.String("category", string(input.Category)),
 		slog.String("idempotency_key", input.IdempotencyKey),
 	)
+
+	// Log audit trail
+	s.auditSvc.Log(ctx, input.CrewMemberID, "DEBIT", "wallet", &wallet.ID, nil, tx, "", "")
 
 	return tx, nil
 }
