@@ -230,6 +230,14 @@ func NewVehicleHandler(svc *service.VehicleService) *VehicleHandler {
 	return &VehicleHandler{vehicleSvc: svc}
 }
 
+// Create godoc
+// @Summary Create
+// @Description Create VehicleHandler
+// @Tags Vehicle
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/vehicles [post]
 func (h *VehicleHandler) Create(c *gin.Context) {
 	var req service.CreateVehicleInput
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -244,6 +252,14 @@ func (h *VehicleHandler) Create(c *gin.Context) {
 	SuccessResponse(c, http.StatusCreated, vehicle)
 }
 
+// GetByID godoc
+// @Summary GetByID
+// @Description GetByID VehicleHandler
+// @Tags Vehicle
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/vehicles/{id} [get]
 func (h *VehicleHandler) GetByID(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -258,6 +274,14 @@ func (h *VehicleHandler) GetByID(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, vehicle)
 }
 
+// Update godoc
+// @Summary Update
+// @Description Update VehicleHandler
+// @Tags Vehicle
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/vehicles/{id} [put]
 func (h *VehicleHandler) Update(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -277,6 +301,14 @@ func (h *VehicleHandler) Update(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, vehicle)
 }
 
+// Delete godoc
+// @Summary Delete
+// @Description Delete VehicleHandler
+// @Tags Vehicle
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/vehicles/{id} [delete]
 func (h *VehicleHandler) Delete(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -290,6 +322,14 @@ func (h *VehicleHandler) Delete(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, gin.H{"message": "Vehicle deleted"})
 }
 
+// List godoc
+// @Summary List
+// @Description List VehicleHandler
+// @Tags Vehicle
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/vehicles [get]
 func (h *VehicleHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "20"))
@@ -316,6 +356,14 @@ func NewRouteHandler(svc *service.RouteService) *RouteHandler {
 	return &RouteHandler{routeSvc: svc}
 }
 
+// Create godoc
+// @Summary Create
+// @Description Create RouteHandler
+// @Tags Route
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/routes [post]
 func (h *RouteHandler) Create(c *gin.Context) {
 	var req service.CreateRouteInput
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -330,6 +378,14 @@ func (h *RouteHandler) Create(c *gin.Context) {
 	SuccessResponse(c, http.StatusCreated, route)
 }
 
+// GetByID godoc
+// @Summary GetByID
+// @Description GetByID RouteHandler
+// @Tags Route
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/routes/{id} [get]
 func (h *RouteHandler) GetByID(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -344,6 +400,14 @@ func (h *RouteHandler) GetByID(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, route)
 }
 
+// Update godoc
+// @Summary Update
+// @Description Update RouteHandler
+// @Tags Route
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/routes/{id} [put]
 func (h *RouteHandler) Update(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -363,6 +427,14 @@ func (h *RouteHandler) Update(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, route)
 }
 
+// Delete godoc
+// @Summary Delete
+// @Description Delete RouteHandler
+// @Tags Route
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/routes/{id} [delete]
 func (h *RouteHandler) Delete(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -376,6 +448,14 @@ func (h *RouteHandler) Delete(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, gin.H{"message": "Route deleted"})
 }
 
+// List godoc
+// @Summary List
+// @Description List RouteHandler
+// @Tags Route
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/routes [get]
 func (h *RouteHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "20"))
@@ -398,6 +478,14 @@ func NewPayrollHandler(svc *service.PayrollService) *PayrollHandler {
 	return &PayrollHandler{payrollSvc: svc}
 }
 
+// Create godoc
+// @Summary Create
+// @Description Create PayrollHandler
+// @Tags Payroll
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/payroll [post]
 func (h *PayrollHandler) Create(c *gin.Context) {
 	var req service.CreatePayrollRunInput
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -412,6 +500,14 @@ func (h *PayrollHandler) Create(c *gin.Context) {
 	SuccessResponse(c, http.StatusCreated, run)
 }
 
+// GetByID godoc
+// @Summary GetByID
+// @Description GetByID PayrollHandler
+// @Tags Payroll
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/payroll/{id} [get]
 func (h *PayrollHandler) GetByID(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -426,6 +522,14 @@ func (h *PayrollHandler) GetByID(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, run)
 }
 
+// List godoc
+// @Summary List
+// @Description List PayrollHandler
+// @Tags Payroll
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/payroll [get]
 func (h *PayrollHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "20"))
@@ -442,6 +546,14 @@ func (h *PayrollHandler) List(c *gin.Context) {
 	ListResponse(c, runs, buildMeta(page, perPage, total))
 }
 
+// GetEntries godoc
+// @Summary GetEntries
+// @Description GetEntries PayrollHandler
+// @Tags Payroll
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/payroll/{id}/entries [get]
 func (h *PayrollHandler) GetEntries(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -456,6 +568,14 @@ func (h *PayrollHandler) GetEntries(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, entries)
 }
 
+// Process godoc
+// @Summary Process
+// @Description Process PayrollHandler
+// @Tags Payroll
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/payroll/{id}/process [post]
 func (h *PayrollHandler) Process(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -470,6 +590,14 @@ func (h *PayrollHandler) Process(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, run)
 }
 
+// Approve godoc
+// @Summary Approve
+// @Description Approve PayrollHandler
+// @Tags Payroll
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/payroll/{id}/approve [post]
 func (h *PayrollHandler) Approve(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {

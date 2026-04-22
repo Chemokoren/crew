@@ -23,6 +23,14 @@ func NewCreditHandler(svc service.CreditService) *CreditHandler {
 	return &CreditHandler{creditSvc: svc}
 }
 
+// GetScore godoc
+// @Summary GetScore
+// @Description GetScore CreditHandler
+// @Tags Credit
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/credit/{crew_member_id} [get]
 func (h *CreditHandler) GetScore(c *gin.Context) {
 	crewID, err := uuid.Parse(c.Param("crew_member_id"))
 	if err != nil {
@@ -43,6 +51,14 @@ func (h *CreditHandler) GetScore(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, score)
 }
 
+// CalculateScore godoc
+// @Summary CalculateScore
+// @Description CalculateScore CreditHandler
+// @Tags Credit
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/credit/{crew_member_id}/calculate [post]
 func (h *CreditHandler) CalculateScore(c *gin.Context) {
 	crewID, err := uuid.Parse(c.Param("crew_member_id"))
 	if err != nil {
@@ -75,6 +91,14 @@ func NewLoanHandler(svc service.LoanService) *LoanHandler {
 	return &LoanHandler{loanSvc: svc}
 }
 
+// Apply godoc
+// @Summary Apply
+// @Description Apply LoanHandler
+// @Tags Loan
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/loans [post]
 func (h *LoanHandler) Apply(c *gin.Context) {
 	var req struct {
 		CrewMemberID uuid.UUID `json:"crew_member_id" binding:"required"`
@@ -100,6 +124,14 @@ func (h *LoanHandler) Apply(c *gin.Context) {
 	SuccessResponse(c, http.StatusCreated, loan)
 }
 
+// Approve godoc
+// @Summary Approve
+// @Description Approve LoanHandler
+// @Tags Loan
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/loans/{id}/approve [post]
 func (h *LoanHandler) Approve(c *gin.Context) {
 	loanID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -130,6 +162,14 @@ func (h *LoanHandler) Approve(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, loan)
 }
 
+// Reject godoc
+// @Summary Reject
+// @Description Reject LoanHandler
+// @Tags Loan
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/loans/{id}/reject [post]
 func (h *LoanHandler) Reject(c *gin.Context) {
 	loanID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -151,6 +191,14 @@ func (h *LoanHandler) Reject(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, loan)
 }
 
+// Disburse godoc
+// @Summary Disburse
+// @Description Disburse LoanHandler
+// @Tags Loan
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/loans/{id}/disburse [post]
 func (h *LoanHandler) Disburse(c *gin.Context) {
 	loanID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -166,6 +214,14 @@ func (h *LoanHandler) Disburse(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, loan)
 }
 
+// List godoc
+// @Summary List
+// @Description List LoanHandler
+// @Tags Loan
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/loans [get]
 func (h *LoanHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "20"))
@@ -202,6 +258,14 @@ func NewInsuranceHandler(svc service.InsuranceService) *InsuranceHandler {
 	return &InsuranceHandler{insuranceSvc: svc}
 }
 
+// Create godoc
+// @Summary Create
+// @Description Create InsuranceHandler
+// @Tags Insurance
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/insurance [post]
 func (h *InsuranceHandler) Create(c *gin.Context) {
 	var req struct {
 		CrewMemberID uuid.UUID `json:"crew_member_id" binding:"required"`
@@ -228,6 +292,14 @@ func (h *InsuranceHandler) Create(c *gin.Context) {
 	SuccessResponse(c, http.StatusCreated, policy)
 }
 
+// Lapse godoc
+// @Summary Lapse
+// @Description Lapse InsuranceHandler
+// @Tags Insurance
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/insurance/{id}/lapse [post]
 func (h *InsuranceHandler) Lapse(c *gin.Context) {
 	policyID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -243,6 +315,14 @@ func (h *InsuranceHandler) Lapse(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, gin.H{"message": "Policy marked as lapsed"})
 }
 
+// List godoc
+// @Summary List
+// @Description List InsuranceHandler
+// @Tags Insurance
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/insurance [get]
 func (h *InsuranceHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "20"))

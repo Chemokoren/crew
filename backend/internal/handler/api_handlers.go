@@ -26,7 +26,14 @@ func NewAssignmentHandler(svc *service.AssignmentService) *AssignmentHandler {
 	return &AssignmentHandler{assignmentSvc: svc}
 }
 
-// POST /api/v1/assignments
+// Create godoc
+// @Summary Create
+// @Description Create AssignmentHandler
+// @Tags Assignment
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/assignments [post]
 func (h *AssignmentHandler) Create(c *gin.Context) {
 	var req dto.CreateAssignmentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -83,7 +90,14 @@ func (h *AssignmentHandler) Create(c *gin.Context) {
 	SuccessResponse(c, http.StatusCreated, dto.AssignmentToResponse(result))
 }
 
-// POST /api/v1/assignments/:id/complete
+// Complete godoc
+// @Summary Complete
+// @Description Complete AssignmentHandler
+// @Tags Assignment
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/assignments/{id}/complete [post]
 func (h *AssignmentHandler) Complete(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -111,7 +125,14 @@ func (h *AssignmentHandler) Complete(c *gin.Context) {
 	})
 }
 
-// GET /api/v1/assignments/:id
+// GetByID godoc
+// @Summary GetByID
+// @Description GetByID AssignmentHandler
+// @Tags Assignment
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/assignments/{id} [get]
 func (h *AssignmentHandler) GetByID(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -137,7 +158,14 @@ func (h *AssignmentHandler) GetByID(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, dto.AssignmentToResponse(assignment))
 }
 
-// GET /api/v1/assignments
+// List godoc
+// @Summary List
+// @Description List AssignmentHandler
+// @Tags Assignment
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/assignments [get]
 func (h *AssignmentHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "20"))
@@ -221,7 +249,14 @@ func enforceWalletAccess(c *gin.Context, crewMemberID uuid.UUID) bool {
 	return true
 }
 
-// GET /api/v1/wallets/:crew_member_id
+// GetBalance godoc
+// @Summary GetBalance
+// @Description GetBalance WalletHandler
+// @Tags Wallet
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/wallets/{crew_member_id} [get]
 func (h *WalletHandler) GetBalance(c *gin.Context) {
 	crewMemberID, err := uuid.Parse(c.Param("crew_member_id"))
 	if err != nil {
@@ -253,7 +288,14 @@ func (h *WalletHandler) GetBalance(c *gin.Context) {
 	})
 }
 
-// POST /api/v1/wallets/credit
+// Credit godoc
+// @Summary Credit
+// @Description Credit WalletHandler
+// @Tags Wallet
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/wallets/credit [post]
 func (h *WalletHandler) Credit(c *gin.Context) {
 	idempotencyKey := c.GetHeader("Idempotency-Key")
 	if idempotencyKey == "" {
@@ -283,7 +325,14 @@ func (h *WalletHandler) Credit(c *gin.Context) {
 	SuccessResponse(c, http.StatusCreated, dto.WalletTxToResponse(tx))
 }
 
-// POST /api/v1/wallets/debit
+// Debit godoc
+// @Summary Debit
+// @Description Debit WalletHandler
+// @Tags Wallet
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/wallets/debit [post]
 func (h *WalletHandler) Debit(c *gin.Context) {
 	idempotencyKey := c.GetHeader("Idempotency-Key")
 	if idempotencyKey == "" {
@@ -313,7 +362,14 @@ func (h *WalletHandler) Debit(c *gin.Context) {
 	SuccessResponse(c, http.StatusCreated, dto.WalletTxToResponse(tx))
 }
 
-// GET /api/v1/wallets/:crew_member_id/transactions
+// ListTransactions godoc
+// @Summary ListTransactions
+// @Description ListTransactions WalletHandler
+// @Tags Wallet
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/wallets/{crew_member_id}/transactions [get]
 func (h *WalletHandler) ListTransactions(c *gin.Context) {
 	crewMemberID, err := uuid.Parse(c.Param("crew_member_id"))
 	if err != nil {
@@ -354,7 +410,14 @@ func NewPayoutHandler(svc *service.PayoutService) *PayoutHandler {
 	return &PayoutHandler{payoutSvc: svc}
 }
 
-// POST /api/v1/wallets/:crew_member_id/payout
+// Payout godoc
+// @Summary Payout
+// @Description Payout PayoutHandler
+// @Tags Payout
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/wallets/{crew_member_id}/payout [post]
 func (h *PayoutHandler) Payout(c *gin.Context) {
 	idempotencyKey := c.GetHeader("Idempotency-Key")
 	if idempotencyKey == "" {
@@ -409,7 +472,14 @@ func NewCrewHandler(svc *service.CrewService) *CrewHandler {
 	return &CrewHandler{crewSvc: svc}
 }
 
-// POST /api/v1/crew
+// Create godoc
+// @Summary Create
+// @Description Create CrewHandler
+// @Tags Crew
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/crew [post]
 func (h *CrewHandler) Create(c *gin.Context) {
 	var req dto.CreateCrewRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -431,7 +501,14 @@ func (h *CrewHandler) Create(c *gin.Context) {
 	SuccessResponse(c, http.StatusCreated, dto.CrewToResponse(crew))
 }
 
-// GET /api/v1/crew/:id
+// GetByID godoc
+// @Summary GetByID
+// @Description GetByID CrewHandler
+// @Tags Crew
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/crew/{id} [get]
 func (h *CrewHandler) GetByID(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -448,7 +525,14 @@ func (h *CrewHandler) GetByID(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, dto.CrewToResponse(crew))
 }
 
-// PUT /api/v1/crew/:id/kyc
+// UpdateKYC godoc
+// @Summary UpdateKYC
+// @Description UpdateKYC CrewHandler
+// @Tags Crew
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/crew/{id}/kyc [put]
 func (h *CrewHandler) UpdateKYC(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -475,7 +559,14 @@ func (h *CrewHandler) UpdateKYC(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, dto.CrewToResponse(crew))
 }
 
-// GET /api/v1/crew
+// List godoc
+// @Summary List
+// @Description List CrewHandler
+// @Tags Crew
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/crew [get]
 func (h *CrewHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "20"))
@@ -504,7 +595,14 @@ func (h *CrewHandler) List(c *gin.Context) {
 	ListResponse(c, dto.CrewListToResponse(members), buildMeta(page, perPage, total))
 }
 
-// DELETE /api/v1/crew/:id
+// Deactivate godoc
+// @Summary Deactivate
+// @Description Deactivate CrewHandler
+// @Tags Crew
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/crew/{id} [delete]
 func (h *CrewHandler) Deactivate(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -520,7 +618,14 @@ func (h *CrewHandler) Deactivate(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, gin.H{"message": "Crew member deactivated"})
 }
 
-// POST /api/v1/crew/:id/verify
+// VerifyNationalID godoc
+// @Summary VerifyNationalID
+// @Description VerifyNationalID CrewHandler
+// @Tags Crew
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/crew/{id}/verify [post]
 func (h *CrewHandler) VerifyNationalID(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {

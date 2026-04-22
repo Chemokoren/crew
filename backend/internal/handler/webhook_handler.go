@@ -16,6 +16,14 @@ func NewWebhookHandler(webhookSvc *service.WebhookService) *WebhookHandler {
 	return &WebhookHandler{webhookSvc: webhookSvc}
 }
 
+// HandleJamboPay godoc
+// @Summary HandleJamboPay
+// @Description HandleJamboPay WebhookHandler
+// @Tags Webhook
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/webhooks/jambopay [post]
 func (h *WebhookHandler) HandleJamboPay(c *gin.Context) {
 	payload, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -32,6 +40,14 @@ func (h *WebhookHandler) HandleJamboPay(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
+// HandlePerpay godoc
+// @Summary HandlePerpay
+// @Description HandlePerpay WebhookHandler
+// @Tags Webhook
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/webhooks/perpay [post]
 func (h *WebhookHandler) HandlePerpay(c *gin.Context) {
 	payload, err := io.ReadAll(c.Request.Body)
 	if err != nil {
