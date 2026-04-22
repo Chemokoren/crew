@@ -10,6 +10,7 @@ import (
 	"github.com/kibsoft/amy-mis/internal/models"
 	"github.com/kibsoft/amy-mis/pkg/types"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 func main() {
@@ -33,6 +34,17 @@ func main() {
 	}
 
 	slog.Info("running database seeder...")
+	if err := SeedDatabase(db); err != nil {
+		slog.Error("seeding failed", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+
+	slog.Info("seeding completed successfully!")
+}
+
+// SeedDatabase inserts default administrative and testing data.
+// It is perfectly idempotent and uses FirstOrCreate.
+func SeedDatabase(db *gorm.DB) error {
 
 	hash, _ := bcrypt.GenerateFromPassword([]byte("password123"), 12)
 	passwordHash := string(hash)
@@ -47,7 +59,9 @@ func main() {
 		SystemRole:   types.RoleSystemAdmin,
 		IsActive:     true,
 	}
-	db.FirstOrCreate(&adminUser, models.User{Phone: adminUser.Phone})
+	if err := db.FirstOrCreate(&adminUser, models.User{Phone: adminUser.Phone}).Error; err != nil {
+		return err
+	}
 
 	// 2. Create SACCO
 	saccoID := uuid.New()
@@ -60,7 +74,9 @@ func main() {
 		Currency:           "KES",
 		IsActive:           true,
 	}
-	db.FirstOrCreate(&sacco, models.SACCO{RegistrationNumber: sacco.RegistrationNumber})
+	if err := db.FirstOrCreate(&sacco, models.SACCO{RegistrationNumber: sacco.RegistrationNumber}).Error; err != nil {
+		return err
+	}
 
 	// Create SACCO Admin
 	saccoAdminUser := models.User{
@@ -72,7 +88,9 @@ func main() {
 		SaccoID:      &sacco.ID,
 		IsActive:     true,
 	}
-	db.FirstOrCreate(&saccoAdminUser, models.User{Phone: saccoAdminUser.Phone})
+	if err := db.FirstOrCreate(&saccoAdminUser, models.User{Phone: saccoAdminUser.Phone}).Error; err != nil {
+		return err
+	}
 
 	// 3. Create Route
 	routeID := uuid.New()
@@ -85,7 +103,9 @@ func main() {
 		BaseFareCents:       10000, // 100 KES
 		IsActive:            true,
 	}
-	db.FirstOrCreate(&route, models.Route{Name: route.Name})
+	if err := db.FirstOrCreate(&route, models.Route{Name: route.Name}).Error; err != nil {
+		return err
+	}
 
 	// 4. Create Vehicle
 	vehicleID := uuid.New()
@@ -98,7 +118,9 @@ func main() {
 		Capacity:       14,
 		IsActive:       true,
 	}
-	db.FirstOrCreate(&vehicle, models.Vehicle{RegistrationNo: vehicle.RegistrationNo})
+	if err := db.FirstOrCreate(&vehicle, models.Vehicle{RegistrationNo: vehicle.RegistrationNo}).Error; err != nil {
+		return err
+	}
 
 	// 5. Create Crew Member
 	crewID := uuid.New()
@@ -112,7 +134,9 @@ func main() {
 		Role:       models.RoleDriver,
 		IsActive:   true,
 	}
-	db.FirstOrCreate(&crew, models.CrewMember{CrewID: crew.CrewID})
+	if err := db.FirstOrCreate(&crew, models.CrewMember{CrewID: crew.CrewID}).Error; err != nil {
+		return err
+	}
 
 	// Create Crew User Login
 	crewUser := models.User{
@@ -124,7 +148,9 @@ func main() {
 		CrewMemberID: &crew.ID,
 		IsActive:     true,
 	}
-	db.FirstOrCreate(&crewUser, models.User{Phone: crewUser.Phone})
+	if err := db.FirstOrCreate(&crewUser, models.User{Phone: crewUser.Phone}).Error; err != nil {
+		return err
+	}
 
 	// 6. Create Crew Wallet
 	wallet := models.Wallet{
@@ -135,7 +161,9 @@ func main() {
 		Version:      1,
 		IsActive:     true,
 	}
-	db.FirstOrCreate(&wallet, models.Wallet{CrewMemberID: wallet.CrewMemberID})
+	if err := db.FirstOrCreate(&wallet, models.Wallet{CrewMemberID: wallet.CrewMemberID}).Error; err != nil {
+		return err
+	}
 
-	slog.Info("seeding completed successfully!")
+	return nil
 }
