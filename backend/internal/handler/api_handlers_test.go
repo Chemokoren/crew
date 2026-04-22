@@ -20,21 +20,29 @@ import (
 	"github.com/kibsoft/amy-mis/pkg/types"
 )
 
-func setupApiTestEnv() (*gin.Engine, *WalletHandler, *CrewHandler) {
+func setupApiTestEnv() (*gin.Engine, *WalletHandler, *CrewHandler, *AssignmentHandler) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	crewRepo := mock.NewCrewRepo()
 	walletRepo := mock.NewWalletRepo()
+	assignmentRepo := mock.NewAssignmentRepo()
+	earningRepo := mock.NewEarningRepo()
+	notifRepo := mock.NewNotificationRepo()
+	userRepo := mock.NewUserRepo()
+
 	auditSvc := service.NewAuditService(mock.NewAuditRepo(), logger)
 	walletSvc := service.NewWalletService(walletRepo, crewRepo, auditSvc, logger)
 	crewSvc := service.NewCrewService(crewRepo, nil, logger)
+	notifSvc := service.NewNotificationService(notifRepo, userRepo, nil, logger)
+	assignmentSvc := service.NewAssignmentService(assignmentRepo, earningRepo, walletSvc, notifSvc, nil, logger)
 
 	walletHandler := NewWalletHandler(walletSvc)
 	crewHandler := NewCrewHandler(crewSvc)
+	assignmentHandler := NewAssignmentHandler(assignmentSvc)
 
-	return router, walletHandler, crewHandler
+	return router, walletHandler, crewHandler, assignmentHandler
 }
 
 // mockAuthMiddleware creates a middleware that injects test claims
@@ -53,7 +61,7 @@ func mockAuthMiddleware(role types.SystemRole, crewID *uuid.UUID) gin.HandlerFun
 }
 
 func TestCrewHandler_Create(t *testing.T) {
-	router, _, crewHandler := setupApiTestEnv()
+	router, _, crewHandler, _ := setupApiTestEnv()
 
 	router.POST("/crew", mockAuthMiddleware(types.RoleSystemAdmin, nil), crewHandler.Create)
 
@@ -76,8 +84,23 @@ func TestCrewHandler_Create(t *testing.T) {
 	}
 }
 
+func TestCrewHandler_GetByID(t *testing.T) {
+	router, _, crewHandler, _ := setupApiTestEnv()
+	router.GET("/crew/:id", mockAuthMiddleware(types.RoleSystemAdmin, nil), crewHandler.GetByID)
+
+	crewID := uuid.New()
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/crew/"+crewID.String(), nil)
+	router.ServeHTTP(w, req)
+
+	// Will return 404 since it's not seeded, but tests the routing and execution
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404, got %d", w.Code)
+	}
+}
+
 func TestWalletHandler_GetBalance(t *testing.T) {
-	router, walletHandler, crewHandler := setupApiTestEnv()
+	router, walletHandler, crewHandler, _ := setupApiTestEnv()
 
 	// Use CrewService to create a valid crew member, then use its ID for the wallet
 	crewID := uuid.New()
@@ -96,4 +119,30 @@ func TestWalletHandler_GetBalance(t *testing.T) {
 		t.Errorf("Expected status 404 for missing wallet, got %d", w.Code)
 	}
 	_ = crewHandler
+}
+
+func TestAssignmentHandler_Create(t *testing.T) {
+	router, _, _, assignmentHandler := setupApiTestEnv()
+	router.POST("/assignments", mockAuthMiddleware(types.RoleSystemAdmin, nil), assignmentHandler.Create)
+
+	reqBody := dto.CreateAssignmentRequest{
+		CrewMemberID:     uuid.New(),
+		VehicleID:        uuid.New(),
+		SaccoID:          uuid.New(),
+		ShiftDate:        "2023-10-10",
+		ShiftStart:       "2023-10-10T08:00:00Z",
+		EarningModel:     models.EarningFixed,
+		FixedAmountCents: 1000,
+	}
+	body, _ := json.Marshal(reqBody)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/assignments", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Errorf("Expected status 201, got %d", w.Code)
+	}
 }
