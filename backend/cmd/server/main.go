@@ -86,7 +86,12 @@ func main() {
 	}
 
 	// --- 3. Connect to PostgreSQL ---
-	db, err := database.Connect(cfg.DatabaseURL, cfg.IsDevelopment())
+	db, err := database.Connect(cfg.DatabaseURL, cfg.IsDevelopment(), database.PoolConfig{
+		MaxOpenConns:   cfg.DBMaxOpenConns,
+		MaxIdleConns:   cfg.DBMaxIdleConns,
+		ConnMaxLifeMin: cfg.DBConnMaxLifeMin,
+		ConnMaxIdleMin: cfg.DBConnMaxIdleMin,
+	})
 	if err != nil {
 		slog.Error("failed to connect to database", slog.String("error", err.Error()))
 		os.Exit(1)
@@ -209,10 +214,19 @@ func main() {
 	notifSvc := service.NewNotificationService(notificationRepo, notificationPrefRepo, userRepo, smsMgr, logger)
 	authSvc := service.NewAuthService(userRepo, crewRepo, jwtManager, txMgr, logger)
 
-	// CrewService: IPRS is optional — system continues without it (graceful degradation)
+	// CrewService: Identity provider is optional — system continues without it (graceful degradation).
+	// If IPRS is available, wrap it in the identity Manager for failover support.
 	var crewIdProvider identity.Provider
 	if iprsProvider != nil {
-		crewIdProvider = iprsProvider
+		identityMgr := identity.NewManager(logger, iprsProvider)
+		if err := identityMgr.SetPrimary(cfg.IdentityPrimaryProvider); err != nil {
+			slog.Warn("identity primary provider not found, using default order",
+				slog.String("requested", cfg.IdentityPrimaryProvider),
+			)
+		}
+		crewIdProvider = identityMgr
+	} else {
+		slog.Warn("no identity providers configured — identity verification disabled")
 	}
 	crewSvc := service.NewCrewService(crewRepo, crewIdProvider, logger)
 
@@ -230,7 +244,7 @@ func main() {
 	healthHandler := handler.NewHealthHandler(db, redisClient)
 	authHandler := handler.NewAuthHandler(authSvc)
 	crewHandler := handler.NewCrewHandler(crewSvc)
-	walletHandler := handler.NewWalletHandler(walletSvc)
+	walletHandler := handler.NewWalletHandler(walletSvc, cfg.CSVExportMaxRows)
 	assignmentHandler := handler.NewAssignmentHandler(assignmentSvc)
 	saccoHandler := handler.NewSACCOHandler(saccoSvc)
 	vehicleHandler := handler.NewVehicleHandler(vehicleSvc)
@@ -305,21 +319,6 @@ func main() {
 	payrollSvc := service.NewPayrollService(payrollRepo, earningRepo, statutoryRateRepo, crewRepo, payrollMgr, logger)
 	payrollHandler := handler.NewPayrollHandler(payrollSvc)
 
-	// --- 13c. Identity manager (wraps IPRS with failover support) ---
-	var identityMgr *identity.Manager
-	if iprsProvider != nil {
-		identityMgr = identity.NewManager(logger, iprsProvider)
-		if err := identityMgr.SetPrimary(cfg.IdentityPrimaryProvider); err != nil {
-			slog.Warn("identity primary provider not found, using default order",
-				slog.String("requested", cfg.IdentityPrimaryProvider),
-			)
-		}
-	} else {
-		slog.Warn("no identity providers configured — identity verification disabled")
-	}
-	// identityMgr is available for future KYC service injection
-	_ = identityMgr
-
 	webhookSvc := service.NewWebhookService(webhookRepo, payoutSvc, payrollSvc, walletRepo, payrollRepo, logger)
 	webhookHandler := handler.NewWebhookHandler(webhookSvc, cfg.WebhookJamboPaySecret, cfg.WebhookPerpaySecret)
 
@@ -351,8 +350,9 @@ func main() {
 	router.Use(middleware.SecureHeaders())
 	router.Use(middleware.RequestID())
 	router.Use(otelgin.Middleware("amy-mis-api")) // OTEL distributed traces
-	router.Use(middleware.RateLimit(redisClient, 100, time.Minute)) // 100 req/min per IP
-	router.Use(middleware.Timeout(30 * time.Second))
+	router.Use(middleware.MaxBodySize(int64(cfg.MaxRequestBodyMB) << 20)) // Configurable body size limit
+	router.Use(middleware.RateLimit(redisClient, cfg.RateLimitRPM, time.Minute))
+	router.Use(middleware.Timeout(time.Duration(cfg.RequestTimeoutSec) * time.Second))
 	router.Use(middleware.MetricsMiddleware())
 	router.Use(middleware.Logger(logger))
 	router.Use(middleware.Recovery(logger))

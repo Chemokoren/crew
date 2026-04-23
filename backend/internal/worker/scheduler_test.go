@@ -48,8 +48,8 @@ func TestScheduler(t *testing.T) {
 	// Start the scheduler
 	scheduler.Start()
 
-	// Wait for a couple of ticks
-	time.Sleep(120 * time.Millisecond)
+	// Wait for a couple of ticks (generous margin for -race overhead)
+	time.Sleep(200 * time.Millisecond)
 
 	// Stop the scheduler
 	scheduler.Stop()

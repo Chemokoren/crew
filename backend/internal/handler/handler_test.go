@@ -50,7 +50,7 @@ func setupTestEnv() *testEnv {
 
 	authHandler := NewAuthHandler(authSvc)
 	crewHandler := NewCrewHandler(crewSvc)
-	walletHandler := NewWalletHandler(walletSvc)
+	walletHandler := NewWalletHandler(walletSvc, 10000)
 
 	router := gin.New()
 

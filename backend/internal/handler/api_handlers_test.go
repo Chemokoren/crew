@@ -39,7 +39,7 @@ func setupApiTestEnv() (*gin.Engine, *WalletHandler, *CrewHandler, *AssignmentHa
 	notifSvc := service.NewNotificationService(notifRepo, prefRepo, userRepo, nil, logger)
 	assignmentSvc := service.NewAssignmentService(assignmentRepo, earningRepo, walletSvc, notifSvc, nil, logger)
 
-	walletHandler := NewWalletHandler(walletSvc)
+	walletHandler := NewWalletHandler(walletSvc, 10000)
 	crewHandler := NewCrewHandler(crewSvc)
 	assignmentHandler := NewAssignmentHandler(assignmentSvc)
 

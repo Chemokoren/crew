@@ -114,6 +114,21 @@ type Config struct {
 	// Webhook Signature Verification
 	WebhookJamboPaySecret string // HMAC-SHA256 secret for JamboPay webhook verification
 	WebhookPerpaySecret   string // HMAC-SHA256 secret for PerPay webhook verification
+
+	// =============================================
+	// OPERATIONAL TUNING
+	// =============================================
+
+	// Database connection pool
+	DBMaxOpenConns    int // Max open DB connections (default: 25)
+	DBMaxIdleConns    int // Max idle DB connections (default: 10)
+	DBConnMaxLifeMin  int // Max connection lifetime in minutes (default: 5)
+	DBConnMaxIdleMin  int // Max idle time in minutes (default: 1)
+
+	// HTTP server settings
+	RequestTimeoutSec int   // Global request timeout in seconds (default: 30)
+	MaxRequestBodyMB  int   // Maximum request body size in megabytes (default: 10)
+	CSVExportMaxRows  int   // Maximum rows for CSV export (default: 10000)
 }
 
 // Load reads configuration from environment variables.
@@ -197,6 +212,15 @@ func Load() (*Config, error) {
 		// Webhook Secrets
 		WebhookJamboPaySecret: os.Getenv("WEBHOOK_JAMBOPAY_SECRET"),
 		WebhookPerpaySecret:   os.Getenv("WEBHOOK_PERPAY_SECRET"),
+
+		// Operational tuning
+		DBMaxOpenConns:    getEnvInt("DB_MAX_OPEN_CONNS", 25),
+		DBMaxIdleConns:    getEnvInt("DB_MAX_IDLE_CONNS", 10),
+		DBConnMaxLifeMin:  getEnvInt("DB_CONN_MAX_LIFE_MIN", 5),
+		DBConnMaxIdleMin:  getEnvInt("DB_CONN_MAX_IDLE_MIN", 1),
+		RequestTimeoutSec: getEnvInt("REQUEST_TIMEOUT_SEC", 30),
+		MaxRequestBodyMB:  getEnvInt("MAX_REQUEST_BODY_MB", 10),
+		CSVExportMaxRows:  getEnvInt("CSV_EXPORT_MAX_ROWS", 10000),
 	}
 
 	if err := cfg.validate(); err != nil {

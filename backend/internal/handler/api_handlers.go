@@ -261,11 +261,12 @@ func (h *AssignmentHandler) Reassign(c *gin.Context) {
 
 // WalletHandler handles wallet and transaction endpoints.
 type WalletHandler struct {
-	walletSvc *service.WalletService
+	walletSvc  *service.WalletService
+	csvMaxRows int
 }
 
-func NewWalletHandler(svc *service.WalletService) *WalletHandler {
-	return &WalletHandler{walletSvc: svc}
+func NewWalletHandler(svc *service.WalletService, csvMaxRows int) *WalletHandler {
+	return &WalletHandler{walletSvc: svc, csvMaxRows: csvMaxRows}
 }
 
 // enforceWalletAccess checks that the requesting user has access to the given crew member's wallet.
@@ -538,7 +539,12 @@ func (h *WalletHandler) ExportCSV(c *gin.Context) {
 		return
 	}
 
-	txns, _, err := h.walletSvc.GetTransactions(c.Request.Context(), wallet.ID, repository.TxFilter{}, 1, 10000)
+	// Use configurable row cap (injected at handler construction, default 10000)
+	maxRows := h.csvMaxRows
+	if maxRows <= 0 {
+		maxRows = 10000
+	}
+	txns, _, err := h.walletSvc.GetTransactions(c.Request.Context(), wallet.ID, repository.TxFilter{}, 1, maxRows)
 	if err != nil {
 		MapServiceError(c, err)
 		return
@@ -554,11 +560,38 @@ func (h *WalletHandler) ExportCSV(c *gin.Context) {
 			tx.Category,
 			float64(tx.AmountCents)/100.0,
 			float64(tx.BalanceAfterCents)/100.0,
-			tx.Description,
-			tx.Reference,
+			sanitizeCSVCell(tx.Description),
+			sanitizeCSVCell(tx.Reference),
 		)
 		c.Writer.WriteString(line)
 	}
+}
+
+// sanitizeCSVCell prevents CSV injection by escaping cells that start with
+// formula-triggering characters (=, +, -, @, tab, carriage return).
+// Also removes commas and newlines from cell content to prevent column/row breakage.
+func sanitizeCSVCell(s string) string {
+	if len(s) == 0 {
+		return s
+	}
+	// Prefix with a single-quote to prevent formula interpretation in Excel/Sheets
+	switch s[0] {
+	case '=', '+', '-', '@', '\t', '\r':
+		s = "'" + s
+	}
+	// Replace commas and newlines to prevent CSV structure breakage
+	result := make([]byte, 0, len(s))
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case ',':
+			result = append(result, ' ')
+		case '\n', '\r':
+			result = append(result, ' ')
+		default:
+			result = append(result, s[i])
+		}
+	}
+	return string(result)
 }
 
 // --- Crew Handler ---

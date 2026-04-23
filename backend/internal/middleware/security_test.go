@@ -1,6 +1,7 @@
 package middleware_test
 
 import (
+	"bytes"
 	"context"
 	"net/http"
 	"net/http/httptest"
@@ -140,3 +141,58 @@ func TestRateLimitMiddleware(t *testing.T) {
 		t.Errorf("expected request 3 to be rate limited (429), got %d", w3.Code)
 	}
 }
+
+func TestMaxBodySizeMiddleware_UnderLimit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+
+	// 1 KB limit
+	router.Use(middleware.MaxBodySize(1024))
+	router.POST("/test", func(c *gin.Context) {
+		body := make([]byte, 512)
+		_, err := c.Request.Body.Read(body)
+		if err != nil && err.Error() == "http: request body too large" {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "too large"})
+			return
+		}
+		c.Status(http.StatusOK)
+	})
+
+	// 512 bytes — should succeed
+	payload := make([]byte, 512)
+	req := httptest.NewRequest(http.MethodPost, "/test", bytes.NewReader(payload))
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 for body under limit, got %d", w.Code)
+	}
+}
+
+func TestMaxBodySizeMiddleware_OverLimit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+
+	// 1 KB limit
+	router.Use(middleware.MaxBodySize(1024))
+	router.POST("/test", func(c *gin.Context) {
+		body := make([]byte, 2048)
+		_, err := c.Request.Body.Read(body)
+		if err != nil {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "too large"})
+			return
+		}
+		c.Status(http.StatusOK)
+	})
+
+	// 2 KB — should fail
+	payload := make([]byte, 2048)
+	req := httptest.NewRequest(http.MethodPost, "/test", bytes.NewReader(payload))
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("expected 413 for body over limit, got %d", w.Code)
+	}
+}
+

@@ -337,3 +337,85 @@ func TestMpesaCredentialsLoaded(t *testing.T) {
 		t.Errorf("MpesaPasskey = %q, want test-passkey", cfg.MpesaPasskey)
 	}
 }
+
+func TestOperationalTuningDefaults(t *testing.T) {
+	clearEnv(t)
+	setRequiredEnv(t)
+	defer clearEnv(t)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		got  int
+		want int
+	}{
+		{"DBMaxOpenConns", cfg.DBMaxOpenConns, 25},
+		{"DBMaxIdleConns", cfg.DBMaxIdleConns, 10},
+		{"DBConnMaxLifeMin", cfg.DBConnMaxLifeMin, 5},
+		{"DBConnMaxIdleMin", cfg.DBConnMaxIdleMin, 1},
+		{"RequestTimeoutSec", cfg.RequestTimeoutSec, 30},
+		{"MaxRequestBodyMB", cfg.MaxRequestBodyMB, 10},
+		{"CSVExportMaxRows", cfg.CSVExportMaxRows, 10000},
+		{"RateLimitRPM", cfg.RateLimitRPM, 100},
+	}
+
+	for _, tt := range tests {
+		if tt.got != tt.want {
+			t.Errorf("%s = %d, want %d", tt.name, tt.got, tt.want)
+		}
+	}
+}
+
+func TestOperationalTuningOverrides(t *testing.T) {
+	clearEnv(t)
+	setRequiredEnv(t)
+	defer clearEnv(t)
+
+	os.Setenv("DB_MAX_OPEN_CONNS", "50")
+	os.Setenv("DB_MAX_IDLE_CONNS", "20")
+	os.Setenv("DB_CONN_MAX_LIFE_MIN", "10")
+	os.Setenv("DB_CONN_MAX_IDLE_MIN", "3")
+	os.Setenv("REQUEST_TIMEOUT_SEC", "60")
+	os.Setenv("MAX_REQUEST_BODY_MB", "25")
+	os.Setenv("CSV_EXPORT_MAX_ROWS", "5000")
+	os.Setenv("RATE_LIMIT_RPM", "200")
+	defer func() {
+		for _, k := range []string{"DB_MAX_OPEN_CONNS", "DB_MAX_IDLE_CONNS",
+			"DB_CONN_MAX_LIFE_MIN", "DB_CONN_MAX_IDLE_MIN",
+			"REQUEST_TIMEOUT_SEC", "MAX_REQUEST_BODY_MB",
+			"CSV_EXPORT_MAX_ROWS", "RATE_LIMIT_RPM"} {
+			os.Unsetenv(k)
+		}
+	}()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		got  int
+		want int
+	}{
+		{"DBMaxOpenConns", cfg.DBMaxOpenConns, 50},
+		{"DBMaxIdleConns", cfg.DBMaxIdleConns, 20},
+		{"DBConnMaxLifeMin", cfg.DBConnMaxLifeMin, 10},
+		{"DBConnMaxIdleMin", cfg.DBConnMaxIdleMin, 3},
+		{"RequestTimeoutSec", cfg.RequestTimeoutSec, 60},
+		{"MaxRequestBodyMB", cfg.MaxRequestBodyMB, 25},
+		{"CSVExportMaxRows", cfg.CSVExportMaxRows, 5000},
+		{"RateLimitRPM", cfg.RateLimitRPM, 200},
+	}
+
+	for _, tt := range tests {
+		if tt.got != tt.want {
+			t.Errorf("%s = %d, want %d", tt.name, tt.got, tt.want)
+		}
+	}
+}
+

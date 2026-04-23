@@ -14,8 +14,16 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
 
+// PoolConfig holds configurable database connection pool settings.
+type PoolConfig struct {
+	MaxOpenConns    int // Default: 25
+	MaxIdleConns    int // Default: 10
+	ConnMaxLifeMin  int // Default: 5
+	ConnMaxIdleMin  int // Default: 1
+}
+
 // Connect establishes a connection to PostgreSQL and configures the pool.
-func Connect(databaseURL string, isDev bool) (*gorm.DB, error) {
+func Connect(databaseURL string, isDev bool, pool PoolConfig) (*gorm.DB, error) {
 	// Configure GORM logger
 	logLevel := logger.Silent
 	if isDev {
@@ -33,16 +41,30 @@ func Connect(databaseURL string, isDev bool) (*gorm.DB, error) {
 		return nil, fmt.Errorf("connect to database: %w", err)
 	}
 
+	// Apply pool defaults if zero-valued
+	if pool.MaxOpenConns <= 0 {
+		pool.MaxOpenConns = 25
+	}
+	if pool.MaxIdleConns <= 0 {
+		pool.MaxIdleConns = 10
+	}
+	if pool.ConnMaxLifeMin <= 0 {
+		pool.ConnMaxLifeMin = 5
+	}
+	if pool.ConnMaxIdleMin <= 0 {
+		pool.ConnMaxIdleMin = 1
+	}
+
 	// Configure connection pool
 	sqlDB, err := db.DB()
 	if err != nil {
 		return nil, fmt.Errorf("get sql.DB: %w", err)
 	}
 
-	sqlDB.SetMaxOpenConns(25)
-	sqlDB.SetMaxIdleConns(10)
-	sqlDB.SetConnMaxLifetime(5 * time.Minute)
-	sqlDB.SetConnMaxIdleTime(1 * time.Minute)
+	sqlDB.SetMaxOpenConns(pool.MaxOpenConns)
+	sqlDB.SetMaxIdleConns(pool.MaxIdleConns)
+	sqlDB.SetConnMaxLifetime(time.Duration(pool.ConnMaxLifeMin) * time.Minute)
+	sqlDB.SetConnMaxIdleTime(time.Duration(pool.ConnMaxIdleMin) * time.Minute)
 
 	// Verify connection
 	if err := sqlDB.Ping(); err != nil {
@@ -50,8 +72,10 @@ func Connect(databaseURL string, isDev bool) (*gorm.DB, error) {
 	}
 
 	slog.Info("connected to PostgreSQL",
-		slog.Int("max_open_conns", 25),
-		slog.Int("max_idle_conns", 10),
+		slog.Int("max_open_conns", pool.MaxOpenConns),
+		slog.Int("max_idle_conns", pool.MaxIdleConns),
+		slog.Int("conn_max_life_min", pool.ConnMaxLifeMin),
+		slog.Int("conn_max_idle_min", pool.ConnMaxIdleMin),
 	)
 
 	return db, nil

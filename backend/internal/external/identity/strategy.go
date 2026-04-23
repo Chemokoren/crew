@@ -76,6 +76,16 @@ func (m *Manager) VerifyCitizen(ctx context.Context, req VerifyRequest) (*Citize
 	return nil, fmt.Errorf("all identity providers failed: %w", lastErr)
 }
 
+// Name returns the name of the manager (implements Provider interface).
+func (m *Manager) Name() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if len(m.providers) > 0 {
+		return "identity-manager[" + m.providers[0].Name() + "]"
+	}
+	return "identity-manager"
+}
+
 // SetPrimary reorders providers so the named provider becomes primary.
 // This allows runtime switching without a restart.
 func (m *Manager) SetPrimary(name string) error {

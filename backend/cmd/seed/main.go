@@ -27,7 +27,7 @@ func main() {
 	}
 
 	// Connect to database
-	db, err := database.Connect(cfg.DatabaseURL, cfg.IsDevelopment())
+	db, err := database.Connect(cfg.DatabaseURL, cfg.IsDevelopment(), database.PoolConfig{})
 	if err != nil {
 		slog.Error("failed to connect to database", slog.String("error", err.Error()))
 		os.Exit(1)

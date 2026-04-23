@@ -11,6 +11,9 @@ import (
 	"github.com/kibsoft/amy-mis/internal/service"
 )
 
+// maxWebhookBodySize is the maximum allowed webhook payload size (1 MB).
+const maxWebhookBodySize = 1 << 20
+
 type WebhookHandler struct {
 	webhookSvc     *service.WebhookService
 	jamboPaySecret string
@@ -42,6 +45,13 @@ func verifySignature(payload []byte, signature, secret string) bool {
 	return hmac.Equal([]byte(expected), []byte(signature))
 }
 
+// readWebhookBody reads the payload with a hard size limit to prevent DoS.
+func readWebhookBody(c *gin.Context) ([]byte, error) {
+	limited := http.MaxBytesReader(c.Writer, c.Request.Body, maxWebhookBodySize)
+	defer c.Request.Body.Close()
+	return io.ReadAll(limited)
+}
+
 // HandleJamboPay godoc
 // @Summary HandleJamboPay
 // @Description HandleJamboPay WebhookHandler
@@ -51,12 +61,11 @@ func verifySignature(payload []byte, signature, secret string) bool {
 // @Success 200 {object} map[string]interface{}
 // @Router /api/v1/webhooks/jambopay [post]
 func (h *WebhookHandler) HandleJamboPay(c *gin.Context) {
-	payload, err := io.ReadAll(c.Request.Body)
+	payload, err := readWebhookBody(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read body or payload too large"})
 		return
 	}
-	defer c.Request.Body.Close()
 
 	// Verify HMAC-SHA256 signature from JamboPay
 	signature := c.GetHeader("X-JamboPay-Signature")
@@ -82,12 +91,11 @@ func (h *WebhookHandler) HandleJamboPay(c *gin.Context) {
 // @Success 200 {object} map[string]interface{}
 // @Router /api/v1/webhooks/perpay [post]
 func (h *WebhookHandler) HandlePerpay(c *gin.Context) {
-	payload, err := io.ReadAll(c.Request.Body)
+	payload, err := readWebhookBody(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read body or payload too large"})
 		return
 	}
-	defer c.Request.Body.Close()
 
 	// Verify HMAC-SHA256 signature from PerPay
 	signature := c.GetHeader("X-Perpay-Signature")
