@@ -110,17 +110,26 @@ func main() {
 		os.Exit(1)
 	}
 
-	// --- 6. Connect to MinIO ---
-	minioClient, err := storage.NewMinIOClient(
-		cfg.MinIOEndpoint,
-		cfg.MinIOAccessKey,
-		cfg.MinIOSecretKey,
-		cfg.MinIOBucket,
-		cfg.MinIOUseSSL,
-	)
-	if err != nil {
-		slog.Error("failed to connect to MinIO", slog.String("error", err.Error()))
-		os.Exit(1)
+	// --- 6. Connect to MinIO (optional — non-fatal if unavailable) ---
+	var minioClient *storage.MinIOClient
+	if cfg.MinIOEndpoint != "" {
+		mc, err := storage.NewMinIOClient(
+			cfg.MinIOEndpoint,
+			cfg.MinIOAccessKey,
+			cfg.MinIOSecretKey,
+			cfg.MinIOBucket,
+			cfg.MinIOUseSSL,
+		)
+		if err != nil {
+			slog.Warn("MinIO unavailable — document upload/download disabled",
+				slog.String("endpoint", cfg.MinIOEndpoint),
+				slog.String("error", err.Error()),
+			)
+		} else {
+			minioClient = mc
+		}
+	} else {
+		slog.Warn("MinIO not configured — document upload/download disabled")
 	}
 
 
@@ -376,6 +385,7 @@ func main() {
 		auth.POST("/login", authHandler.Login)
 		auth.POST("/refresh", authHandler.Refresh)
 		auth.POST("/change-password", adminHandler.ChangePassword) // Password change for all users
+		auth.GET("/lookup", authHandler.Lookup)                    // USSD user identification
 	}
 
 	webhooks := v1.Group("/webhooks")
@@ -385,8 +395,9 @@ func main() {
 	}
 
 	// API v1 — authenticated endpoints
+	serviceAPIKey := os.Getenv("SERVICE_API_KEY")
 	secured := v1.Group("")
-	secured.Use(middleware.JWTAuth(jwtManager))
+	secured.Use(middleware.JWTAuth(jwtManager, serviceAPIKey))
 	{
 		// Current user
 		secured.GET("/auth/me", authHandler.Me)

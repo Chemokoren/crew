@@ -245,6 +245,16 @@ func (s *AuthService) GetUserByID(ctx context.Context, id uuid.UUID) (*models.Us
 	return s.userRepo.GetByID(ctx, id)
 }
 
+// GetUserByPhone retrieves a user by their phone number.
+// Used by the USSD gateway to identify registered users.
+func (s *AuthService) GetUserByPhone(ctx context.Context, phone string) (*models.User, error) {
+	user, err := s.userRepo.GetByPhone(ctx, phone)
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	return user, nil
+}
+
 // DisableAccount deactivates a user account (admin only).
 func (s *AuthService) DisableAccount(ctx context.Context, userID uuid.UUID) error {
 	user, err := s.userRepo.GetByID(ctx, userID)

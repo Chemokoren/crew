@@ -1,0 +1,19 @@
+# Binaries
+bin/
+*.exe
+*.out
+
+# Environment
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Test
+coverage.out
+coverage.html
+
+# Build
+tmp/

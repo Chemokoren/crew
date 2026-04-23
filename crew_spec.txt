@@ -1,0 +1,480 @@
+PRODUCT REQUIREMENTS DOCUMENT
+(PRD)
+Product Name: AMY MIS (CrewPay Management
+Information System)
+
+1. PRODUCT OVERVIEW
+1.1 Purpose
+AMY MIS is a workforce, earnings, and financial management platform designed for
+matatu, boda boda, and informal sector workers, SACCOs, and transport operators across
+Africa.
+It enables:
+●​
+●​
+●​
+●​
+●​
+●​
+
+Digital management of crew operations and assignments
+Real-time earnings tracking at shift/ride level
+Automated daily payouts into a digital wallet
+Seamless statutory compliance and payroll processing
+Creation of a verifiable financial identity layer
+Access to credit, insurance, and other financial services
+
+Core Product Principle
+IDENTITY → ASSIGNMENT → EARNINGS → WALLET → DEDUCTIONS → FINANCIAL
+PROFILE
+
+1.2 Problem Statement
+The informal transport and workforce ecosystem suffers from:
+●​
+●​
+●​
+●​
+
+Unstructured, cash-based, and untraceable earnings
+No linkage between work performed and income received
+Lack of transparency across vehicles, routes, and SACCOs
+Poor statutory compliance (SHA, NSSF, Housing Levy)
+
+●​ No reliable financial records → limited access to credit
+●​ Fragmented systems (attendance, payroll, payments disconnected)
+
+1.3 Solution
+AMY MIS provides:
+●​
+●​
+●​
+●​
+●​
+●​
+
+A centralized identity & crew registry
+A real-time assignment & earnings engine (core innovation)
+Automated wallet payouts via JamboPay
+Payroll & statutory compliance via Perpay
+A financial data layer powering lending & insurance
+Multi-channel access:
+○​ Mobile App
+○​ USSD (feature phones)
+○​ Web Dashboard
+○​ APIs
+
+2. GOALS & OBJECTIVES
+2.1 Business Goals
+●​
+●​
+●​
+●​
+
+Digitize workforce operations in informal sectors
+Become the financial operating system for transport workers
+Enable embedded financial services (loans, insurance)
+Drive high-volume transaction processing
+
+2.2 Product Goals
+●​
+●​
+●​
+●​
+●​
+●​
+
+Enable real-time earnings visibility
+Support daily automated payouts
+Ensure traceability of earnings to work performed
+Achieve automated statutory compliance
+Build credible financial identities
+
+2.3 Success Metrics (KPIs)
+Category
+
+Metrics
+
+Adoption
+
+# SACCOs, # active crew
+
+Financial
+
+Tx volume, payout success
+rate (>98%)
+
+Earnings
+
+% earnings traceable to
+assignments
+
+Compliance
+
+% contributing to SHA/NSSF
+
+Credit
+
+Loan volume, repayment rate
+(>85%)
+
+Engagement
+
+Daily active crew users
+
+3. USERS & PERSONAS
+Persona
+
+Description
+
+Core Actions
+
+SACCO Admin
+
+Manages operations, crew,
+vehicles
+
+Assign crew, fund wallet, run
+payroll
+
+Crew Member
+
+Driver/conductor/rider
+
+Track earnings, withdraw
+funds, access loans
+
+Lender
+
+Bank/MFI
+
+Evaluate credit, disburse loans
+
+Insurance Provider
+
+Insurer
+
+Enroll users, collect premiums
+
+System Admin
+
+Platform operator
+
+Monitor system, audit, manage
+risks
+
+4. CORE SYSTEM MODULES
+4.1 Identity & Registry
+●​
+●​
+●​
+●​
+
+Unique crew ID (cross-SACCO)
+KYC (IPRS integration)
+Role management
+Multi-SACCO association
+
+4.2 Assignment & Operations Engine
+●​
+●​
+●​
+●​
+
+Crew ↔ Vehicle ↔ SACCO ↔ Route mapping
+Shift tracking (start/end)
+Multi-assignment per day
+Cross-SACCO movement support
+
+4.3 Earnings Engine
+●​ Earnings per assignment/shift
+●​ Configurable earning models:
+○​ Fixed
+○​ Commission
+○​ Hybrid
+●​ Daily aggregation across:
+○​ Vehicles
+○​ SACCOs
+
+4.4 Wallet & Payments
+●​
+●​
+●​
+●​
+●​
+
+Wallet ledger per crew
+SACCO float management
+Automated payouts via JamboPay
+Transaction tracking
+Withdrawals & top-ups
+
+4.5 Payroll & Compliance
+●​ Statutory deductions:
+○​ SHA
+○​ NSSF
+○​ Housing Levy
+●​ Payroll processing via Perpay
+●​ Payslips & reports
+
+4.6 Financial Services Layer
+●​ Credit scoring (based on earnings consistency)
+●​ Loan lifecycle management
+●​ Insurance enrollment & premium deduction
+
+4.7 Reporting & Analytics
+●​
+●​
+●​
+●​
+
+Earnings reports (per crew/vehicle/SACCO)
+Attendance reports
+Financial summaries
+Compliance dashboards
+
+5. FEATURE SET
+5.1 Crew App
+Home
+●​ Wallet balance
+●​ Today’s earnings
+●​ Active assignment
+
+Earnings
+●​ Daily / weekly / monthly
+●​ Per assignment breakdown
+
+My Work
+●​ Assignment history
+●​ Vehicles worked
+●​ Hours & earnings
+
+Wallet
+●​ Balance, withdraw, top-up
+●​ Transactions
+
+Loans (Phase 3)
+●​ Apply, track, repay
+
+Insurance (Phase 3)
+●​ Policies, claims
+
+Deductions
+●​ SHA, NSSF, Housing Levy
+
+5.2 USSD
+1. Check Balance
+2. Withdraw
+3. Earnings
+4. Last Payment
+5. Loan Status
+6. Register
+
+5.3 Admin Dashboard
+Dashboard
+●​ Payments overview
+●​ Active crew
+●​ Earnings summary
+
+Crew Management
+●​ Add/edit/remove crew
+
+Assignments (NEW CORE)
+●​ Assign crew to vehicles
+●​ Track shifts
+
+Earnings (NEW)
+●​ Per crew / vehicle / SACCO
+
+Payroll
+●​ Run, review, approve
+
+Wallet Management
+●​ SACCO float
+●​ Payment tracking
+
+Compliance
+●​ Statutory reporting
+
+6. USER STORIES
+Crew
+●​
+●​
+●​
+●​
+
+Track real-time earnings
+View all assignments across SACCOs
+See deduction breakdowns
+Access credit based on earnings
+
+SACCO Admin
+●​ Assign crew to vehicles
+●​ Track earnings per vehicle
+●​ Fund wallet and monitor payouts
+
+Lender
+●​ Access verified income data
+
+Insurance
+●​ Enroll users and automate premium deductions
+
+7. FUNCTIONAL REQUIREMENTS
+Module
+
+Requirements
+
+Identity
+
+Unique ID, KYC, multi-SACCO
+
+Assignment
+
+Multi-shift tracking, overlaps
+
+Earnings
+
+Real-time calculation, aggregation
+
+Wallet
+
+Ledger, payouts, reconciliation
+
+Compliance
+
+Deduction automation, payroll
+
+Credit
+
+Scoring, loan tracking
+
+8. NON-FUNCTIONAL REQUIREMENTS
+●​
+●​
+●​
+●​
+●​
+●​
+
+Performance: Real-time earnings updates
+Reliability: 99.9% uptime
+Security: Encryption, RBAC, audit logs
+Scalability: Thousands of concurrent users
+Offline Support: Assignment capture offline
+USSD Constraints: <60s sessions
+
+9. INTEGRATIONS
+Type
+
+Integration
+
+Purpose
+
+Payments
+
+JamboPay
+
+Wallet & payouts
+
+Payroll
+
+Perpay
+
+Compliance
+
+Identity
+
+IPRS
+
+KYC
+
+Future
+
+Banks, Insurance APIs
+
+Financial services
+
+10. RISKS & MITIGATION
+Risk
+
+Mitigation
+
+SACCO resistance
+
+ROI demonstration
+
+Fraud (fake hours)
+
+Assignment validation, audit logs
+
+Payment failures
+
+Retry + queue system
+
+Multi-SACCO conflicts
+
+Central identity system
+
+11. MVP SCOPE
+Phase 1
+●​
+●​
+●​
+●​
+●​
+●​
+●​
+
+Crew registry (KYC)
+Assignment tracking
+Earnings engine (MANDATORY)
+Wallet payouts (JamboPay)
+USSD (basic)
+App (basic dashboard)
+Admin dashboard (basic)
+
+Phase 2
+●​ Payroll + compliance (Perpay)
+●​ Reporting
+
+Phase 3
+●​ Loans
+●​ Insurance
+
+12. FUTURE ROADMAP
+●​
+●​
+●​
+●​
+●​
+
+AI credit scoring
+Predictive earnings
+Savings products
+POS fare integration
+Regional expansion
+
+13. OPEN QUESTIONS
+●​
+●​
+●​
+●​
+●​
+
+Data ownership (SACCO vs platform)
+Dispute resolution workflows
+Float shortage handling
+Regulatory licensing scope
+Offline-first architecture depth
+
+AMY MIS is: A Workforce Financial Operating System for Informal Economies
+NOT:
+
+❌
+❌
+
+●​ Just a wallet
+●​ Just payroll
+BUT:
+
+A system where every earning is traceable, verifiable, and financeable
+
+

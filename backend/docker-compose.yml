@@ -24,12 +24,12 @@ services:
       - "5432:5432"
     environment:
       POSTGRES_DB: amymis
-      POSTGRES_USER: amymis
-      POSTGRES_PASSWORD: amymis_dev
+      POSTGRES_USER: jp
+      POSTGRES_PASSWORD: "jp####"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U amymis -d amymis"]
+      test: ["CMD-SHELL", "pg_isready -U jp -d amymis"]
       interval: 5s
       timeout: 5s
       retries: 5

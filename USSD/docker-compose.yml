@@ -1,0 +1,45 @@
+services:
+  # --- USSD Gateway ---
+  ussd:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8090:8090"
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '1.0'
+        reservations:
+          memory: 64M
+          cpus: '0.25'
+
+  # --- Redis (shared with backend or dedicated) ---
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"  # Different host port to avoid conflict with backend Redis
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --timeout 180
+      --tcp-keepalive 60
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  redis_data:

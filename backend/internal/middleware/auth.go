@@ -15,7 +15,18 @@ const (
 )
 
 // JWTAuth validates the Bearer token and injects claims into the Gin context.
-func JWTAuth(jwtManager *jwt.Manager) gin.HandlerFunc {
+// Supports two authentication modes:
+//  1. JWT token: Standard user authentication
+//  2. Service API key: Trusted microservice-to-microservice calls (e.g., USSD gateway)
+func JWTAuth(jwtManager *jwt.Manager, serviceAPIKeys ...string) gin.HandlerFunc {
+	// Build a set of valid API keys for O(1) lookup
+	keySet := make(map[string]bool, len(serviceAPIKeys))
+	for _, k := range serviceAPIKeys {
+		if k != "" {
+			keySet[k] = true
+		}
+	}
+
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
@@ -29,7 +40,20 @@ func JWTAuth(jwtManager *jwt.Manager) gin.HandlerFunc {
 			return
 		}
 
-		claims, err := jwtManager.VerifyToken(parts[1])
+		token := parts[1]
+
+		// Check if this is a service API key (trusted internal service)
+		if keySet[token] {
+			// Inject synthetic system-admin claims for service accounts
+			c.Set(AuthUserKey, &jwt.Claims{
+				SystemRole: types.RoleSystemAdmin,
+			})
+			c.Next()
+			return
+		}
+
+		// Otherwise, validate as JWT
+		claims, err := jwtManager.VerifyToken(token)
 		if err != nil {
 			abortUnauthorized(c, "Invalid or expired token")
 			return

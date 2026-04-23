@@ -25,6 +25,11 @@ func NewDocumentHandler(svc *service.DocumentService, minioClient *storage.MinIO
 }
 
 func (h *DocumentHandler) Upload(c *gin.Context) {
+	if h.minioClient == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "File storage (MinIO) is not available"})
+		return
+	}
+
 	claims := middleware.GetClaims(c)
 	if claims == nil {
 		Unauthorized(c, "Authentication required")
@@ -103,6 +108,11 @@ func (h *DocumentHandler) Upload(c *gin.Context) {
 }
 
 func (h *DocumentHandler) Download(c *gin.Context) {
+	if h.minioClient == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "File storage (MinIO) is not available"})
+		return
+	}
+
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		BadRequest(c, "Invalid document ID")

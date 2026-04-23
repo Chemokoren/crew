@@ -116,6 +116,32 @@ func (h *AuthHandler) Me(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, dto.UserToResponse(user))
 }
 
+// GET /api/v1/auth/lookup?phone=+254712345678
+// Public endpoint used by USSD gateway to identify registered users.
+// Returns minimal user info (no sensitive data).
+func (h *AuthHandler) Lookup(c *gin.Context) {
+	phone := c.Query("phone")
+	if phone == "" {
+		BadRequest(c, "phone query parameter is required")
+		return
+	}
+
+	user, err := h.authSvc.GetUserByPhone(c.Request.Context(), phone)
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+
+	// Return only safe, minimal fields needed by USSD gateway
+	SuccessResponse(c, http.StatusOK, gin.H{
+		"id":             user.ID,
+		"phone":          user.Phone,
+		"system_role":    user.SystemRole,
+		"crew_member_id": user.CrewMemberID,
+		"is_active":      user.IsActive,
+	})
+}
+
 // MapServiceError maps domain errors to HTTP responses. Exported for reuse by other handlers.
 func MapServiceError(c *gin.Context, err error) {
 	switch {
