@@ -85,19 +85,47 @@ func NewManager(logger *slog.Logger, providers ...Provider) *Manager {
 }
 
 // SubmitPayroll submits a payroll request using the primary provider.
+// Falls back to the next provider in the chain on failure.
 func (m *Manager) SubmitPayroll(ctx context.Context, req SubmitRequest) (*SubmitResult, error) {
 	m.mu.RLock()
-	primary := m.providers[0]
+	providers := m.providers
 	m.mu.RUnlock()
-	return primary.SubmitPayroll(ctx, req)
+
+	var lastErr error
+	for _, p := range providers {
+		result, err := p.SubmitPayroll(ctx, req)
+		if err == nil {
+			return result, nil
+		}
+		lastErr = err
+		m.logger.Warn("payroll provider failed, trying next",
+			slog.String("provider", p.Name()),
+			slog.String("error", err.Error()),
+		)
+	}
+	return nil, fmt.Errorf("all payroll providers failed: %w", lastErr)
 }
 
-// GetStatus queries processing status.
+// GetStatus queries processing status from the primary provider.
+// Falls back to the next provider in the chain on failure.
 func (m *Manager) GetStatus(ctx context.Context, correlationID string) (*StatusResult, error) {
 	m.mu.RLock()
-	primary := m.providers[0]
+	providers := m.providers
 	m.mu.RUnlock()
-	return primary.GetStatus(ctx, correlationID)
+
+	var lastErr error
+	for _, p := range providers {
+		result, err := p.GetStatus(ctx, correlationID)
+		if err == nil {
+			return result, nil
+		}
+		lastErr = err
+		m.logger.Warn("payroll status check failed, trying next",
+			slog.String("provider", p.Name()),
+			slog.String("error", err.Error()),
+		)
+	}
+	return nil, fmt.Errorf("all payroll providers failed for status check: %w", lastErr)
 }
 
 // SetPrimary reorders providers so the named provider becomes primary.
@@ -113,4 +141,15 @@ func (m *Manager) SetPrimary(name string) error {
 		}
 	}
 	return fmt.Errorf("payroll provider %q not found", name)
+}
+
+// ProviderNames returns the names of all registered providers in order (primary first).
+func (m *Manager) ProviderNames() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	names := make([]string, len(m.providers))
+	for i, p := range m.providers {
+		names[i] = p.Name()
+	}
+	return names
 }

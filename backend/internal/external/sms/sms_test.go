@@ -37,6 +37,11 @@ func (m *mockProvider) Send(ctx context.Context, phone, message string) (*SendRe
 	return &SendResult{Provider: m.name, Success: true, MessageID: "mock-msg-001"}, nil
 }
 func (m *mockProvider) SendBulk(ctx context.Context, phones []string, message string) ([]SendResult, error) {
+	// If the provider has a send error, the entire bulk operation fails
+	// (simulates auth failure, network timeout, etc.)
+	if m.sendErr != nil {
+		return nil, m.sendErr
+	}
 	results := make([]SendResult, len(phones))
 	for i, p := range phones {
 		r, _ := m.Send(ctx, p, message)
@@ -123,6 +128,50 @@ func TestManagerSendBulk(t *testing.T) {
 	}
 	if len(results) != 3 {
 		t.Errorf("results count = %d, want 3", len(results))
+	}
+}
+
+func TestManagerSendBulkFallback(t *testing.T) {
+	primary := &mockProvider{name: "primary", sendErr: fmt.Errorf("bulk fail")}
+	fallback := &mockProvider{name: "fallback"}
+	mgr := NewManager(testLogger(), primary, fallback)
+
+	phones := []string{"+254700000001", "+254700000002"}
+	results, err := mgr.SendBulk(context.Background(), phones, "Fallback bulk")
+	if err != nil {
+		t.Fatalf("SendBulk should fallback: %v", err)
+	}
+	if len(results) != 2 {
+		t.Errorf("results count = %d, want 2", len(results))
+	}
+	for _, r := range results {
+		if r.Provider != "fallback" {
+			t.Errorf("result provider = %q, want fallback", r.Provider)
+		}
+	}
+}
+
+func TestManagerProviderNames(t *testing.T) {
+	p1 := &mockProvider{name: "optimize"}
+	p2 := &mockProvider{name: "africastalking"}
+	mgr := NewManager(testLogger(), p1, p2)
+
+	names := mgr.ProviderNames()
+	if len(names) != 2 {
+		t.Fatalf("ProviderNames = %d, want 2", len(names))
+	}
+	if names[0] != "optimize" {
+		t.Errorf("names[0] = %q, want optimize", names[0])
+	}
+	if names[1] != "africastalking" {
+		t.Errorf("names[1] = %q, want africastalking", names[1])
+	}
+
+	// After SetPrimary, order should change
+	mgr.SetPrimary("africastalking")
+	names = mgr.ProviderNames()
+	if names[0] != "africastalking" {
+		t.Errorf("after SetPrimary, names[0] = %q, want africastalking", names[0])
 	}
 }
 

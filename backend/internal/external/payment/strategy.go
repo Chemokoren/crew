@@ -115,3 +115,30 @@ func (m *Manager) CheckBalance(ctx context.Context, accountNo string) (*BalanceR
 	m.mu.RUnlock()
 	return primary.CheckBalance(ctx, accountNo)
 }
+
+// SetPrimary reorders providers so the named provider becomes primary.
+// This allows runtime switching without a restart.
+func (m *Manager) SetPrimary(name string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for i, p := range m.providers {
+		if p.Name() == name {
+			m.providers = append([]Provider{p}, append(m.providers[:i], m.providers[i+1:]...)...)
+			m.logger.Info("payment primary provider switched", slog.String("provider", name))
+			return nil
+		}
+	}
+	return fmt.Errorf("payment provider %q not found", name)
+}
+
+// ProviderNames returns the names of all registered providers in order (primary first).
+func (m *Manager) ProviderNames() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	names := make([]string, len(m.providers))
+	for i, p := range m.providers {
+		names[i] = p.Name()
+	}
+	return names
+}

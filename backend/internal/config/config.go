@@ -34,7 +34,40 @@ type Config struct {
 	MinIOBucket    string // MinIO bucket name (default: amy-mis)
 	MinIOUseSSL    bool   // Use SSL for MinIO (default: false)
 
+	// =============================================
+	// INTEGRATION ENABLE/DISABLE & PRIMARY PROVIDER
+	// =============================================
+	// These flags allow zero-downtime vendor switching.
+	// Set *_ENABLED=false to disable a provider without removing credentials.
+	// Set *_PRIMARY to choose the active primary provider.
+	// Disabled providers are skipped entirely; enabled providers are chained
+	// in order: primary first, then remaining as fallbacks.
+
+	// SMS provider configuration
+	SMSPrimaryProvider string // Primary SMS provider: "optimize" | "africastalking" (default: optimize)
+	SMSOptimizeEnabled bool   // Enable Optimize SMS provider (default: true if credentials present)
+	SMSATEnabled       bool   // Enable Africa's Talking SMS provider (default: true if credentials present)
+
+	// Payment/payout provider configuration
+	PaymentPrimaryProvider string // Primary payment provider: "jambopay" | "mpesa" (default: jambopay)
+	PaymentJamboPayEnabled bool   // Enable JamboPay payment provider (default: true if credentials present)
+	PaymentMpesaEnabled    bool   // Enable M-Pesa direct payment provider (default: true if credentials present)
+
+	// Payroll provider configuration
+	PayrollPrimaryProvider string // Primary payroll provider: "perpay" (default: perpay)
+	PayrollPerpayEnabled   bool   // Enable PerPay payroll provider (default: true if credentials present)
+
+	// Identity/KYC provider configuration
+	IdentityPrimaryProvider string // Primary identity provider: "iprs" (default: iprs)
+	IdentityIPRSEnabled     bool   // Enable IPRS identity verification (default: true if credentials present)
+
+	// Storage provider configuration
+	StoragePrimaryProvider string // Primary storage provider: "minio" | "s3" (default: minio)
+	StorageMinIOEnabled    bool   // Enable MinIO storage (default: true if credentials present)
+
+	// =============================================
 	// SMS — Optimize (default provider)
+	// =============================================
 	SMSClientID           string // Optimize SMS client ID
 	SMSClientSecret       string // Optimize SMS client secret
 	SMSTokenURL           string // Optimize SMS OAuth2 token URL
@@ -53,6 +86,13 @@ type Config struct {
 	JamboPayClientID     string // JamboPay OAuth2 client ID
 	JamboPayClientSecret string // JamboPay OAuth2 client secret
 	JamboPayBaseURL      string // JamboPay API base URL
+
+	// M-Pesa Direct (alternative payment provider — future)
+	MpesaConsumerKey    string // M-Pesa consumer key
+	MpesaConsumerSecret string // M-Pesa consumer secret
+	MpesaBaseURL        string // M-Pesa API base URL
+	MpesaShortCode      string // M-Pesa shortcode
+	MpesaPasskey        string // M-Pesa passkey
 
 	// PerPay (payroll)
 	PerpayClientID     string // PerPay OAuth2 client ID
@@ -97,6 +137,22 @@ func Load() (*Config, error) {
 		MinIOSecretKey:   os.Getenv("MINIO_SECRET_KEY"),
 		MinIOBucket:      getEnv("MINIO_BUCKET", "amy-mis"),
 		MinIOUseSSL:      getEnvBool("MINIO_USE_SSL", false),
+
+		// Integration enable/disable & primary provider selection
+		// Defaults: enabled if credentials are present, can be explicitly overridden
+		SMSPrimaryProvider:     getEnv("SMS_PRIMARY_PROVIDER", "optimize"),
+		SMSOptimizeEnabled:     getEnvBool("SMS_OPTIMIZE_ENABLED", true),
+		SMSATEnabled:           getEnvBool("SMS_AT_ENABLED", true),
+		PaymentPrimaryProvider: getEnv("PAYMENT_PRIMARY_PROVIDER", "jambopay"),
+		PaymentJamboPayEnabled: getEnvBool("PAYMENT_JAMBOPAY_ENABLED", true),
+		PaymentMpesaEnabled:    getEnvBool("PAYMENT_MPESA_ENABLED", false),
+		PayrollPrimaryProvider: getEnv("PAYROLL_PRIMARY_PROVIDER", "perpay"),
+		PayrollPerpayEnabled:   getEnvBool("PAYROLL_PERPAY_ENABLED", true),
+		IdentityPrimaryProvider: getEnv("IDENTITY_PRIMARY_PROVIDER", "iprs"),
+		IdentityIPRSEnabled:    getEnvBool("IDENTITY_IPRS_ENABLED", true),
+		StoragePrimaryProvider: getEnv("STORAGE_PRIMARY_PROVIDER", "minio"),
+		StorageMinIOEnabled:    getEnvBool("STORAGE_MINIO_ENABLED", true),
+
 		// SMS — Optimize
 		SMSClientID:       os.Getenv("SMS_CLIENT_ID"),
 		SMSClientSecret:   os.Getenv("SMS_CLIENT_SECRET"),
@@ -116,6 +172,13 @@ func Load() (*Config, error) {
 		JamboPayClientID:     os.Getenv("JAMBOPAY_CLIENT_ID"),
 		JamboPayClientSecret: os.Getenv("JAMBOPAY_CLIENT_SECRET"),
 		JamboPayBaseURL:      os.Getenv("JAMBOPAY_BASE_URL"),
+
+		// M-Pesa Direct
+		MpesaConsumerKey:    os.Getenv("MPESA_CONSUMER_KEY"),
+		MpesaConsumerSecret: os.Getenv("MPESA_CONSUMER_SECRET"),
+		MpesaBaseURL:        os.Getenv("MPESA_BASE_URL"),
+		MpesaShortCode:      os.Getenv("MPESA_SHORTCODE"),
+		MpesaPasskey:        os.Getenv("MPESA_PASSKEY"),
 
 		// PerPay
 		PerpayClientID:     os.Getenv("PERPAY_CLIENT_ID"),

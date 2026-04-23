@@ -78,3 +78,52 @@ func TestManagerAllProvidersFail(t *testing.T) {
 		t.Error("should fail when all providers fail")
 	}
 }
+
+func TestManagerSetPrimary(t *testing.T) {
+	p1 := &mockIdentityProvider{name: "iprs"}
+	p2 := &mockIdentityProvider{name: "alternative-kyc"}
+	mgr := NewManager(testLogger(), p1, p2)
+
+	if err := mgr.SetPrimary("alternative-kyc"); err != nil {
+		t.Fatalf("SetPrimary: %v", err)
+	}
+
+	result, err := mgr.VerifyCitizen(context.Background(), VerifyRequest{IDNumber: "12345678"})
+	if err != nil {
+		t.Fatalf("VerifyCitizen: %v", err)
+	}
+	if result.Provider != "alternative-kyc" {
+		t.Errorf("after SetPrimary, Provider = %q, want alternative-kyc", result.Provider)
+	}
+}
+
+func TestManagerSetPrimaryNotFound(t *testing.T) {
+	mgr := NewManager(testLogger(), &mockIdentityProvider{name: "iprs"})
+	if err := mgr.SetPrimary("nonexistent"); err == nil {
+		t.Error("SetPrimary should fail for unknown provider")
+	}
+}
+
+func TestManagerProviderNames(t *testing.T) {
+	p1 := &mockIdentityProvider{name: "iprs"}
+	p2 := &mockIdentityProvider{name: "alternative-kyc"}
+	mgr := NewManager(testLogger(), p1, p2)
+
+	names := mgr.ProviderNames()
+	if len(names) != 2 {
+		t.Fatalf("ProviderNames = %d, want 2", len(names))
+	}
+	if names[0] != "iprs" {
+		t.Errorf("names[0] = %q, want iprs", names[0])
+	}
+	if names[1] != "alternative-kyc" {
+		t.Errorf("names[1] = %q, want alternative-kyc", names[1])
+	}
+
+	// After SetPrimary, order should change
+	mgr.SetPrimary("alternative-kyc")
+	names = mgr.ProviderNames()
+	if names[0] != "alternative-kyc" {
+		t.Errorf("after SetPrimary, names[0] = %q, want alternative-kyc", names[0])
+	}
+}

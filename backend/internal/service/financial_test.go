@@ -252,7 +252,8 @@ func TestCompleteAssignment_TriggersNotification(t *testing.T) {
 	auditSvc := NewAuditService(mock.NewAuditRepo(), logger)
 
 	walletSvc := NewWalletService(walletRepo, crewRepo, auditSvc, logger)
-	notifSvc := NewNotificationService(notifRepo, userRepo, nil, logger)
+	prefRepo := mock.NewNotificationPreferenceRepo()
+	notifSvc := NewNotificationService(notifRepo, prefRepo, userRepo, nil, logger)
 	assignmentSvc := NewAssignmentService(mock.NewAssignmentRepo(), &mockEarningRepo{}, walletSvc, notifSvc, nil, logger)
 
 	ctx := context.Background()

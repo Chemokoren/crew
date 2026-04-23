@@ -147,22 +147,30 @@ func main() {
 	// --- 9. Initialize JWT manager ---
 	jwtManager := jwt.NewManager(cfg.JWTSecret, cfg.JWTExpiryMinutes, cfg.JWTRefreshDays)
 
-	// --- 10. Initialize external integration managers (Identity) ---
+	// --- 10. Initialize external integration managers ---
+	// All integrations follow the Strategy pattern with config-driven enable/disable.
+	// Set *_ENABLED=false to disable a provider, or change *_PRIMARY_PROVIDER to switch.
+
+	// --- 10a. Identity/KYC: IPRS ---
 	var iprsProvider *iprs.IPRSProvider
-	if cfg.IPRSClientID != "" {
+	if cfg.IdentityIPRSEnabled && cfg.IPRSClientID != "" {
 		iprsProvider = iprs.NewIPRSProvider(iprs.IPRSConfig{
 			BaseURL:             cfg.IPRSBaseURL,
 			AccessTokenEndpoint: cfg.IPRSTokenEndpoint,
 			ClientID:            cfg.IPRSClientID,
 			ClientSecret:        cfg.IPRSClientSecret,
 		}, logger)
+		slog.Info("IPRS identity provider enabled")
+	} else {
+		slog.Warn("IPRS identity provider disabled",
+			slog.Bool("enabled", cfg.IdentityIPRSEnabled),
+			slog.Bool("credentials_present", cfg.IPRSClientID != ""),
+		)
 	}
 
-	// --- 11. Initialize external integration managers (Strategy pattern) ---
-
-	// SMS: Optimize (default) + Africa's Talking (fallback)
+	// --- 10b. SMS: Optimize (primary) + Africa's Talking (fallback) ---
 	var smsProviders []sms.Provider
-	if cfg.SMSClientID != "" {
+	if cfg.SMSOptimizeEnabled && cfg.SMSClientID != "" {
 		smsProviders = append(smsProviders, sms.NewOptimizeProvider(sms.OptimizeConfig{
 			ClientID:           cfg.SMSClientID,
 			ClientSecret:       cfg.SMSClientSecret,
@@ -172,18 +180,26 @@ func main() {
 			CallbackURL:        cfg.SMSCallbackURL,
 			TokenExpirySeconds: cfg.SMSTokenExpirySec,
 		}, logger))
+		slog.Info("Optimize SMS provider enabled")
 	}
-	if cfg.ATAPIKey != "" {
+	if cfg.SMSATEnabled && cfg.ATAPIKey != "" {
 		smsProviders = append(smsProviders, sms.NewAfricasTalkingProvider(sms.AfricasTalkingConfig{
 			APIKey:    cfg.ATAPIKey,
 			Username:  cfg.ATUsername,
 			Shortcode: cfg.ATShortCode,
 			BaseURL:   cfg.ATBaseURL,
 		}, logger))
+		slog.Info("Africa's Talking SMS provider enabled")
 	}
 	var smsMgr *sms.Manager
 	if len(smsProviders) > 0 {
 		smsMgr = sms.NewManager(logger, smsProviders...)
+		// Set the configured primary (no-op if it's already first)
+		if err := smsMgr.SetPrimary(cfg.SMSPrimaryProvider); err != nil {
+			slog.Warn("SMS primary provider not found, using default order",
+				slog.String("requested", cfg.SMSPrimaryProvider),
+			)
+		}
 	} else {
 		slog.Warn("no SMS providers configured — SMS functionality disabled")
 	}
@@ -192,7 +208,14 @@ func main() {
 	auditSvc := service.NewAuditService(auditRepo, logger)
 	notifSvc := service.NewNotificationService(notificationRepo, notificationPrefRepo, userRepo, smsMgr, logger)
 	authSvc := service.NewAuthService(userRepo, crewRepo, jwtManager, txMgr, logger)
-	crewSvc := service.NewCrewService(crewRepo, iprsProvider, logger)
+
+	// CrewService: IPRS is optional — system continues without it (graceful degradation)
+	var crewIdProvider identity.Provider
+	if iprsProvider != nil {
+		crewIdProvider = iprsProvider
+	}
+	crewSvc := service.NewCrewService(crewRepo, crewIdProvider, logger)
+
 	walletSvc := service.NewWalletService(walletRepo, crewRepo, auditSvc, logger)
 	assignmentSvc := service.NewAssignmentService(assignmentRepo, earningRepo, walletSvc, notifSvc, txMgr, logger)
 	saccoSvc := service.NewSACCOService(saccoRepo, membershipRepo, floatRepo, auditSvc, logger)
@@ -221,47 +244,80 @@ func main() {
 	adminHandler := handler.NewAdminHandler(authSvc, notifSvc, auditRepo, statutoryRateRepo)
 
 
-	// Payment: JamboPay
-	var paymentMgr *payment.Manager
-	if cfg.JamboPayClientID != "" {
+	// --- 13a. Payment: JamboPay (config-driven) ---
+	var paymentProviders []payment.Provider
+	if cfg.PaymentJamboPayEnabled && cfg.JamboPayClientID != "" {
 		jp := jambopay.NewJamboPayProvider(jambopay.JamboPayConfig{
 			BaseURL:      cfg.JamboPayBaseURL,
 			ClientID:     cfg.JamboPayClientID,
 			ClientSecret: cfg.JamboPayClientSecret,
 		}, logger)
-		paymentMgr = payment.NewManager(logger, jp)
+		paymentProviders = append(paymentProviders, jp)
+		slog.Info("JamboPay payment provider enabled")
+	}
+	// Future: M-Pesa direct provider
+	// if cfg.PaymentMpesaEnabled && cfg.MpesaConsumerKey != "" {
+	//     mp := mpesa.NewMpesaProvider(mpesa.MpesaConfig{...}, logger)
+	//     paymentProviders = append(paymentProviders, mp)
+	//     slog.Info("M-Pesa payment provider enabled")
+	// }
+
+	var paymentMgr *payment.Manager
+	if len(paymentProviders) > 0 {
+		paymentMgr = payment.NewManager(logger, paymentProviders...)
+		if err := paymentMgr.SetPrimary(cfg.PaymentPrimaryProvider); err != nil {
+			slog.Warn("payment primary provider not found, using default order",
+				slog.String("requested", cfg.PaymentPrimaryProvider),
+			)
+		}
 	} else {
-		slog.Warn("JamboPay not configured — payout functionality disabled")
+		slog.Warn("no payment providers configured — payout functionality disabled")
 	}
 	
 	// Initialize PayoutService after paymentMgr is available
 	payoutSvc := service.NewPayoutService(walletSvc, paymentMgr, auditSvc, logger)
 	payoutHandler := handler.NewPayoutHandler(payoutSvc)
 
-	// Payroll: PerPay
-	var payrollMgr *payroll.Manager
-	if cfg.PerpayClientID != "" {
+	// --- 13b. Payroll: PerPay (config-driven) ---
+	var payrollProviders []payroll.Provider
+	if cfg.PayrollPerpayEnabled && cfg.PerpayClientID != "" {
 		pp := perpay.NewPerPayProvider(perpay.PerPayConfig{
 			BaseURL:      cfg.PerpayBaseURL,
 			ClientID:     cfg.PerpayClientID,
 			ClientSecret: cfg.PerpayClientSecret,
 		}, logger)
-		payrollMgr = payroll.NewManager(logger, pp)
+		payrollProviders = append(payrollProviders, pp)
+		slog.Info("PerPay payroll provider enabled")
+	}
+
+	var payrollMgr *payroll.Manager
+	if len(payrollProviders) > 0 {
+		payrollMgr = payroll.NewManager(logger, payrollProviders...)
+		if err := payrollMgr.SetPrimary(cfg.PayrollPrimaryProvider); err != nil {
+			slog.Warn("payroll primary provider not found, using default order",
+				slog.String("requested", cfg.PayrollPrimaryProvider),
+			)
+		}
 	} else {
-		slog.Warn("PerPay not configured — payroll submission disabled")
+		slog.Warn("no payroll providers configured — payroll submission disabled")
 	}
 
 	payrollSvc := service.NewPayrollService(payrollRepo, earningRepo, statutoryRateRepo, crewRepo, payrollMgr, logger)
 	payrollHandler := handler.NewPayrollHandler(payrollSvc)
 
-	// Identity: IPRS
+	// --- 13c. Identity manager (wraps IPRS with failover support) ---
 	var identityMgr *identity.Manager
 	if iprsProvider != nil {
 		identityMgr = identity.NewManager(logger, iprsProvider)
+		if err := identityMgr.SetPrimary(cfg.IdentityPrimaryProvider); err != nil {
+			slog.Warn("identity primary provider not found, using default order",
+				slog.String("requested", cfg.IdentityPrimaryProvider),
+			)
+		}
 	} else {
-		slog.Warn("IPRS not configured — identity verification disabled")
+		slog.Warn("no identity providers configured — identity verification disabled")
 	}
-	// identityMgr will be injected into KYC service in a future phase
+	// identityMgr is available for future KYC service injection
 	_ = identityMgr
 
 	webhookSvc := service.NewWebhookService(webhookRepo, payoutSvc, payrollSvc, walletRepo, payrollRepo, logger)

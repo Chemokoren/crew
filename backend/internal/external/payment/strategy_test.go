@@ -152,3 +152,48 @@ func TestPayoutChannelConstants(t *testing.T) {
 		}
 	}
 }
+
+func TestManagerSetPrimary(t *testing.T) {
+	p1 := &mockPaymentProvider{name: "jambopay"}
+	p2 := &mockPaymentProvider{name: "mpesa"}
+	mgr := NewManager(testLogger(), p1, p2)
+
+	if err := mgr.SetPrimary("mpesa"); err != nil {
+		t.Fatalf("SetPrimary: %v", err)
+	}
+
+	result, _ := mgr.InitiatePayout(context.Background(), PayoutRequest{
+		AmountCents: 100000, Channel: ChannelMobile,
+	})
+	if result.Provider != "mpesa" {
+		t.Errorf("after SetPrimary, Provider = %q, want mpesa", result.Provider)
+	}
+}
+
+func TestManagerSetPrimaryNotFound(t *testing.T) {
+	mgr := NewManager(testLogger(), &mockPaymentProvider{name: "jambopay"})
+	if err := mgr.SetPrimary("nonexistent"); err == nil {
+		t.Error("SetPrimary should fail for unknown provider")
+	}
+}
+
+func TestManagerProviderNames(t *testing.T) {
+	p1 := &mockPaymentProvider{name: "jambopay"}
+	p2 := &mockPaymentProvider{name: "mpesa"}
+	mgr := NewManager(testLogger(), p1, p2)
+
+	names := mgr.ProviderNames()
+	if len(names) != 2 {
+		t.Fatalf("ProviderNames = %d, want 2", len(names))
+	}
+	if names[0] != "jambopay" {
+		t.Errorf("names[0] = %q, want jambopay", names[0])
+	}
+
+	// After SetPrimary, order should change
+	mgr.SetPrimary("mpesa")
+	names = mgr.ProviderNames()
+	if names[0] != "mpesa" {
+		t.Errorf("after SetPrimary, names[0] = %q, want mpesa", names[0])
+	}
+}

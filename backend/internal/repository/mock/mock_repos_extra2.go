@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/kibsoft/amy-mis/internal/models"
 	"github.com/kibsoft/amy-mis/internal/repository"
+	"github.com/kibsoft/amy-mis/pkg/errs"
 )
 
 // Mock DocumentRepository
@@ -134,7 +135,10 @@ func (m *NotificationPreferenceRepo) GetByUserID(ctx context.Context, userID uui
 	if p, ok := m.Prefs[userID]; ok {
 		return p, nil
 	}
-	return nil, errors.New("not found")
+	// Must return errs.ErrNotFound — not errors.New("not found") —
+	// because the service uses errors.Is(err, errs.ErrNotFound) to decide
+	// whether to return defaults or propagate a real error.
+	return nil, errs.ErrNotFound
 }
 
 func (m *NotificationPreferenceRepo) Upsert(ctx context.Context, p *models.NotificationPreference) error {

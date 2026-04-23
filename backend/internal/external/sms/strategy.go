@@ -129,3 +129,14 @@ func (m *Manager) SetPrimary(name string) error {
 
 	return fmt.Errorf("SMS provider %q not found", name)
 }
+
+// ProviderNames returns the names of all registered providers in order (primary first).
+func (m *Manager) ProviderNames() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	names := make([]string, len(m.providers))
+	for i, p := range m.providers {
+		names[i] = p.Name()
+	}
+	return names
+}

@@ -35,7 +35,8 @@ func setupApiTestEnv() (*gin.Engine, *WalletHandler, *CrewHandler, *AssignmentHa
 	auditSvc := service.NewAuditService(mock.NewAuditRepo(), logger)
 	walletSvc := service.NewWalletService(walletRepo, crewRepo, auditSvc, logger)
 	crewSvc := service.NewCrewService(crewRepo, nil, logger)
-	notifSvc := service.NewNotificationService(notifRepo, userRepo, nil, logger)
+	prefRepo := mock.NewNotificationPreferenceRepo()
+	notifSvc := service.NewNotificationService(notifRepo, prefRepo, userRepo, nil, logger)
 	assignmentSvc := service.NewAssignmentService(assignmentRepo, earningRepo, walletSvc, notifSvc, nil, logger)
 
 	walletHandler := NewWalletHandler(walletSvc)

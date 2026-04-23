@@ -115,3 +115,53 @@ func TestManagerSubmitPayrollFailure(t *testing.T) {
 		t.Error("SubmitPayroll should fail when provider fails")
 	}
 }
+
+func TestManagerSubmitPayrollFallback(t *testing.T) {
+	primary := &mockPayrollProvider{name: "perpay", submitErr: fmt.Errorf("network error")}
+	fallback := &mockPayrollProvider{name: "alternative"}
+	mgr := NewManager(testLogger(), primary, fallback)
+
+	result, err := mgr.SubmitPayroll(context.Background(), SubmitRequest{
+		EmployeeID: "EMP-001", FullName: "Jane Doe",
+	})
+	if err != nil {
+		t.Fatalf("should fallback: %v", err)
+	}
+	if result.Provider != "alternative" {
+		t.Errorf("Provider = %q, want alternative", result.Provider)
+	}
+}
+
+func TestManagerGetStatusFallback(t *testing.T) {
+	primary := &mockPayrollProvider{name: "perpay", statusErr: fmt.Errorf("service down")}
+	fallback := &mockPayrollProvider{name: "alternative"}
+	mgr := NewManager(testLogger(), primary, fallback)
+
+	result, err := mgr.GetStatus(context.Background(), "corr-001")
+	if err != nil {
+		t.Fatalf("should fallback: %v", err)
+	}
+	if result.Provider != "alternative" {
+		t.Errorf("Provider = %q, want alternative", result.Provider)
+	}
+}
+
+func TestManagerProviderNames(t *testing.T) {
+	p1 := &mockPayrollProvider{name: "perpay"}
+	p2 := &mockPayrollProvider{name: "alternative"}
+	mgr := NewManager(testLogger(), p1, p2)
+
+	names := mgr.ProviderNames()
+	if len(names) != 2 {
+		t.Fatalf("ProviderNames = %d, want 2", len(names))
+	}
+	if names[0] != "perpay" {
+		t.Errorf("names[0] = %q, want perpay", names[0])
+	}
+
+	mgr.SetPrimary("alternative")
+	names = mgr.ProviderNames()
+	if names[0] != "alternative" {
+		t.Errorf("after SetPrimary, names[0] = %q, want alternative", names[0])
+	}
+}

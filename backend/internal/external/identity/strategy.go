@@ -75,3 +75,30 @@ func (m *Manager) VerifyCitizen(ctx context.Context, req VerifyRequest) (*Citize
 	}
 	return nil, fmt.Errorf("all identity providers failed: %w", lastErr)
 }
+
+// SetPrimary reorders providers so the named provider becomes primary.
+// This allows runtime switching without a restart.
+func (m *Manager) SetPrimary(name string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for i, p := range m.providers {
+		if p.Name() == name {
+			m.providers = append([]Provider{p}, append(m.providers[:i], m.providers[i+1:]...)...)
+			m.logger.Info("identity primary provider switched", slog.String("provider", name))
+			return nil
+		}
+	}
+	return fmt.Errorf("identity provider %q not found", name)
+}
+
+// ProviderNames returns the names of all registered providers in order (primary first).
+func (m *Manager) ProviderNames() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	names := make([]string, len(m.providers))
+	for i, p := range m.providers {
+		names[i] = p.Name()
+	}
+	return names
+}
