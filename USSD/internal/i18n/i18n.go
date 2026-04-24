@@ -105,6 +105,7 @@ func (t *Translator) loadEnglish() {
 		"menu.register":      "Register",
 		"menu.language":      "Language",
 		"menu.exit":          "Exit",
+		"menu.back":          "Back to Menu",
 
 		// Balance
 		"balance.result": "Your balance: %s",
@@ -187,6 +188,7 @@ func (t *Translator) loadSwahili() {
 		"menu.register":      "Jisajili",
 		"menu.language":      "Lugha",
 		"menu.exit":          "Toka",
+		"menu.back":          "Rudi Menyu",
 
 		// Balance
 		"balance.result": "Salio lako: %s",

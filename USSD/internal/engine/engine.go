@@ -65,7 +65,7 @@ func (e *Engine) Process(ctx context.Context, sess *session.Data, userInput stri
 	case session.StateMainMenu:
 		return e.handleMainMenu(ctx, sess, userInput)
 	case session.StateCheckBalance:
-		return e.handleCheckBalance(ctx, sess)
+		return e.handleCheckBalance(ctx, sess, userInput)
 	case session.StateWithdraw:
 		return e.handleWithdraw(ctx, sess, userInput)
 	case session.StateWithdrawAmount:
@@ -77,13 +77,13 @@ func (e *Engine) Process(ctx context.Context, sess *session.Data, userInput stri
 	case session.StateEarnings:
 		return e.handleEarnings(ctx, sess, userInput)
 	case session.StateEarningsDaily:
-		return e.handleEarningsDaily(ctx, sess)
+		return e.handleEarningsDaily(ctx, sess, userInput)
 	case session.StateEarningsWeekly:
-		return e.handleEarningsWeekly(ctx, sess)
+		return e.handleEarningsWeekly(ctx, sess, userInput)
 	case session.StateEarningsMonthly:
-		return e.handleEarningsMonthly(ctx, sess)
+		return e.handleEarningsMonthly(ctx, sess, userInput)
 	case session.StateLastPayment:
-		return e.handleLastPayment(ctx, sess)
+		return e.handleLastPayment(ctx, sess, userInput)
 	case session.StateLoanStatus:
 		return e.handleLoanStatus(ctx, sess, userInput)
 	case session.StateLoanApply:
@@ -149,7 +149,7 @@ func (e *Engine) handleMainMenu(ctx context.Context, sess *session.Data, input s
 		}
 		sess.PreviousState = sess.CurrentState
 		sess.CurrentState = session.StateCheckBalance
-		return e.handleCheckBalance(ctx, sess)
+		return e.handleCheckBalance(ctx, sess, "")
 
 	case "2": // Withdraw
 		if sess.CrewMemberID == "" {
@@ -173,7 +173,7 @@ func (e *Engine) handleMainMenu(ctx context.Context, sess *session.Data, input s
 		}
 		sess.PreviousState = sess.CurrentState
 		sess.CurrentState = session.StateLastPayment
-		return e.handleLastPayment(ctx, sess)
+		return e.handleLastPayment(ctx, sess, "")
 
 	case "5": // Loan Status
 		if sess.CrewMemberID == "" {
@@ -233,20 +233,25 @@ func (e *Engine) renderMainMenuText(sess *session.Data) string {
 
 // --- Check Balance ---
 
-func (e *Engine) handleCheckBalance(ctx context.Context, sess *session.Data) (*Response, error) {
+func (e *Engine) handleCheckBalance(ctx context.Context, sess *session.Data, input string) (*Response, error) {
+	// Handle back navigation
+	if input == "0" {
+		return e.backToMainMenu(sess), nil
+	}
+
 	wallet, err := e.backendClient.GetWalletBalance(ctx, sess.CrewMemberID)
 	if err != nil {
 		e.logger.Error("balance check failed",
 			slog.String("crew_member_id", sess.CrewMemberID),
 			slog.String("error", err.Error()),
 		)
-		return e.endWithMessage(sess, e.t(sess, "error.service_unavailable")), nil
+		return e.continueWithMessage(sess, e.t(sess, "error.service_unavailable")+"\n0. "+e.t(sess, "menu.back")), nil
 	}
 
 	msg := fmt.Sprintf(e.t(sess, "balance.result"),
 		formatMoney(wallet.BalanceCents, wallet.Currency),
 	)
-	return e.endWithMessage(sess, msg), nil
+	return e.continueWithMessage(sess, msg+"\n0. "+e.t(sess, "menu.back")), nil
 }
 
 // --- Withdraw Flow ---
@@ -333,13 +338,13 @@ func (e *Engine) handleEarnings(ctx context.Context, sess *session.Data, input s
 	switch strings.TrimSpace(input) {
 	case "1": // Today
 		sess.CurrentState = session.StateEarningsDaily
-		return e.handleEarningsDaily(ctx, sess)
+		return e.handleEarningsDaily(ctx, sess, "")
 	case "2": // This week
 		sess.CurrentState = session.StateEarningsWeekly
-		return e.handleEarningsWeekly(ctx, sess)
+		return e.handleEarningsWeekly(ctx, sess, "")
 	case "3": // This month
 		sess.CurrentState = session.StateEarningsMonthly
-		return e.handleEarningsMonthly(ctx, sess)
+		return e.handleEarningsMonthly(ctx, sess, "")
 	case "0": // Back
 		return e.backToMainMenu(sess), nil
 	default:
@@ -347,52 +352,68 @@ func (e *Engine) handleEarnings(ctx context.Context, sess *session.Data, input s
 	}
 }
 
-func (e *Engine) handleEarningsDaily(ctx context.Context, sess *session.Data) (*Response, error) {
+func (e *Engine) handleEarningsDaily(ctx context.Context, sess *session.Data, input string) (*Response, error) {
+	if input == "0" {
+		return e.backToMainMenu(sess), nil
+	}
+
 	summary, err := e.backendClient.GetEarningsSummary(ctx, sess.CrewMemberID, "daily")
 	if err != nil {
-		return e.endWithMessage(sess, e.t(sess, "error.service_unavailable")), nil
+		return e.continueWithMessage(sess, e.t(sess, "error.service_unavailable")+"\n0. "+e.t(sess, "menu.back")), nil
 	}
 
 	msg := fmt.Sprintf(e.t(sess, "earnings.daily_result"),
 		formatMoney(summary.TotalEarnedCents, summary.Currency),
 		summary.AssignmentCount,
 	)
-	return e.endWithMessage(sess, msg), nil
+	return e.continueWithMessage(sess, msg+"\n0. "+e.t(sess, "menu.back")), nil
 }
 
-func (e *Engine) handleEarningsWeekly(ctx context.Context, sess *session.Data) (*Response, error) {
+func (e *Engine) handleEarningsWeekly(ctx context.Context, sess *session.Data, input string) (*Response, error) {
+	if input == "0" {
+		return e.backToMainMenu(sess), nil
+	}
+
 	summary, err := e.backendClient.GetEarningsSummary(ctx, sess.CrewMemberID, "weekly")
 	if err != nil {
-		return e.endWithMessage(sess, e.t(sess, "error.service_unavailable")), nil
+		return e.continueWithMessage(sess, e.t(sess, "error.service_unavailable")+"\n0. "+e.t(sess, "menu.back")), nil
 	}
 
 	msg := fmt.Sprintf(e.t(sess, "earnings.weekly_result"),
 		formatMoney(summary.TotalEarnedCents, summary.Currency),
 	)
-	return e.endWithMessage(sess, msg), nil
+	return e.continueWithMessage(sess, msg+"\n0. "+e.t(sess, "menu.back")), nil
 }
 
-func (e *Engine) handleEarningsMonthly(ctx context.Context, sess *session.Data) (*Response, error) {
+func (e *Engine) handleEarningsMonthly(ctx context.Context, sess *session.Data, input string) (*Response, error) {
+	if input == "0" {
+		return e.backToMainMenu(sess), nil
+	}
+
 	summary, err := e.backendClient.GetEarningsSummary(ctx, sess.CrewMemberID, "monthly")
 	if err != nil {
-		return e.endWithMessage(sess, e.t(sess, "error.service_unavailable")), nil
+		return e.continueWithMessage(sess, e.t(sess, "error.service_unavailable")+"\n0. "+e.t(sess, "menu.back")), nil
 	}
 
 	msg := fmt.Sprintf(e.t(sess, "earnings.monthly_result"),
 		formatMoney(summary.TotalEarnedCents, summary.Currency),
 	)
-	return e.endWithMessage(sess, msg), nil
+	return e.continueWithMessage(sess, msg+"\n0. "+e.t(sess, "menu.back")), nil
 }
 
 // --- Last Payment ---
 
-func (e *Engine) handleLastPayment(ctx context.Context, sess *session.Data) (*Response, error) {
+func (e *Engine) handleLastPayment(ctx context.Context, sess *session.Data, input string) (*Response, error) {
+	if input == "0" {
+		return e.backToMainMenu(sess), nil
+	}
+
 	tx, err := e.backendClient.GetLastTransaction(ctx, sess.CrewMemberID)
 	if err != nil {
-		return e.endWithMessage(sess, e.t(sess, "error.service_unavailable")), nil
+		return e.continueWithMessage(sess, e.t(sess, "error.service_unavailable")+"\n0. "+e.t(sess, "menu.back")), nil
 	}
 	if tx == nil {
-		return e.endWithMessage(sess, e.t(sess, "payment.no_transactions")), nil
+		return e.continueWithMessage(sess, e.t(sess, "payment.no_transactions")+"\n0. "+e.t(sess, "menu.back")), nil
 	}
 
 	msg := fmt.Sprintf(e.t(sess, "payment.last_result"),
@@ -401,7 +422,7 @@ func (e *Engine) handleLastPayment(ctx context.Context, sess *session.Data) (*Re
 		tx.CreatedAt.Format("02/01/2006 15:04"),
 		tx.Reference,
 	)
-	return e.endWithMessage(sess, msg), nil
+	return e.continueWithMessage(sess, msg+"\n0. "+e.t(sess, "menu.back")), nil
 }
 
 // --- Loan Status Flow ---
