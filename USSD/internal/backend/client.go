@@ -77,6 +77,16 @@ type EarningsSummary struct {
 	AssignmentCount      int    `json:"assignment_count"`
 }
 
+// EarningItem represents a single earning record from the backend.
+type EarningItem struct {
+	ID              string `json:"id"`
+	CrewMemberID    string `json:"crew_member_id"`
+	AmountCents     int64  `json:"amount_cents"`
+	DeductionsCents int64  `json:"deductions_cents"`
+	EarningType     string `json:"earning_type"`
+	Currency        string `json:"currency"`
+}
+
 // TransactionResponse represents a wallet transaction.
 type TransactionResponse struct {
 	ID              string    `json:"id"`
@@ -162,17 +172,53 @@ func (c *Client) GetWalletBalance(ctx context.Context, crewMemberID string) (*Wa
 }
 
 // GetEarningsSummary retrieves earnings summary for a period.
+// The backend's SummaryDashboard endpoint uses ?date=YYYY-MM-DD for daily summaries.
+// For weekly/monthly, we query the earnings list with date_from/date_to and aggregate.
 func (c *Client) GetEarningsSummary(ctx context.Context, crewMemberID, period string) (*EarningsSummary, error) {
-	resp, err := c.get(ctx, fmt.Sprintf("/api/v1/earnings/summary/%s?period=%s", crewMemberID, period))
+	now := time.Now()
+	var dateFrom string
+
+	switch period {
+	case "daily":
+		dateFrom = now.Format("2006-01-02")
+	case "weekly":
+		dateFrom = now.AddDate(0, 0, -7).Format("2006-01-02")
+	case "monthly":
+		dateFrom = now.AddDate(0, -1, 0).Format("2006-01-02")
+	default:
+		dateFrom = now.Format("2006-01-02")
+	}
+	dateTo := now.Format("2006-01-02")
+
+	// Use the earnings list endpoint with date filters and aggregate client-side.
+	path := fmt.Sprintf("/api/v1/earnings?crew_member_id=%s&date_from=%s&date_to=%s&per_page=100",
+		crewMemberID, dateFrom, dateTo)
+
+	resp, err := c.get(ctx, path)
 	if err != nil {
 		return nil, err
 	}
 
-	var summary EarningsSummary
-	if err := c.parseResponse(resp, &summary); err != nil {
-		return nil, err
+	var earnings []EarningItem
+	if err := c.parseListResponse(resp, &earnings); err != nil {
+		// If no earnings found, return zero summary
+		return &EarningsSummary{
+			TotalEarnedCents: 0,
+			Currency:         "KES",
+			AssignmentCount:  0,
+		}, nil
 	}
-	return &summary, nil
+
+	// Aggregate earnings
+	summary := &EarningsSummary{Currency: "KES"}
+	for _, e := range earnings {
+		summary.TotalEarnedCents += e.AmountCents
+		summary.TotalDeductionsCents += e.DeductionsCents
+		summary.AssignmentCount++
+	}
+	summary.NetAmountCents = summary.TotalEarnedCents - summary.TotalDeductionsCents
+
+	return summary, nil
 }
 
 // GetLastTransaction retrieves the most recent wallet transaction.

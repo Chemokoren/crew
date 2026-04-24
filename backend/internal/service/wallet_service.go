@@ -167,12 +167,12 @@ func (s *WalletService) Debit(ctx context.Context, input DebitInput) (*models.Wa
 
 // GetBalance returns the current wallet balance for a crew member.
 func (s *WalletService) GetBalance(ctx context.Context, crewMemberID uuid.UUID) (*models.Wallet, error) {
-	return s.walletRepo.GetByCrewMemberID(ctx, crewMemberID)
+	return s.GetOrCreateWallet(ctx, crewMemberID)
 }
 
 // GetTransactions returns paginated transaction history for a crew member.
 func (s *WalletService) GetTransactions(ctx context.Context, crewMemberID uuid.UUID, filter repository.TxFilter, page, perPage int) ([]models.WalletTransaction, int64, error) {
-	wallet, err := s.walletRepo.GetByCrewMemberID(ctx, crewMemberID)
+	wallet, err := s.GetOrCreateWallet(ctx, crewMemberID)
 	if err != nil {
 		return nil, 0, err
 	}
