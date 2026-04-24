@@ -44,10 +44,10 @@ func TestData_SetAndGetInput(t *testing.T) {
 func TestData_StateTransitions(t *testing.T) {
 	states := []State{
 		StateInit, StateMainMenu, StateCheckBalance,
-		StateWithdraw, StateWithdrawAmount, StateWithdrawConfirm,
+		StateWithdraw, StateWithdrawAmount, StateWithdrawConfirm, StateWithdrawPIN,
 		StateEarnings, StateLastPayment, StateLoanStatus,
 		StateRegister, StateRegisterName, StateRegisterNationalID,
-		StateRegisterRole, StateRegisterConfirm,
+		StateRegisterRole, StateRegisterPIN, StateRegisterPINConfirm, StateRegisterConfirm,
 		StateLanguageSelect, StateEnd,
 	}
 

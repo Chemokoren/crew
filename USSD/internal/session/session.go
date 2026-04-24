@@ -44,6 +44,8 @@ const (
 	StateRegisterName      State = "REGISTER_NAME"
 	StateRegisterNationalID State = "REGISTER_NATIONAL_ID"
 	StateRegisterRole      State = "REGISTER_ROLE"
+	StateRegisterPIN       State = "REGISTER_PIN"
+	StateRegisterPINConfirm State = "REGISTER_PIN_CONFIRM"
 	StateRegisterConfirm   State = "REGISTER_CONFIRM"
 	StateLanguageSelect    State = "LANGUAGE_SELECT"
 	StateEnd               State = "END"

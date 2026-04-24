@@ -157,6 +157,28 @@ func (c *Client) GetUserByPhone(ctx context.Context, phone string) (*UserRespons
 	return &user, nil
 }
 
+// SetPIN sets the transaction PIN for a user.
+func (c *Client) SetPIN(ctx context.Context, phone, pin string) error {
+	payload := map[string]string{"phone": phone, "pin": pin}
+	resp, err := c.post(ctx, "/api/v1/auth/pin", payload)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}
+
+// VerifyPIN verifies the transaction PIN for a user.
+func (c *Client) VerifyPIN(ctx context.Context, phone, pin string) error {
+	payload := map[string]string{"phone": phone, "pin": pin}
+	resp, err := c.post(ctx, "/api/v1/auth/pin/verify", payload)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}
+
 // GetWalletBalance retrieves the wallet balance for a crew member.
 func (c *Client) GetWalletBalance(ctx context.Context, crewMemberID string) (*WalletResponse, error) {
 	resp, err := c.get(ctx, fmt.Sprintf("/api/v1/wallets/%s", crewMemberID))

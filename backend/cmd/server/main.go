@@ -386,6 +386,8 @@ func main() {
 		auth.POST("/refresh", authHandler.Refresh)
 		auth.POST("/change-password", adminHandler.ChangePassword) // Password change for all users
 		auth.GET("/lookup", authHandler.Lookup)                    // USSD user identification
+		auth.POST("/pin", authHandler.SetPIN)                      // USSD PIN setup
+		auth.POST("/pin/verify", authHandler.VerifyPIN)            // USSD PIN verification
 	}
 
 	webhooks := v1.Group("/webhooks")

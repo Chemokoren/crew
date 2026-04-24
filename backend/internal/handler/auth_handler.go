@@ -142,6 +142,46 @@ func (h *AuthHandler) Lookup(c *gin.Context) {
 	})
 }
 
+// POST /api/v1/auth/pin
+// Sets or updates the transaction PIN for a user.
+func (h *AuthHandler) SetPIN(c *gin.Context) {
+	var req struct {
+		Phone string `json:"phone" binding:"required"`
+		PIN   string `json:"pin" binding:"required,min=4,max=6"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		BadRequest(c, err.Error())
+		return
+	}
+
+	if err := h.authSvc.SetPIN(c.Request.Context(), req.Phone, req.PIN); err != nil {
+		MapServiceError(c, err)
+		return
+	}
+
+	SuccessResponse(c, http.StatusOK, gin.H{"message": "PIN set successfully"})
+}
+
+// POST /api/v1/auth/pin/verify
+// Verifies the transaction PIN for a user.
+func (h *AuthHandler) VerifyPIN(c *gin.Context) {
+	var req struct {
+		Phone string `json:"phone" binding:"required"`
+		PIN   string `json:"pin" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		BadRequest(c, err.Error())
+		return
+	}
+
+	if err := h.authSvc.VerifyPIN(c.Request.Context(), req.Phone, req.PIN); err != nil {
+		MapServiceError(c, err)
+		return
+	}
+
+	SuccessResponse(c, http.StatusOK, gin.H{"valid": true})
+}
+
 // MapServiceError maps domain errors to HTTP responses. Exported for reuse by other handlers.
 func MapServiceError(c *gin.Context, err error) {
 	switch {

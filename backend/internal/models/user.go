@@ -14,6 +14,7 @@ type User struct {
 	Phone        string           `json:"phone" gorm:"uniqueIndex;not null"`
 	Email        string           `json:"email,omitempty"`
 	PasswordHash string           `json:"-" gorm:"not null"`
+	PINHash      string           `json:"-" gorm:"column:pin_hash"`
 	SystemRole   types.SystemRole `json:"system_role" gorm:"not null"`
 	CrewMemberID *uuid.UUID       `json:"crew_member_id,omitempty" gorm:"type:uuid"`
 	SaccoID      *uuid.UUID       `json:"sacco_id,omitempty" gorm:"type:uuid"`

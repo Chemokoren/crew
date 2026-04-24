@@ -72,6 +72,8 @@ func (e *Engine) Process(ctx context.Context, sess *session.Data, userInput stri
 		return e.handleWithdrawAmount(ctx, sess, userInput)
 	case session.StateWithdrawConfirm:
 		return e.handleWithdrawConfirm(ctx, sess, userInput)
+	case session.StateWithdrawPIN:
+		return e.handleWithdrawPIN(ctx, sess, userInput)
 	case session.StateEarnings:
 		return e.handleEarnings(ctx, sess, userInput)
 	case session.StateEarningsDaily:
@@ -100,6 +102,10 @@ func (e *Engine) Process(ctx context.Context, sess *session.Data, userInput stri
 		return e.handleRegisterNationalID(ctx, sess, userInput)
 	case session.StateRegisterRole:
 		return e.handleRegisterRole(ctx, sess, userInput)
+	case session.StateRegisterPIN:
+		return e.handleRegisterPIN(ctx, sess, userInput)
+	case session.StateRegisterPINConfirm:
+		return e.handleRegisterPINConfirm(ctx, sess, userInput)
 	case session.StateRegisterConfirm:
 		return e.handleRegisterConfirm(ctx, sess, userInput)
 	case session.StateLanguageSelect:
@@ -289,33 +295,55 @@ func (e *Engine) handleWithdrawAmount(ctx context.Context, sess *session.Data, i
 
 func (e *Engine) handleWithdrawConfirm(ctx context.Context, sess *session.Data, input string) (*Response, error) {
 	switch strings.TrimSpace(input) {
-	case "1": // Confirm — initiate withdrawal directly
-		amount, _ := parseAmount(sess.GetInput("withdraw_amount"))
-
-		result, err := e.backendClient.InitiateWithdrawal(ctx, sess.CrewMemberID, amount)
-		if err != nil {
-			e.logger.Error("withdrawal failed",
-				slog.String("crew_member_id", sess.CrewMemberID),
-				slog.Int64("amount_cents", amount),
-				slog.String("error", err.Error()),
-			)
-			if strings.Contains(err.Error(), "insufficient") {
-				return e.endWithMessage(sess, e.t(sess, "withdraw.insufficient_funds")), nil
-			}
-			return e.endWithMessage(sess, e.t(sess, "error.service_unavailable")), nil
-		}
-
-		msg := fmt.Sprintf(e.t(sess, "withdraw.success"),
-			formatMoney(amount, "KES"),
-			result.Reference,
-		)
-		return e.endWithMessage(sess, msg), nil
-
+	case "1": // Confirm — ask for PIN
+		sess.CurrentState = session.StateWithdrawPIN
+		return e.continueWithMessage(sess, e.t(sess, "withdraw.enter_pin")), nil
 	case "2": // Cancel
 		return e.backToMainMenu(sess), nil
 	default:
 		return e.continueWithMessage(sess, e.t(sess, "error.invalid_input")+"\n"+e.t(sess, "withdraw.confirm_options")), nil
 	}
+}
+
+func (e *Engine) handleWithdrawPIN(ctx context.Context, sess *session.Data, input string) (*Response, error) {
+	cleaned := strings.TrimSpace(input)
+	if len(cleaned) < 4 || len(cleaned) > 6 {
+		return e.continueWithMessage(sess, e.t(sess, "withdraw.invalid_pin")), nil
+	}
+
+	// Verify PIN against the backend
+	if err := e.backendClient.VerifyPIN(ctx, sess.MSISDN, cleaned); err != nil {
+		e.logger.Warn("PIN verification failed",
+			slog.String("msisdn", sess.MSISDN),
+			slog.String("error", err.Error()),
+		)
+		if strings.Contains(err.Error(), "Invalid") || strings.Contains(err.Error(), "401") {
+			return e.continueWithMessage(sess, e.t(sess, "withdraw.wrong_pin")), nil
+		}
+		return e.endWithMessage(sess, e.t(sess, "error.service_unavailable")), nil
+	}
+
+	// PIN verified — proceed with withdrawal
+	amount, _ := parseAmount(sess.GetInput("withdraw_amount"))
+
+	result, err := e.backendClient.InitiateWithdrawal(ctx, sess.CrewMemberID, amount)
+	if err != nil {
+		e.logger.Error("withdrawal failed",
+			slog.String("crew_member_id", sess.CrewMemberID),
+			slog.Int64("amount_cents", amount),
+			slog.String("error", err.Error()),
+		)
+		if strings.Contains(err.Error(), "insufficient") {
+			return e.endWithMessage(sess, e.t(sess, "withdraw.insufficient_funds")), nil
+		}
+		return e.endWithMessage(sess, e.t(sess, "error.service_unavailable")), nil
+	}
+
+	msg := fmt.Sprintf(e.t(sess, "withdraw.success"),
+		formatMoney(amount, "KES"),
+		result.Reference,
+	)
+	return e.endWithMessage(sess, msg), nil
 }
 
 // --- Earnings Flow ---
@@ -586,11 +614,41 @@ func (e *Engine) handleRegisterRole(ctx context.Context, sess *session.Data, inp
 	}
 
 	sess.SetInput("role", role)
+	sess.CurrentState = session.StateRegisterPIN
+	return e.continueWithMessage(sess, e.t(sess, "register.enter_pin")), nil
+}
+
+func (e *Engine) handleRegisterPIN(ctx context.Context, sess *session.Data, input string) (*Response, error) {
+	cleaned := strings.TrimSpace(input)
+	if len(cleaned) < 4 || len(cleaned) > 6 {
+		return e.continueWithMessage(sess, e.t(sess, "register.invalid_pin")), nil
+	}
+	// Validate digits only
+	for _, c := range cleaned {
+		if c < '0' || c > '9' {
+			return e.continueWithMessage(sess, e.t(sess, "register.invalid_pin")), nil
+		}
+	}
+
+	sess.SetInput("pin", cleaned)
+	sess.CurrentState = session.StateRegisterPINConfirm
+	return e.continueWithMessage(sess, e.t(sess, "register.confirm_pin")), nil
+}
+
+func (e *Engine) handleRegisterPINConfirm(ctx context.Context, sess *session.Data, input string) (*Response, error) {
+	cleaned := strings.TrimSpace(input)
+	if cleaned != sess.GetInput("pin") {
+		// PINs don't match — go back to PIN entry
+		sess.CurrentState = session.StateRegisterPIN
+		return e.continueWithMessage(sess, e.t(sess, "register.pin_mismatch")), nil
+	}
+
+	// PINs match — proceed to details confirmation
 	sess.CurrentState = session.StateRegisterConfirm
 
 	msg := fmt.Sprintf(e.t(sess, "register.confirm"),
 		sess.GetInput("first_name")+" "+sess.GetInput("last_name"),
-		role,
+		sess.GetInput("role"),
 	)
 	return e.continueWithMessage(sess, msg), nil
 }
@@ -629,6 +687,19 @@ func (e *Engine) handleRegisterConfirm(ctx context.Context, sess *session.Data, 
 
 		sess.CrewMemberID = result.CrewMemberID
 		sess.UserID = result.UserID
+
+		// Save the transaction PIN the user set during registration
+		pin := sess.GetInput("pin")
+		if pin != "" {
+			if err := e.backendClient.SetPIN(ctx, sess.MSISDN, pin); err != nil {
+				e.logger.Error("failed to set PIN after registration",
+					slog.String("msisdn", sess.MSISDN),
+					slog.String("error", err.Error()),
+				)
+				// Registration succeeded but PIN failed — user can reset later
+			}
+		}
+
 		return e.endWithMessage(sess, e.t(sess, "register.success")), nil
 
 	case "2": // Cancel

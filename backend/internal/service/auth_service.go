@@ -10,6 +10,7 @@ import (
 	"github.com/kibsoft/amy-mis/internal/database"
 	"github.com/kibsoft/amy-mis/internal/models"
 	"github.com/kibsoft/amy-mis/internal/repository"
+	"github.com/kibsoft/amy-mis/pkg/errs"
 	"github.com/kibsoft/amy-mis/pkg/jwt"
 	"github.com/kibsoft/amy-mis/pkg/types"
 	"golang.org/x/crypto/bcrypt"
@@ -346,3 +347,45 @@ func (s *AuthService) GetSystemStats(ctx context.Context) (*SystemStats, error) 
 	}, nil
 }
 
+// SetPIN sets or updates the transaction PIN for a user identified by phone.
+func (s *AuthService) SetPIN(ctx context.Context, phone, pin string) error {
+	if len(pin) < 4 || len(pin) > 6 {
+		return fmt.Errorf("%w: PIN must be 4-6 digits", errs.ErrValidation)
+	}
+
+	user, err := s.userRepo.GetByPhone(ctx, phone)
+	if err != nil {
+		return err
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(pin), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("hash PIN: %w", err)
+	}
+
+	user.PINHash = string(hash)
+	if err := s.userRepo.Update(ctx, user); err != nil {
+		return fmt.Errorf("save PIN: %w", err)
+	}
+
+	s.logger.Info("transaction PIN set", slog.String("phone", phone))
+	return nil
+}
+
+// VerifyPIN checks the provided PIN against the stored hash for a user identified by phone.
+func (s *AuthService) VerifyPIN(ctx context.Context, phone, pin string) error {
+	user, err := s.userRepo.GetByPhone(ctx, phone)
+	if err != nil {
+		return err
+	}
+
+	if user.PINHash == "" {
+		return fmt.Errorf("%w: no PIN set for this account", errs.ErrValidation)
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PINHash), []byte(pin)); err != nil {
+		return errs.ErrInvalidCredentials
+	}
+
+	return nil
+}
