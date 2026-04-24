@@ -72,8 +72,6 @@ func (e *Engine) Process(ctx context.Context, sess *session.Data, userInput stri
 		return e.handleWithdrawAmount(ctx, sess, userInput)
 	case session.StateWithdrawConfirm:
 		return e.handleWithdrawConfirm(ctx, sess, userInput)
-	case session.StateWithdrawPIN:
-		return e.handleWithdrawPIN(ctx, sess, userInput)
 	case session.StateEarnings:
 		return e.handleEarnings(ctx, sess, userInput)
 	case session.StateEarningsDaily:
@@ -291,41 +289,33 @@ func (e *Engine) handleWithdrawAmount(ctx context.Context, sess *session.Data, i
 
 func (e *Engine) handleWithdrawConfirm(ctx context.Context, sess *session.Data, input string) (*Response, error) {
 	switch strings.TrimSpace(input) {
-	case "1": // Confirm
-		sess.CurrentState = session.StateWithdrawPIN
-		return e.continueWithMessage(sess, e.t(sess, "withdraw.enter_pin")), nil
+	case "1": // Confirm — initiate withdrawal directly
+		amount, _ := parseAmount(sess.GetInput("withdraw_amount"))
+
+		result, err := e.backendClient.InitiateWithdrawal(ctx, sess.CrewMemberID, amount)
+		if err != nil {
+			e.logger.Error("withdrawal failed",
+				slog.String("crew_member_id", sess.CrewMemberID),
+				slog.Int64("amount_cents", amount),
+				slog.String("error", err.Error()),
+			)
+			if strings.Contains(err.Error(), "insufficient") {
+				return e.endWithMessage(sess, e.t(sess, "withdraw.insufficient_funds")), nil
+			}
+			return e.endWithMessage(sess, e.t(sess, "error.service_unavailable")), nil
+		}
+
+		msg := fmt.Sprintf(e.t(sess, "withdraw.success"),
+			formatMoney(amount, "KES"),
+			result.Reference,
+		)
+		return e.endWithMessage(sess, msg), nil
+
 	case "2": // Cancel
 		return e.backToMainMenu(sess), nil
 	default:
 		return e.continueWithMessage(sess, e.t(sess, "error.invalid_input")+"\n"+e.t(sess, "withdraw.confirm_options")), nil
 	}
-}
-
-func (e *Engine) handleWithdrawPIN(ctx context.Context, sess *session.Data, input string) (*Response, error) {
-	if len(input) < 4 || len(input) > 6 {
-		return e.continueWithMessage(sess, e.t(sess, "withdraw.invalid_pin")), nil
-	}
-
-	amount, _ := parseAmount(sess.GetInput("withdraw_amount"))
-
-	result, err := e.backendClient.InitiateWithdrawal(ctx, sess.CrewMemberID, amount)
-	if err != nil {
-		e.logger.Error("withdrawal failed",
-			slog.String("crew_member_id", sess.CrewMemberID),
-			slog.Int64("amount_cents", amount),
-			slog.String("error", err.Error()),
-		)
-		if strings.Contains(err.Error(), "insufficient") {
-			return e.endWithMessage(sess, e.t(sess, "withdraw.insufficient_funds")), nil
-		}
-		return e.endWithMessage(sess, e.t(sess, "error.service_unavailable")), nil
-	}
-
-	msg := fmt.Sprintf(e.t(sess, "withdraw.success"),
-		formatMoney(amount, "KES"),
-		result.Reference,
-	)
-	return e.endWithMessage(sess, msg), nil
 }
 
 // --- Earnings Flow ---
