@@ -48,6 +48,8 @@ func TestData_StateTransitions(t *testing.T) {
 		StateEarnings, StateLastPayment, StateLoanStatus,
 		StateRegister, StateRegisterName, StateRegisterNationalID,
 		StateRegisterRole, StateRegisterPIN, StateRegisterPINConfirm, StateRegisterConfirm,
+		StateMyProfile, StateSetPIN, StateSetPINConfirm,
+		StateChangePIN, StateChangePINNew, StateChangePINConfirm,
 		StateLanguageSelect, StateEnd,
 	}
 

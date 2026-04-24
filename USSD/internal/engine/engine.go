@@ -108,6 +108,18 @@ func (e *Engine) Process(ctx context.Context, sess *session.Data, userInput stri
 		return e.handleRegisterPINConfirm(ctx, sess, userInput)
 	case session.StateRegisterConfirm:
 		return e.handleRegisterConfirm(ctx, sess, userInput)
+	case session.StateMyProfile:
+		return e.handleMyProfile(ctx, sess, userInput)
+	case session.StateSetPIN:
+		return e.handleSetPIN(ctx, sess, userInput)
+	case session.StateSetPINConfirm:
+		return e.handleSetPINConfirm(ctx, sess, userInput)
+	case session.StateChangePIN:
+		return e.handleChangePIN(ctx, sess, userInput)
+	case session.StateChangePINNew:
+		return e.handleChangePINNew(ctx, sess, userInput)
+	case session.StateChangePINConfirm:
+		return e.handleChangePINConfirm(ctx, sess, userInput)
 	case session.StateLanguageSelect:
 		return e.handleLanguageSelect(ctx, sess, userInput)
 	default:
@@ -187,10 +199,14 @@ func (e *Engine) handleMainMenu(ctx context.Context, sess *session.Data, input s
 		sess.CurrentState = session.StateLoanStatus
 		return e.handleLoanStatus(ctx, sess, "")
 
-	case "6": // Register
+	case "6": // Register or My Profile
 		if sess.CrewMemberID != "" {
-			return e.endWithMessage(sess, e.t(sess, "register.already_registered")), nil
+			// Registered user — go to profile
+			sess.PreviousState = sess.CurrentState
+			sess.CurrentState = session.StateMyProfile
+			return e.handleMyProfile(ctx, sess, "")
 		}
+		// Unregistered user — register
 		sess.PreviousState = sess.CurrentState
 		sess.CurrentState = session.StateRegister
 		return e.handleRegister(ctx, sess, "")
@@ -215,13 +231,14 @@ func (e *Engine) renderMainMenu(sess *session.Data) *Response {
 func (e *Engine) renderMainMenuText(sess *session.Data) string {
 	welcome := e.t(sess, "menu.welcome")
 	if sess.CrewMemberID != "" {
-		return fmt.Sprintf("%s\n1. %s\n2. %s\n3. %s\n4. %s\n5. %s\n7. %s\n0. %s",
+		return fmt.Sprintf("%s\n1. %s\n2. %s\n3. %s\n4. %s\n5. %s\n6. %s\n7. %s\n0. %s",
 			welcome,
 			e.t(sess, "menu.check_balance"),
 			e.t(sess, "menu.withdraw"),
 			e.t(sess, "menu.earnings"),
 			e.t(sess, "menu.last_payment"),
 			e.t(sess, "menu.loan_status"),
+			e.t(sess, "menu.my_profile"),
 			e.t(sess, "menu.language"),
 			e.t(sess, "menu.exit"),
 		)
@@ -317,7 +334,13 @@ func (e *Engine) handleWithdrawPIN(ctx context.Context, sess *session.Data, inpu
 			slog.String("msisdn", sess.MSISDN),
 			slog.String("error", err.Error()),
 		)
-		if strings.Contains(err.Error(), "Invalid") || strings.Contains(err.Error(), "401") {
+		errMsg := err.Error()
+		// No PIN set — user registered before PIN feature was added
+		if strings.Contains(errMsg, "no PIN set") || strings.Contains(errMsg, "VALIDATION_ERROR") {
+			return e.continueWithMessage(sess, e.t(sess, "withdraw.no_pin_set")), nil
+		}
+		// Wrong PIN
+		if strings.Contains(errMsg, "Invalid") || strings.Contains(errMsg, "UNAUTHORIZED") || strings.Contains(errMsg, "401") {
 			return e.continueWithMessage(sess, e.t(sess, "withdraw.wrong_pin")), nil
 		}
 		return e.endWithMessage(sess, e.t(sess, "error.service_unavailable")), nil
@@ -744,6 +767,142 @@ func (e *Engine) handleLanguageSelect(ctx context.Context, sess *session.Data, i
 	}
 
 	return e.endWithMessage(sess, e.t(sess, "language.changed")), nil
+}
+
+// --- My Profile ---
+
+func (e *Engine) handleMyProfile(ctx context.Context, sess *session.Data, input string) (*Response, error) {
+	if input == "" {
+		return e.continueWithMessage(sess, e.t(sess, "profile.menu")), nil
+	}
+
+	switch strings.TrimSpace(input) {
+	case "1": // Set PIN (for users who don't have one)
+		sess.CurrentState = session.StateSetPIN
+		return e.continueWithMessage(sess, e.t(sess, "profile.set_pin")), nil
+	case "2": // Change PIN
+		sess.CurrentState = session.StateChangePIN
+		return e.continueWithMessage(sess, e.t(sess, "profile.enter_current_pin")), nil
+	case "3": // View Profile
+		msg := fmt.Sprintf(e.t(sess, "profile.view"),
+			sess.MSISDN,
+			sess.CrewMemberID,
+		)
+		return e.continueWithMessage(sess, msg+"\n0. "+e.t(sess, "menu.back")), nil
+	case "0": // Back
+		return e.backToMainMenu(sess), nil
+	default:
+		return e.continueWithMessage(sess, e.t(sess, "error.invalid_input")+"\n"+e.t(sess, "profile.menu")), nil
+	}
+}
+
+// --- Set PIN (first time) ---
+
+func (e *Engine) handleSetPIN(ctx context.Context, sess *session.Data, input string) (*Response, error) {
+	cleaned := strings.TrimSpace(input)
+	if cleaned == "0" {
+		sess.CurrentState = session.StateMyProfile
+		return e.handleMyProfile(ctx, sess, "")
+	}
+	if len(cleaned) < 4 || len(cleaned) > 6 || !isDigits(cleaned) {
+		return e.continueWithMessage(sess, e.t(sess, "register.invalid_pin")), nil
+	}
+
+	sess.SetInput("new_pin", cleaned)
+	sess.CurrentState = session.StateSetPINConfirm
+	return e.continueWithMessage(sess, e.t(sess, "register.confirm_pin")), nil
+}
+
+func (e *Engine) handleSetPINConfirm(ctx context.Context, sess *session.Data, input string) (*Response, error) {
+	cleaned := strings.TrimSpace(input)
+	if cleaned != sess.GetInput("new_pin") {
+		sess.CurrentState = session.StateSetPIN
+		return e.continueWithMessage(sess, e.t(sess, "register.pin_mismatch")), nil
+	}
+
+	// Save PIN to backend
+	if err := e.backendClient.SetPIN(ctx, sess.MSISDN, cleaned); err != nil {
+		e.logger.Error("failed to set PIN",
+			slog.String("msisdn", sess.MSISDN),
+			slog.String("error", err.Error()),
+		)
+		return e.endWithMessage(sess, e.t(sess, "error.service_unavailable")), nil
+	}
+
+	return e.continueWithMessage(sess, e.t(sess, "profile.pin_set_success")+"\n0. "+e.t(sess, "menu.back")), nil
+}
+
+// --- Change PIN (requires current PIN) ---
+
+func (e *Engine) handleChangePIN(ctx context.Context, sess *session.Data, input string) (*Response, error) {
+	cleaned := strings.TrimSpace(input)
+	if cleaned == "0" {
+		sess.CurrentState = session.StateMyProfile
+		return e.handleMyProfile(ctx, sess, "")
+	}
+	if len(cleaned) < 4 || len(cleaned) > 6 {
+		return e.continueWithMessage(sess, e.t(sess, "withdraw.invalid_pin")), nil
+	}
+
+	// Verify current PIN
+	if err := e.backendClient.VerifyPIN(ctx, sess.MSISDN, cleaned); err != nil {
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "no PIN set") || strings.Contains(errMsg, "VALIDATION_ERROR") {
+			// Redirect to Set PIN flow
+			sess.CurrentState = session.StateSetPIN
+			return e.continueWithMessage(sess, e.t(sess, "profile.no_pin_redirect")), nil
+		}
+		if strings.Contains(errMsg, "Invalid") || strings.Contains(errMsg, "UNAUTHORIZED") || strings.Contains(errMsg, "401") {
+			return e.continueWithMessage(sess, e.t(sess, "withdraw.wrong_pin")+"\n0. "+e.t(sess, "menu.back")), nil
+		}
+		return e.endWithMessage(sess, e.t(sess, "error.service_unavailable")), nil
+	}
+
+	sess.CurrentState = session.StateChangePINNew
+	return e.continueWithMessage(sess, e.t(sess, "profile.enter_new_pin")), nil
+}
+
+func (e *Engine) handleChangePINNew(ctx context.Context, sess *session.Data, input string) (*Response, error) {
+	cleaned := strings.TrimSpace(input)
+	if cleaned == "0" {
+		sess.CurrentState = session.StateMyProfile
+		return e.handleMyProfile(ctx, sess, "")
+	}
+	if len(cleaned) < 4 || len(cleaned) > 6 || !isDigits(cleaned) {
+		return e.continueWithMessage(sess, e.t(sess, "register.invalid_pin")), nil
+	}
+
+	sess.SetInput("new_pin", cleaned)
+	sess.CurrentState = session.StateChangePINConfirm
+	return e.continueWithMessage(sess, e.t(sess, "register.confirm_pin")), nil
+}
+
+func (e *Engine) handleChangePINConfirm(ctx context.Context, sess *session.Data, input string) (*Response, error) {
+	cleaned := strings.TrimSpace(input)
+	if cleaned != sess.GetInput("new_pin") {
+		sess.CurrentState = session.StateChangePINNew
+		return e.continueWithMessage(sess, e.t(sess, "register.pin_mismatch")), nil
+	}
+
+	if err := e.backendClient.SetPIN(ctx, sess.MSISDN, cleaned); err != nil {
+		e.logger.Error("failed to change PIN",
+			slog.String("msisdn", sess.MSISDN),
+			slog.String("error", err.Error()),
+		)
+		return e.endWithMessage(sess, e.t(sess, "error.service_unavailable")), nil
+	}
+
+	return e.continueWithMessage(sess, e.t(sess, "profile.pin_changed_success")+"\n0. "+e.t(sess, "menu.back")), nil
+}
+
+// isDigits checks if a string contains only digit characters.
+func isDigits(s string) bool {
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return len(s) > 0
 }
 
 // --- Helper methods ---

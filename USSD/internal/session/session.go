@@ -47,6 +47,12 @@ const (
 	StateRegisterPIN       State = "REGISTER_PIN"
 	StateRegisterPINConfirm State = "REGISTER_PIN_CONFIRM"
 	StateRegisterConfirm   State = "REGISTER_CONFIRM"
+	StateMyProfile         State = "MY_PROFILE"
+	StateSetPIN            State = "SET_PIN"
+	StateSetPINConfirm     State = "SET_PIN_CONFIRM"
+	StateChangePIN         State = "CHANGE_PIN"
+	StateChangePINNew      State = "CHANGE_PIN_NEW"
+	StateChangePINConfirm  State = "CHANGE_PIN_CONFIRM"
 	StateLanguageSelect    State = "LANGUAGE_SELECT"
 	StateEnd               State = "END"
 )

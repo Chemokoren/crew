@@ -102,6 +102,7 @@ func (t *Translator) loadEnglish() {
 		"menu.earnings":      "My Earnings",
 		"menu.last_payment":  "Last Payment",
 		"menu.loan_status":   "Loans",
+		"menu.my_profile":    "My Profile",
 		"menu.register":      "Register",
 		"menu.language":      "Language",
 		"menu.exit":          "Exit",
@@ -118,6 +119,7 @@ func (t *Translator) loadEnglish() {
 		"withdraw.enter_pin":        "Enter your transaction PIN",
 		"withdraw.invalid_pin":      "Invalid PIN. Enter 4-6 digits",
 		"withdraw.wrong_pin":        "Wrong PIN. Try again",
+		"withdraw.no_pin_set":       "You have not set a transaction PIN.\nGo to My Profile (6) to set one.\n0. Back to Menu",
 		"withdraw.success":          "Withdrawal of %s initiated.\nRef: %s\nYou will receive M-Pesa shortly.",
 		"withdraw.insufficient_funds": "Insufficient balance for this withdrawal.",
 
@@ -162,6 +164,16 @@ func (t *Translator) loadEnglish() {
 		"language.menu":    "Select Language\n1. English\n2. Kiswahili\n0. Back",
 		"language.changed": "Language updated successfully.",
 
+		// Profile
+		"profile.menu":               "My Profile\n1. Set PIN\n2. Change PIN\n3. View Profile\n0. Back",
+		"profile.set_pin":            "Enter a 4-digit transaction PIN\n0. Back",
+		"profile.enter_current_pin":  "Enter your current PIN\n0. Back",
+		"profile.enter_new_pin":      "Enter your new PIN (4-6 digits)\n0. Back",
+		"profile.pin_set_success":    "Transaction PIN set successfully!\nYou can now make withdrawals.",
+		"profile.pin_changed_success": "PIN changed successfully!",
+		"profile.no_pin_redirect":    "You don't have a PIN yet.\nPlease create one now.\nEnter a 4-digit PIN",
+		"profile.view":               "Your Profile\nPhone: %s\nID: %s",
+
 		// Errors
 		"error.generic":             "Something went wrong. Please try again.",
 		"error.invalid_input":       "Invalid selection. Try again.",
@@ -190,6 +202,7 @@ func (t *Translator) loadSwahili() {
 		"menu.earnings":      "Mapato Yangu",
 		"menu.last_payment":  "Malipo ya Mwisho",
 		"menu.loan_status":   "Mikopo",
+		"menu.my_profile":    "Wasifu Wangu",
 		"menu.register":      "Jisajili",
 		"menu.language":      "Lugha",
 		"menu.exit":          "Toka",
@@ -206,6 +219,7 @@ func (t *Translator) loadSwahili() {
 		"withdraw.enter_pin":        "Ingiza PIN yako ya muamala",
 		"withdraw.invalid_pin":      "PIN batili. Ingiza tarakimu 4-6",
 		"withdraw.wrong_pin":        "PIN mbaya. Jaribu tena",
+		"withdraw.no_pin_set":       "Hujaweka PIN ya muamala.\nNenda Wasifu Wangu (6) kuweka.\n0. Rudi Menyu",
 		"withdraw.success":          "Kutoa %s kumeanzishwa.\nRef: %s\nUtapokea M-Pesa hivi karibuni.",
 		"withdraw.insufficient_funds": "Salio halitoshi kwa kutoa hii.",
 
@@ -249,6 +263,16 @@ func (t *Translator) loadSwahili() {
 		// Language
 		"language.menu":    "Chagua Lugha\n1. English\n2. Kiswahili\n0. Rudi",
 		"language.changed": "Lugha imebadilishwa.",
+
+		// Profile
+		"profile.menu":               "Wasifu Wangu\n1. Weka PIN\n2. Badilisha PIN\n3. Angalia Wasifu\n0. Rudi",
+		"profile.set_pin":            "Ingiza PIN ya muamala ya tarakimu 4\n0. Rudi",
+		"profile.enter_current_pin":  "Ingiza PIN yako ya sasa\n0. Rudi",
+		"profile.enter_new_pin":      "Ingiza PIN yako mpya (tarakimu 4-6)\n0. Rudi",
+		"profile.pin_set_success":    "PIN ya muamala imewekwa!\nSasa unaweza kutoa pesa.",
+		"profile.pin_changed_success": "PIN imebadilishwa!",
+		"profile.no_pin_redirect":    "Huna PIN bado.\nTafadhali unda moja sasa.\nIngiza PIN ya tarakimu 4",
+		"profile.view":               "Wasifu Wako\nSimu: %s\nKitambulisho: %s",
 
 		// Errors
 		"error.generic":             "Kuna tatizo. Jaribu tena.",
