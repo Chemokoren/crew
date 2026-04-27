@@ -93,6 +93,7 @@ curl http://localhost:8080/swagger/index.html  # → Swagger UI
 | `GET` | `/health` | Health check |
 | `GET` | `/ready` | Readiness probe |
 | `GET` | `/metrics` | Request metrics (JSON) |
+| `GET` | `/` | Redirects to Swagger API docs (`/swagger/index.html`) |
 | `GET` | `/swagger/*` | Swagger API docs |
 
 ---

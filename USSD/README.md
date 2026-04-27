@@ -22,7 +22,7 @@ A telecom-grade USSD gateway service for AMY MIS (CrewPay), designed for high-th
 | Decision | Rationale |
 |----------|-----------|
 | Separate Go module | Independent scaling & deployment from backend |
-| Redis sessions | Sub-millisecond lookup, TTL-based expiry |
+| Redis sessions | Sub-millisecond lookup, TTL-based expiry. Language preferences persist beyond session TTL. |
 | FSM engine | Deterministic menu flows, no hardcoded logic |
 | Circuit breaker | Prevents cascading failures to backend |
 | Per-MSISDN rate limiting | Protects against USSD bombing |
@@ -83,8 +83,11 @@ curl -X POST http://localhost:8090/ussd/africastalking \
   -d "text="
 ```
 
-### Simulator (JSON) Format
+### Simulator Format
 
+Supports both JSON body and Query Parameters:
+
+**JSON Body (Postman style):**
 ```bash
 curl -X POST http://localhost:8090/ussd/simulator \
   -H "Content-Type: application/json" \
@@ -94,6 +97,11 @@ curl -X POST http://localhost:8090/ussd/simulator \
     "service_code": "*384*123#",
     "input": ""
   }'
+```
+
+**Query Parameters (Browser/Curl style):**
+```bash
+curl -X POST "http://localhost:8090/ussd/simulator?session_id=test-001&phone_number=%2B254712345678&service_code=*384*123%23&input="
 ```
 
 ## Configuration
