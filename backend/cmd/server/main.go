@@ -368,6 +368,11 @@ func main() {
 
 	// --- 14. Register routes ---
 
+	// Root redirect → Swagger docs
+	router.GET("/", func(c *gin.Context) {
+		c.Redirect(http.StatusMovedPermanently, "/swagger/index.html")
+	})
+
 	// Health, readiness, and metrics (no auth)
 	router.GET("/health", healthHandler.Health)
 	router.GET("/ready", healthHandler.Ready)

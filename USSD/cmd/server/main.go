@@ -113,7 +113,7 @@ func main() {
 	)
 
 	// --- 8. Initialize FSM engine ---
-	eng := engine.NewEngine(backendClient, translator, logger)
+	eng := engine.NewEngine(backendClient, sessionStore, translator, logger)
 	slog.Info("FSM engine initialized")
 
 	// --- 9. Initialize gateways ---

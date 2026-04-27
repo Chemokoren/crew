@@ -30,14 +30,16 @@ type Response struct {
 // Engine is the FSM-based USSD menu processor.
 type Engine struct {
 	backendClient *backend.Client
+	sessionStore  *session.Store
 	translator    *i18n.Translator
 	logger        *slog.Logger
 }
 
 // NewEngine creates a new USSD processing engine.
-func NewEngine(client *backend.Client, translator *i18n.Translator, logger *slog.Logger) *Engine {
+func NewEngine(client *backend.Client, store *session.Store, translator *i18n.Translator, logger *slog.Logger) *Engine {
 	return &Engine{
 		backendClient: client,
+		sessionStore:  store,
 		translator:    translator,
 		logger:        logger,
 	}
@@ -130,6 +132,11 @@ func (e *Engine) Process(ctx context.Context, sess *session.Data, userInput stri
 // --- Init (first dial only) ---
 
 func (e *Engine) handleInit(ctx context.Context, sess *session.Data) (*Response, error) {
+	// Load persisted language preference (survives session endings)
+	if savedLang, err := e.sessionStore.GetLanguage(ctx, sess.MSISDN); err == nil && savedLang != "" {
+		sess.Language = savedLang
+	}
+
 	// Look up user by MSISDN (best-effort, non-blocking on failure)
 	user, err := e.backendClient.GetUserByPhone(ctx, sess.MSISDN)
 	if err != nil {
@@ -764,6 +771,14 @@ func (e *Engine) handleLanguageSelect(ctx context.Context, sess *session.Data, i
 		return e.backToMainMenu(sess), nil
 	default:
 		return e.continueWithMessage(sess, e.t(sess, "error.invalid_input")+"\n"+e.t(sess, "language.menu")), nil
+	}
+
+	// Persist language preference across sessions
+	if err := e.sessionStore.SaveLanguage(ctx, sess.MSISDN, sess.Language); err != nil {
+		e.logger.Error("failed to persist language preference",
+			slog.String("msisdn", sess.MSISDN),
+			slog.String("error", err.Error()),
+		)
 	}
 
 	return e.endWithMessage(sess, e.t(sess, "language.changed")), nil

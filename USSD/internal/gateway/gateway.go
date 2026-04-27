@@ -124,10 +124,20 @@ type genericRequest struct {
 }
 
 // ParseRequest extracts the USSD request from JSON body.
+// Falls back to query parameters if the body is empty (convenient for
+// browser/curl testing of the simulator endpoint).
 func (g *GenericGateway) ParseRequest(c *gin.Context) (*Request, error) {
 	var req genericRequest
+
+	// Try JSON body first
 	if err := c.ShouldBindJSON(&req); err != nil {
-		return nil, fmt.Errorf("invalid JSON body: %w", err)
+		// Fallback: read from query parameters (allows GET-style testing)
+		req = genericRequest{
+			SessionID:   c.Query("session_id"),
+			PhoneNumber: c.Query("phone_number"),
+			ServiceCode: c.Query("service_code"),
+			Input:       c.Query("input"),
+		}
 	}
 
 	if req.SessionID == "" || req.PhoneNumber == "" {

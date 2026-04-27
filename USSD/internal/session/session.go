@@ -128,6 +128,11 @@ func (s *Store) key(sessionID string) string {
 	return s.prefix + sessionID
 }
 
+// langKey builds the Redis key for a user's language preference (persists across sessions).
+func (s *Store) langKey(msisdn string) string {
+	return "ussd:lang:" + msisdn
+}
+
 // Get retrieves a session by ID. Returns nil if not found or expired.
 func (s *Store) Get(ctx context.Context, sessionID string) (*Data, error) {
 	raw, err := s.client.Get(ctx, s.key(sessionID)).Bytes()
@@ -203,4 +208,26 @@ func (s *Store) ActiveCount(ctx context.Context) (int64, error) {
 		}
 	}
 	return count, nil
+}
+
+// SaveLanguage persists a user's language preference keyed by phone number.
+// This is stored separately from the session so it survives session endings.
+func (s *Store) SaveLanguage(ctx context.Context, msisdn, lang string) error {
+	if err := s.client.Set(ctx, s.langKey(msisdn), lang, 0).Err(); err != nil {
+		return fmt.Errorf("language save: %w", err)
+	}
+	return nil
+}
+
+// GetLanguage retrieves a user's persisted language preference.
+// Returns empty string if no preference has been saved.
+func (s *Store) GetLanguage(ctx context.Context, msisdn string) (string, error) {
+	lang, err := s.client.Get(ctx, s.langKey(msisdn)).Result()
+	if err == redis.Nil {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("language get: %w", err)
+	}
+	return lang, nil
 }
