@@ -7,14 +7,18 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/kibsoft/amy-mis/internal/credit"
 	"github.com/kibsoft/amy-mis/internal/database"
 	"github.com/kibsoft/amy-mis/internal/models"
 	"github.com/kibsoft/amy-mis/internal/repository"
 )
 
 var (
-	ErrLowCreditScore = errors.New("credit score is too low for loan approval")
-	ErrInvalidStatus  = errors.New("invalid loan status transition")
+	ErrLowCreditScore   = errors.New("credit score is too low for loan approval")
+	ErrInvalidStatus    = errors.New("invalid loan status transition")
+	ErrAmountExceedsTier = errors.New("requested amount exceeds your loan tier limit")
+	ErrTenureExceedsTier = errors.New("requested tenure exceeds your loan tier limit")
+	ErrLoanCooldown     = errors.New("you must wait before applying for another loan")
 )
 
 type LoanService interface {
@@ -27,6 +31,7 @@ type LoanService interface {
 	GetLoan(ctx context.Context, id uuid.UUID) (*models.LoanApplication, error)
 	ListLoans(ctx context.Context, filter repository.LoanApplicationFilter, page, perPage int) ([]models.LoanApplication, int64, error)
 	GetOverdueLoans(ctx context.Context) ([]models.LoanApplication, error)
+	GetLoanTier(ctx context.Context, crewMemberID uuid.UUID) (*credit.LoanTier, int, error)
 }
 
 type loanService struct {
@@ -51,18 +56,53 @@ func NewLoanService(
 }
 
 func (s *loanService) ApplyForLoan(ctx context.Context, crewMemberID uuid.UUID, amountCents int64, tenureDays int) (*models.LoanApplication, error) {
-	// Optional: Check credit score before allowing application
+	// 1. Get credit score and resolve loan tier
 	score, err := s.creditRepo.GetByCrewMemberID(ctx, crewMemberID)
-	if err == nil && score != nil {
-		if score.Score < 400 {
-			// Require at least 400 points to apply
-			return nil, ErrLowCreditScore
+	if err != nil || score == nil {
+		return nil, ErrLowCreditScore
+	}
+
+	tier := credit.GetTierForScore(score.Score)
+	if tier == nil {
+		return nil, ErrLowCreditScore
+	}
+
+	// 2. Enforce tier limits
+	if amountCents > tier.MaxLoanCents {
+		return nil, fmt.Errorf("%w: max KES %.0f for your %s tier",
+			ErrAmountExceedsTier, tier.FormatMaxLoanKES(), tier.Grade)
+	}
+
+	if tenureDays > tier.MaxTenureDays {
+		return nil, fmt.Errorf("%w: max %d days for your %s tier",
+			ErrTenureExceedsTier, tier.MaxTenureDays, tier.Grade)
+	}
+
+	// 3. Check cooldown (no back-to-back loans)
+	if tier.CooldownDays > 0 {
+		loans, _, _ := s.loanRepo.List(ctx, repository.LoanApplicationFilter{
+			CrewMemberID: &crewMemberID,
+		}, 1, 5)
+		for _, l := range loans {
+			if l.Status == models.LoanCompleted && l.RepaidAt != nil {
+				cooldownEnd := l.RepaidAt.AddDate(0, 0, tier.CooldownDays)
+				if time.Now().Before(cooldownEnd) {
+					return nil, fmt.Errorf("%w: next eligible on %s",
+						ErrLoanCooldown, cooldownEnd.Format("2006-01-02"))
+				}
+			}
+			// Block if there's an active loan
+			if l.Status == models.LoanDisbursed || l.Status == models.LoanRepaying || l.Status == models.LoanApplied || l.Status == models.LoanApproved {
+				return nil, errors.New("you already have an active loan")
+			}
 		}
 	}
 
+	// 4. Create loan with tier-assigned interest rate
 	loan := &models.LoanApplication{
 		CrewMemberID:         crewMemberID,
 		AmountRequestedCents: amountCents,
+		InterestRate:         tier.InterestRate,
 		TenureDays:           tenureDays,
 		Currency:             "KES",
 		Status:               models.LoanApplied,
@@ -168,6 +208,22 @@ func (s *loanService) RejectLoan(ctx context.Context, loanID uuid.UUID) (*models
 
 func (s *loanService) GetLoan(ctx context.Context, id uuid.UUID) (*models.LoanApplication, error) {
 	return s.loanRepo.GetByID(ctx, id)
+}
+
+// GetLoanTier returns the loan tier and credit score for a crew member.
+// Returns (tier, score, nil) on success, or (nil, score, ErrLowCreditScore) if ineligible.
+func (s *loanService) GetLoanTier(ctx context.Context, crewMemberID uuid.UUID) (*credit.LoanTier, int, error) {
+	scoreRecord, err := s.creditRepo.GetByCrewMemberID(ctx, crewMemberID)
+	if err != nil || scoreRecord == nil {
+		return nil, 0, ErrLowCreditScore
+	}
+
+	tier := credit.GetTierForScore(scoreRecord.Score)
+	if tier == nil {
+		return nil, scoreRecord.Score, ErrLowCreditScore
+	}
+
+	return tier, scoreRecord.Score, nil
 }
 
 func (s *loanService) ListLoans(ctx context.Context, filter repository.LoanApplicationFilter, page, perPage int) ([]models.LoanApplication, int64, error) {

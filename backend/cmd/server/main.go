@@ -559,6 +559,7 @@ func main() {
 		{
 			loans.POST("", loanHandler.Apply)
 			loans.GET("", loanHandler.List)
+			loans.GET("/tier/:crew_member_id", loanHandler.GetTier)
 			loans.POST("/:id/repay", loanHandler.Repay)
 			
 			loanAdmin := loans.Group("")

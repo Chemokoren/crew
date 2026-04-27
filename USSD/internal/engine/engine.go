@@ -509,21 +509,35 @@ func (e *Engine) handleLoanStatus(ctx context.Context, sess *session.Data, input
 }
 
 func (e *Engine) handleLoanApply(ctx context.Context, sess *session.Data, input string) (*Response, error) {
-	const minScore = 400
-
-	score, err := e.backendClient.GetCreditScore(ctx, sess.CrewMemberID)
-	if err != nil || score == nil {
-		// API error — show score as 0
-		msg := fmt.Sprintf(e.t(sess, "loan.low_score"), 0, minScore)
+	// Fetch the user's graduated lending tier from the backend
+	tier, err := e.backendClient.GetLoanTier(ctx, sess.CrewMemberID)
+	if err != nil || tier == nil {
+		// Fallback: check credit score directly
+		score, scoreErr := e.backendClient.GetCreditScore(ctx, sess.CrewMemberID)
+		if scoreErr != nil || score == nil {
+			msg := fmt.Sprintf(e.t(sess, "loan.low_score"), 0, 400)
+			return e.continueWithMessage(sess, msg), nil
+		}
+		msg := fmt.Sprintf(e.t(sess, "loan.low_score"), score.Score, 400)
 		return e.continueWithMessage(sess, msg), nil
 	}
-	if score.Score < minScore {
-		msg := fmt.Sprintf(e.t(sess, "loan.low_score"), score.Score, minScore)
-		return e.continueWithMessage(sess, msg), nil
-	}
 
+	// Store tier info in session for downstream validation
+	sess.SetInput("loan_tier_grade", tier.Grade)
+	sess.SetInput("loan_tier_max", fmt.Sprintf("%.0f", tier.MaxLoanKES))
+	sess.SetInput("loan_tier_rate", fmt.Sprintf("%.0f", tier.InterestRate))
+	sess.SetInput("loan_tier_tenure", fmt.Sprintf("%d", tier.MaxTenureDays))
+
+	// Show tier info and prompt for amount
+	msg := fmt.Sprintf(e.t(sess, "loan.tier_info"),
+		tier.Grade,
+		tier.Score,
+		tier.MaxLoanKES,
+		tier.InterestRate,
+		tier.MaxTenureDays,
+	)
 	sess.CurrentState = session.StateLoanAmount
-	return e.continueWithMessage(sess, e.t(sess, "loan.enter_amount")), nil
+	return e.continueWithMessage(sess, msg), nil
 }
 
 func (e *Engine) handleLoanAmount(ctx context.Context, sess *session.Data, input string) (*Response, error) {
@@ -536,33 +550,81 @@ func (e *Engine) handleLoanAmount(ctx context.Context, sess *session.Data, input
 		return e.continueWithMessage(sess, e.t(sess, "loan.invalid_amount")), nil
 	}
 
+	// Validate against tier max
+	tierMax := sess.GetInput("loan_tier_max")
+	if tierMax != "" {
+		var maxKES float64
+		fmt.Sscanf(tierMax, "%f", &maxKES)
+		amountKES := float64(amount) / 100
+		if amountKES > maxKES {
+			msg := fmt.Sprintf(e.t(sess, "loan.amount_exceeds_tier"), maxKES)
+			return e.continueWithMessage(sess, msg), nil
+		}
+	}
+
 	sess.SetInput("loan_amount", input)
+
+	// Build dynamic tenure menu based on tier max
+	maxTenure := 30
+	if t := sess.GetInput("loan_tier_tenure"); t != "" {
+		fmt.Sscanf(t, "%d", &maxTenure)
+	}
+
+	var tenureMenu string
+	if maxTenure >= 30 {
+		tenureMenu = e.t(sess, "loan.select_tenure") // All options
+	} else if maxTenure >= 14 {
+		tenureMenu = e.t(sess, "loan.select_tenure_14") // 7 and 14 only
+	} else {
+		tenureMenu = e.t(sess, "loan.select_tenure_7") // 7 days only
+	}
+
 	sess.CurrentState = session.StateLoanTenure
-	return e.continueWithMessage(sess, e.t(sess, "loan.select_tenure")), nil
+	return e.continueWithMessage(sess, tenureMenu), nil
 }
 
 func (e *Engine) handleLoanTenure(ctx context.Context, sess *session.Data, input string) (*Response, error) {
 	var tenureDays int
+
+	// Get tier max tenure
+	maxTenure := 30
+	if t := sess.GetInput("loan_tier_tenure"); t != "" {
+		fmt.Sscanf(t, "%d", &maxTenure)
+	}
+
 	switch strings.TrimSpace(input) {
 	case "1":
 		tenureDays = 7
 	case "2":
-		tenureDays = 14
+		if maxTenure >= 14 {
+			tenureDays = 14
+		} else {
+			return e.continueWithMessage(sess, e.t(sess, "error.invalid_input")), nil
+		}
 	case "3":
-		tenureDays = 30
+		if maxTenure >= 30 {
+			tenureDays = 30
+		} else {
+			return e.continueWithMessage(sess, e.t(sess, "error.invalid_input")), nil
+		}
 	case "0":
 		return e.backToMainMenu(sess), nil
 	default:
-		return e.continueWithMessage(sess, e.t(sess, "error.invalid_input")+"\n"+e.t(sess, "loan.select_tenure")), nil
+		return e.continueWithMessage(sess, e.t(sess, "error.invalid_input")), nil
 	}
 
 	sess.SetInput("loan_tenure", fmt.Sprintf("%d", tenureDays))
 	sess.CurrentState = session.StateLoanConfirm
 
 	amount, _ := parseAmount(sess.GetInput("loan_amount"))
-	msg := fmt.Sprintf(e.t(sess, "loan.confirm"),
+	interestRate := sess.GetInput("loan_tier_rate")
+	grade := sess.GetInput("loan_tier_grade")
+
+	msg := fmt.Sprintf(e.t(sess, "loan.confirm_with_rate"),
 		formatMoney(amount, "KES"),
 		tenureDays,
+		interestRate,
+		grade,
 	)
 	return e.continueWithMessage(sess, msg), nil
 }

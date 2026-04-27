@@ -323,6 +323,31 @@ func (c *Client) GetCreditScore(ctx context.Context, crewMemberID string) (*Cred
 	return &score, nil
 }
 
+// LoanTierResponse represents a crew member's qualified loan tier.
+type LoanTierResponse struct {
+	Score        int     `json:"score"`
+	Grade        string  `json:"grade"`
+	MaxLoanKES   float64 `json:"max_loan_kes"`
+	InterestRate float64 `json:"interest_rate"`
+	MaxTenureDays int    `json:"max_tenure_days"`
+	CooldownDays int     `json:"cooldown_days"`
+	Description  string  `json:"description"`
+}
+
+// GetLoanTier retrieves the crew member's qualified loan tier.
+func (c *Client) GetLoanTier(ctx context.Context, crewMemberID string) (*LoanTierResponse, error) {
+	resp, err := c.get(ctx, fmt.Sprintf("/api/v1/loans/tier/%s", crewMemberID))
+	if err != nil {
+		return nil, err
+	}
+
+	var tier LoanTierResponse
+	if err := c.parseResponse(resp, &tier); err != nil {
+		return nil, err
+	}
+	return &tier, nil
+}
+
 // GetLoans retrieves active loans for a crew member.
 func (c *Client) GetLoans(ctx context.Context, crewMemberID string) ([]LoanResponse, error) {
 	resp, err := c.get(ctx, fmt.Sprintf("/api/v1/loans?crew_member_id=%s&per_page=5", crewMemberID))

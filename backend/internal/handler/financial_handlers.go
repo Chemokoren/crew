@@ -119,6 +119,43 @@ func NewLoanHandler(svc service.LoanService) *LoanHandler {
 	return &LoanHandler{loanSvc: svc}
 }
 
+// GetTier godoc
+// @Summary Get loan tier for a crew member
+// @Description Returns the user's qualified loan tier (max amount, rate, tenure) based on credit score
+// @Tags Loan
+// @Accept json
+// @Produce json
+// @Param crew_member_id path string true "Crew Member ID"
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/loans/tier/{crew_member_id} [get]
+func (h *LoanHandler) GetTier(c *gin.Context) {
+	crewID, err := uuid.Parse(c.Param("crew_member_id"))
+	if err != nil {
+		BadRequest(c, "Invalid crew member ID")
+		return
+	}
+
+	if denied := enforceWalletAccess(c, crewID); denied {
+		return
+	}
+
+	tier, score, err := h.loanSvc.GetLoanTier(c.Request.Context(), crewID)
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+
+	SuccessResponse(c, http.StatusOK, gin.H{
+		"score":          score,
+		"grade":          tier.Grade,
+		"max_loan_kes":   tier.FormatMaxLoanKES(),
+		"interest_rate":  tier.FormatInterestPercent(),
+		"max_tenure_days": tier.MaxTenureDays,
+		"cooldown_days":  tier.CooldownDays,
+		"description":    tier.Description,
+	})
+}
+
 // Apply godoc
 // @Summary Apply
 // @Description Apply LoanHandler
