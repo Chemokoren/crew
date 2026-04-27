@@ -137,7 +137,7 @@ func (t *Translator) loadEnglish() {
 		"loan.menu":           "Loans\n1. Check Status\n2. Apply for Loan\n0. Back",
 		"loan.no_loans":       "You have no active loans.",
 		"loan.status_result":  "Loan: %s\nStatus: %s",
-		"loan.low_score":      "Your credit score is too low to apply for a loan at this time.",
+		"loan.low_score":      "Your credit score (%d) is too low to apply for a loan.\nMinimum required: %d\n0. Back to Menu",
 		"loan.enter_amount":   "Enter loan amount (KES)\n0. Back",
 		"loan.invalid_amount": "Invalid amount. Enter numbers only\n0. Back",
 		"loan.select_tenure":  "Select repayment period\n1. 7 days\n2. 14 days\n3. 30 days\n0. Back",
@@ -172,7 +172,7 @@ func (t *Translator) loadEnglish() {
 		"profile.pin_set_success":    "Transaction PIN set successfully!\nYou can now make withdrawals.",
 		"profile.pin_changed_success": "PIN changed successfully!",
 		"profile.no_pin_redirect":    "You don't have a PIN yet.\nPlease create one now.\nEnter a 4-digit PIN",
-		"profile.view":               "Your Profile\nPhone: %s\nID: %s",
+		"profile.view":               "Your Profile\nPhone: %s\nName: %s",
 
 		// Errors
 		"error.generic":             "Something went wrong. Please try again.",
@@ -237,7 +237,7 @@ func (t *Translator) loadSwahili() {
 		"loan.menu":           "Mikopo\n1. Angalia Hali\n2. Omba Mkopo\n0. Rudi",
 		"loan.no_loans":       "Huna mikopo inayoendelea.",
 		"loan.status_result":  "Mkopo: %s\nHali: %s",
-		"loan.low_score":      "Alama yako ya mikopo ni ndogo sana kuomba mkopo kwa sasa.",
+		"loan.low_score":      "Alama yako ya mkopo (%d) ni ndogo sana kuomba mkopo.\nKiwango cha chini kinachohitajika: %d\n0. Rudi kwenye Menyu",
 		"loan.enter_amount":   "Ingiza kiasi cha mkopo (KES)\n0. Rudi",
 		"loan.invalid_amount": "Kiasi batili. Ingiza nambari\n0. Rudi",
 		"loan.select_tenure":  "Chagua muda wa kulipa\n1. Siku 7\n2. Siku 14\n3. Siku 30\n0. Rudi",
@@ -272,7 +272,7 @@ func (t *Translator) loadSwahili() {
 		"profile.pin_set_success":    "PIN ya muamala imewekwa!\nSasa unaweza kutoa pesa.",
 		"profile.pin_changed_success": "PIN imebadilishwa!",
 		"profile.no_pin_redirect":    "Huna PIN bado.\nTafadhali unda moja sasa.\nIngiza PIN ya tarakimu 4",
-		"profile.view":               "Wasifu Wako\nSimu: %s\nKitambulisho: %s",
+		"profile.view":               "Wasifu Wako\nSimu: %s\nJina: %s",
 
 		// Errors
 		"error.generic":             "Kuna tatizo. Jaribu tena.",

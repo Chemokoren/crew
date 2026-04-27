@@ -81,6 +81,34 @@ func (h *CreditHandler) CalculateScore(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, score)
 }
 
+// GetDetailedScore godoc
+// @Summary Get detailed credit score with factor breakdown
+// @Description Returns the full credit score with individual factor contributions, suggestions, and feature data
+// @Tags Credit
+// @Accept json
+// @Produce json
+// @Param crew_member_id path string true "Crew Member ID"
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/credit/{crew_member_id}/detailed [get]
+func (h *CreditHandler) GetDetailedScore(c *gin.Context) {
+	crewID, err := uuid.Parse(c.Param("crew_member_id"))
+	if err != nil {
+		BadRequest(c, "Invalid crew member ID")
+		return
+	}
+
+	if denied := enforceWalletAccess(c, crewID); denied {
+		return
+	}
+
+	result, err := h.creditSvc.GetDetailedScore(c.Request.Context(), crewID)
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, result)
+}
+
 // --- Loan Handler ---
 
 type LoanHandler struct {
@@ -207,6 +235,38 @@ func (h *LoanHandler) Disburse(c *gin.Context) {
 	}
 
 	loan, err := h.loanSvc.DisburseLoan(c.Request.Context(), loanID)
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, loan)
+}
+
+// Repay godoc
+// @Summary Repay a loan
+// @Description Process a loan repayment — debits wallet, tracks on-time vs late
+// @Tags Loan
+// @Accept json
+// @Produce json
+// @Param id path string true "Loan ID"
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/loans/{id}/repay [post]
+func (h *LoanHandler) Repay(c *gin.Context) {
+	loanID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		BadRequest(c, "Invalid loan ID")
+		return
+	}
+
+	var req struct {
+		AmountCents int64 `json:"amount_cents" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		BadRequest(c, err.Error())
+		return
+	}
+
+	loan, err := h.loanSvc.RepayLoan(c.Request.Context(), loanID, req.AmountCents)
 	if err != nil {
 		MapServiceError(c, err)
 		return

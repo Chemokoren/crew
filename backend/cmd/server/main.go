@@ -47,6 +47,7 @@ import (
 	"github.com/kibsoft/amy-mis/internal/handler"
 	"github.com/kibsoft/amy-mis/internal/middleware"
 	pgRepo "github.com/kibsoft/amy-mis/internal/repository/postgres"
+	"github.com/kibsoft/amy-mis/internal/credit"
 	"github.com/kibsoft/amy-mis/internal/service"
 	"github.com/kibsoft/amy-mis/internal/worker"
 	"github.com/kibsoft/amy-mis/pkg/jwt"
@@ -154,6 +155,7 @@ func main() {
 	creditScoreRepo := pgRepo.NewCreditScoreRepo(db)
 	loanRepo := pgRepo.NewLoanApplicationRepo(db)
 	insuranceRepo := pgRepo.NewInsurancePolicyRepo(db)
+	snapshotRepo := pgRepo.NewWalletSnapshotRepo(db)
 
 	// --- 8. Initialize transaction manager ---
 	txMgr := database.NewTxManager(db)
@@ -245,7 +247,14 @@ func main() {
 	vehicleSvc := service.NewVehicleService(vehicleRepo, logger)
 	routeSvc := service.NewRouteService(routeRepo, logger)
 	docSvc := service.NewDocumentService(documentRepo, logger)
-	creditSvc := service.NewCreditService(creditScoreRepo, earningRepo, assignmentRepo)
+	// --- Credit Scoring Engine (V3 architecture) ---
+	featureComputer := credit.NewFeatureComputer(
+		earningRepo, assignmentRepo, walletRepo, loanRepo,
+		insuranceRepo, crewRepo, userRepo, snapshotRepo, logger,
+	)
+	creditScorer := credit.NewRulesScorer() // Swap to MLScorer/HybridScorer for V3
+	creditEngine := credit.NewEngine(featureComputer, creditScorer, creditScoreRepo, logger)
+	creditSvc := service.NewCreditService(creditEngine, creditScoreRepo)
 	loanSvc := service.NewLoanService(loanRepo, creditScoreRepo, walletRepo, txMgr)
 	insuranceSvc := service.NewInsuranceService(insuranceRepo, logger)
 
@@ -344,6 +353,12 @@ func main() {
 
 	walletReconJob := worker.NewWalletReconciliationJob(walletRepo, logger)
 	scheduler.Register(walletReconJob.AsJob())
+
+	balanceSnapshotJob := worker.NewBalanceSnapshotJob(walletRepo, snapshotRepo, logger)
+	scheduler.Register(balanceSnapshotJob.AsJob())
+
+	loanDefaultJob := worker.NewLoanDefaultDetectorJob(loanSvc, logger)
+	scheduler.Register(loanDefaultJob.AsJob())
 
 	scheduler.Start()
 
@@ -535,6 +550,7 @@ func main() {
 		credit := secured.Group("/credit")
 		{
 			credit.GET("/:crew_member_id", creditHandler.GetScore)
+			credit.GET("/:crew_member_id/detailed", creditHandler.GetDetailedScore)
 			credit.POST("/:crew_member_id/calculate", creditHandler.CalculateScore)
 		}
 
@@ -543,6 +559,7 @@ func main() {
 		{
 			loans.POST("", loanHandler.Apply)
 			loans.GET("", loanHandler.List)
+			loans.POST("/:id/repay", loanHandler.Repay)
 			
 			loanAdmin := loans.Group("")
 			loanAdmin.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleLender))

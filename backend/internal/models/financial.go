@@ -45,11 +45,31 @@ type LoanApplication struct {
 	LenderID             uuid.UUID  `json:"lender_id" gorm:"type:uuid"`
 	DisbursedAt          *time.Time `json:"disbursed_at,omitempty"`
 	DueAt                *time.Time `json:"due_at,omitempty"`
+	RepaidAt             *time.Time `json:"repaid_at,omitempty"`
+	TotalRepaidCents     int64      `json:"total_repaid_cents" gorm:"type:bigint;default:0"`
+	DaysPastDue          int        `json:"days_past_due" gorm:"default:0"`
 	CreatedAt            time.Time  `json:"created_at"`
 	UpdatedAt            time.Time  `json:"updated_at"`
 }
 
 func (LoanApplication) TableName() string { return "loan_applications" }
+
+// IsOverdue returns true if the loan is past its due date.
+func (l *LoanApplication) IsOverdue() bool {
+	if l.DueAt == nil {
+		return false
+	}
+	return time.Now().After(*l.DueAt) &&
+		(l.Status == LoanDisbursed || l.Status == LoanRepaying)
+}
+
+// WasRepaidOnTime returns true if the loan was fully repaid before or on the due date.
+func (l *LoanApplication) WasRepaidOnTime() bool {
+	if l.RepaidAt == nil || l.DueAt == nil {
+		return false
+	}
+	return !l.RepaidAt.After(*l.DueAt)
+}
 
 type PolicyStatus string
 
@@ -76,3 +96,18 @@ type InsurancePolicy struct {
 }
 
 func (InsurancePolicy) TableName() string { return "insurance_policies" }
+
+// WalletDailySnapshot records a wallet's closing balance for a specific day.
+// Used by the credit scoring engine to compute accurate 30-day average balances.
+type WalletDailySnapshot struct {
+	ID           uuid.UUID `json:"id" gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
+	WalletID     uuid.UUID `json:"wallet_id" gorm:"type:uuid;not null;index:idx_wds_wallet_date"`
+	CrewMemberID uuid.UUID `json:"crew_member_id" gorm:"type:uuid;not null;index:idx_wds_crew_date"`
+	BalanceCents int64     `json:"balance_cents" gorm:"type:bigint;not null"`
+	Currency     string    `json:"currency" gorm:"default:'KES';not null"`
+	SnapshotDate time.Time `json:"snapshot_date" gorm:"type:date;not null;uniqueIndex:uq_wallet_snapshot_date"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+func (WalletDailySnapshot) TableName() string { return "wallet_daily_snapshots" }
+

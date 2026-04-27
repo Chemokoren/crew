@@ -68,6 +68,14 @@ type UserResponse struct {
 	IsActive     bool   `json:"is_active"`
 }
 
+// CrewMemberResponse represents a crew member response.
+type CrewMemberResponse struct {
+	ID        string `json:"id"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+	FullName  string `json:"full_name"`
+}
+
 // EarningsSummary represents aggregated earnings data.
 type EarningsSummary struct {
 	TotalEarnedCents     int64  `json:"total_earned_cents"`
@@ -155,6 +163,20 @@ func (c *Client) GetUserByPhone(ctx context.Context, phone string) (*UserRespons
 		return nil, err
 	}
 	return &user, nil
+}
+
+// GetCrewMember looks up a crew member by ID.
+func (c *Client) GetCrewMember(ctx context.Context, crewMemberID string) (*CrewMemberResponse, error) {
+	resp, err := c.get(ctx, "/api/v1/crew/"+url.PathEscape(crewMemberID))
+	if err != nil {
+		return nil, err
+	}
+
+	var crew CrewMemberResponse
+	if err := c.parseResponse(resp, &crew); err != nil {
+		return nil, err
+	}
+	return &crew, nil
 }
 
 // SetPIN sets the transaction PIN for a user.
@@ -261,13 +283,21 @@ func (c *Client) GetLastTransaction(ctx context.Context, crewMemberID string) (*
 }
 
 // InitiateWithdrawal initiates a payout from the crew member's wallet.
-func (c *Client) InitiateWithdrawal(ctx context.Context, crewMemberID string, amountCents int64) (*WithdrawalResult, error) {
+// USSD withdrawals always go to the crew member's own phone via M-Pesa B2C.
+func (c *Client) InitiateWithdrawal(ctx context.Context, crewMemberID string, amountCents int64, phone string) (*WithdrawalResult, error) {
 	body := map[string]interface{}{
-		"crew_member_id": crewMemberID,
-		"amount_cents":   amountCents,
+		"crew_member_id":  crewMemberID,
+		"amount_cents":    amountCents,
+		"channel":         "MOMO_B2C",
+		"recipient_name":  "USSD Withdrawal",
+		"recipient_phone": phone,
 	}
 
-	resp, err := c.post(ctx, fmt.Sprintf("/api/v1/wallets/%s/payout", crewMemberID), body)
+	idempotencyKey := fmt.Sprintf("ussd-wd-%s-%d", crewMemberID, time.Now().UnixMilli())
+
+	resp, err := c.postWithHeaders(ctx, fmt.Sprintf("/api/v1/wallets/%s/payout", crewMemberID), body, map[string]string{
+		"Idempotency-Key": idempotencyKey,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -358,6 +388,10 @@ func (c *Client) get(ctx context.Context, path string) (*http.Response, error) {
 }
 
 func (c *Client) post(ctx context.Context, path string, body interface{}) (*http.Response, error) {
+	return c.postWithHeaders(ctx, path, body, nil)
+}
+
+func (c *Client) postWithHeaders(ctx context.Context, path string, body interface{}, extraHeaders map[string]string) (*http.Response, error) {
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
@@ -369,6 +403,9 @@ func (c *Client) post(ctx context.Context, path string, body interface{}) (*http
 	}
 	req.Header.Set("Content-Type", "application/json")
 	c.setHeaders(req)
+	for k, v := range extraHeaders {
+		req.Header.Set(k, v)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

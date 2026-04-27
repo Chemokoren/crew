@@ -290,3 +290,23 @@ type InsurancePolicyRepository interface {
 	List(ctx context.Context, filter InsurancePolicyFilter, page, perPage int) ([]models.InsurancePolicy, int64, error)
 }
 
+// WalletSnapshotRepository handles daily wallet balance snapshots.
+type WalletSnapshotRepository interface {
+	// Upsert creates or updates a daily snapshot for a wallet.
+	// Uses ON CONFLICT to handle re-runs on the same day safely.
+	Upsert(ctx context.Context, snapshot *models.WalletDailySnapshot) error
+
+	// BatchUpsert efficiently upserts multiple snapshots in a single query.
+	BatchUpsert(ctx context.Context, snapshots []models.WalletDailySnapshot) error
+
+	// GetAvgBalance computes the average daily balance for a crew member over a date range.
+	GetAvgBalance(ctx context.Context, crewMemberID uuid.UUID, from, to time.Time) (int64, error)
+
+	// GetSnapshots retrieves daily snapshots for a crew member within a date range.
+	GetSnapshots(ctx context.Context, crewMemberID uuid.UUID, from, to time.Time) ([]models.WalletDailySnapshot, error)
+
+	// GetLatest retrieves the most recent snapshot for a crew member.
+	GetLatest(ctx context.Context, crewMemberID uuid.UUID) (*models.WalletDailySnapshot, error)
+}
+
+

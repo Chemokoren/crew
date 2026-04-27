@@ -356,7 +356,7 @@ func (e *Engine) handleWithdrawPIN(ctx context.Context, sess *session.Data, inpu
 	// PIN verified — proceed with withdrawal
 	amount, _ := parseAmount(sess.GetInput("withdraw_amount"))
 
-	result, err := e.backendClient.InitiateWithdrawal(ctx, sess.CrewMemberID, amount)
+	result, err := e.backendClient.InitiateWithdrawal(ctx, sess.CrewMemberID, amount, sess.MSISDN)
 	if err != nil {
 		e.logger.Error("withdrawal failed",
 			slog.String("crew_member_id", sess.CrewMemberID),
@@ -509,9 +509,17 @@ func (e *Engine) handleLoanStatus(ctx context.Context, sess *session.Data, input
 }
 
 func (e *Engine) handleLoanApply(ctx context.Context, sess *session.Data, input string) (*Response, error) {
+	const minScore = 400
+
 	score, err := e.backendClient.GetCreditScore(ctx, sess.CrewMemberID)
-	if err != nil || score == nil || score.Score < 400 {
-		return e.endWithMessage(sess, e.t(sess, "loan.low_score")), nil
+	if err != nil || score == nil {
+		// API error — show score as 0
+		msg := fmt.Sprintf(e.t(sess, "loan.low_score"), 0, minScore)
+		return e.continueWithMessage(sess, msg), nil
+	}
+	if score.Score < minScore {
+		msg := fmt.Sprintf(e.t(sess, "loan.low_score"), score.Score, minScore)
+		return e.continueWithMessage(sess, msg), nil
 	}
 
 	sess.CurrentState = session.StateLoanAmount
@@ -799,9 +807,14 @@ func (e *Engine) handleMyProfile(ctx context.Context, sess *session.Data, input 
 		sess.CurrentState = session.StateChangePIN
 		return e.continueWithMessage(sess, e.t(sess, "profile.enter_current_pin")), nil
 	case "3": // View Profile
+		crew, err := e.backendClient.GetCrewMember(ctx, sess.CrewMemberID)
+		name := "N/A"
+		if err == nil && crew != nil {
+			name = crew.FullName
+		}
 		msg := fmt.Sprintf(e.t(sess, "profile.view"),
 			sess.MSISDN,
-			sess.CrewMemberID,
+			name,
 		)
 		return e.continueWithMessage(sess, msg+"\n0. "+e.t(sess, "menu.back")), nil
 	case "0": // Back
@@ -844,6 +857,7 @@ func (e *Engine) handleSetPINConfirm(ctx context.Context, sess *session.Data, in
 		return e.endWithMessage(sess, e.t(sess, "error.service_unavailable")), nil
 	}
 
+	sess.CurrentState = session.StateMyProfile
 	return e.continueWithMessage(sess, e.t(sess, "profile.pin_set_success")+"\n0. "+e.t(sess, "menu.back")), nil
 }
 
@@ -907,6 +921,7 @@ func (e *Engine) handleChangePINConfirm(ctx context.Context, sess *session.Data,
 		return e.endWithMessage(sess, e.t(sess, "error.service_unavailable")), nil
 	}
 
+	sess.CurrentState = session.StateMyProfile
 	return e.continueWithMessage(sess, e.t(sess, "profile.pin_changed_success")+"\n0. "+e.t(sess, "menu.back")), nil
 }
 
