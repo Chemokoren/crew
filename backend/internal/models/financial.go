@@ -42,7 +42,7 @@ type LoanApplication struct {
 	TenureDays           int        `json:"tenure_days"`
 	Currency             string     `json:"currency" gorm:"default:'KES';not null"`
 	Status               LoanStatus `json:"status" gorm:"default:'APPLIED'"`
-	LenderID             uuid.UUID  `json:"lender_id" gorm:"type:uuid"`
+	LenderID             *uuid.UUID `json:"lender_id,omitempty" gorm:"type:uuid"`
 	DisbursedAt          *time.Time `json:"disbursed_at,omitempty"`
 	DueAt                *time.Time `json:"due_at,omitempty"`
 	RepaidAt             *time.Time `json:"repaid_at,omitempty"`

@@ -119,3 +119,39 @@ func (r *InsurancePolicyRepo) Update(_ context.Context, policy *models.Insurance
 func (r *InsurancePolicyRepo) List(_ context.Context, _ repository.InsurancePolicyFilter, _, _ int) ([]models.InsurancePolicy, int64, error) {
 	return nil, 0, nil
 }
+
+// --- Credit Score History Mock ---
+
+type CreditScoreHistoryRepo struct {
+	mu      sync.Mutex
+	history []models.CreditScoreHistory
+}
+
+func NewCreditScoreHistoryRepo() *CreditScoreHistoryRepo {
+	return &CreditScoreHistoryRepo{}
+}
+
+func (r *CreditScoreHistoryRepo) Create(_ context.Context, h *models.CreditScoreHistory) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if h.ID == uuid.Nil {
+		h.ID = uuid.New()
+	}
+	r.history = append(r.history, *h)
+	return nil
+}
+
+func (r *CreditScoreHistoryRepo) GetHistory(_ context.Context, crewMemberID uuid.UUID, limit int) ([]models.CreditScoreHistory, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var result []models.CreditScoreHistory
+	for _, h := range r.history {
+		if h.CrewMemberID == crewMemberID {
+			result = append(result, h)
+		}
+	}
+	if len(result) > limit {
+		result = result[:limit]
+	}
+	return result, nil
+}

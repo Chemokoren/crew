@@ -203,6 +203,12 @@ func MapServiceError(c *gin.Context, err error) {
 		Forbidden(c, "Action not permitted")
 	case errors.Is(err, errs.ErrValidation):
 		BadRequest(c, err.Error())
+	case errors.Is(err, service.ErrLowCreditScore),
+		errors.Is(err, service.ErrAmountExceedsTier),
+		errors.Is(err, service.ErrTenureExceedsTier),
+		errors.Is(err, service.ErrLoanCooldown),
+		errors.Is(err, service.ErrInvalidStatus):
+		BadRequest(c, err.Error())
 	default:
 		InternalError(c, "An unexpected error occurred")
 	}

@@ -125,7 +125,7 @@ func (s *loanService) ApproveLoan(ctx context.Context, loanID uuid.UUID, lenderI
 	}
 
 	loan.Status = models.LoanApproved
-	loan.LenderID = lenderID
+	loan.LenderID = &lenderID
 	loan.AmountApprovedCents = approvedAmountCents
 	loan.InterestRate = interestRate
 
