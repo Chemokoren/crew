@@ -554,11 +554,21 @@ func (e *Engine) handleLoanApply(ctx context.Context, sess *session.Data, input 
 		return e.continueWithMessage(sess, msg), nil
 	}
 
+	// Check for active loans EARLY — don't let user go through the entire flow
+	loans, loansErr := e.backendClient.GetLoans(ctx, sess.CrewMemberID)
+	if loansErr == nil && len(loans) > 0 {
+		for _, l := range loans {
+			if l.Status == "APPLIED" || l.Status == "APPROVED" ||
+				l.Status == "DISBURSED" || l.Status == "REPAYING" {
+				return e.continueWithMessage(sess, e.t(sess, "loan.active_loan")), nil
+			}
+		}
+	}
+
 	// Try to fetch the graduated lending tier from the backend
 	tier, err := e.backendClient.GetLoanTier(ctx, sess.CrewMemberID)
 	if err != nil || tier == nil {
 		// Backend tier API failed (e.g., auth issue) — compute tier locally
-		// Tier thresholds: EXCELLENT ≥750, GOOD ≥650, FAIR ≥500, POOR ≥400
 		tier = computeLocalTier(score.Score)
 	}
 
@@ -726,7 +736,14 @@ func (e *Engine) handleLoanConfirm(ctx context.Context, sess *session.Data, inpu
 				slog.String("crew_member_id", sess.CrewMemberID),
 				slog.String("error", err.Error()),
 			)
-			return e.endWithMessage(sess, e.t(sess, "error.service_unavailable")), nil
+			// Show the actual error to the user if it's a business rule
+			errMsg := err.Error()
+			if strings.Contains(errMsg, "active loan") {
+				return e.continueWithMessage(sess, e.t(sess, "loan.active_loan")), nil
+			}
+			// For other known errors, show the backend message
+			msg := fmt.Sprintf(e.t(sess, "loan.apply_failed"), errMsg)
+			return e.continueWithMessage(sess, msg), nil
 		}
 
 		msg := fmt.Sprintf(e.t(sess, "loan.applied_success"),

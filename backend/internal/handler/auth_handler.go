@@ -207,6 +207,7 @@ func MapServiceError(c *gin.Context, err error) {
 		errors.Is(err, service.ErrAmountExceedsTier),
 		errors.Is(err, service.ErrTenureExceedsTier),
 		errors.Is(err, service.ErrLoanCooldown),
+		errors.Is(err, service.ErrActiveLoan),
 		errors.Is(err, service.ErrInvalidStatus):
 		BadRequest(c, err.Error())
 	default:

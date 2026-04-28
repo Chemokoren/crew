@@ -14,11 +14,12 @@ import (
 )
 
 var (
-	ErrLowCreditScore   = errors.New("credit score is too low for loan approval")
-	ErrInvalidStatus    = errors.New("invalid loan status transition")
+	ErrLowCreditScore    = errors.New("credit score is too low for loan approval")
+	ErrInvalidStatus     = errors.New("invalid loan status transition")
 	ErrAmountExceedsTier = errors.New("requested amount exceeds your loan tier limit")
 	ErrTenureExceedsTier = errors.New("requested tenure exceeds your loan tier limit")
-	ErrLoanCooldown     = errors.New("you must wait before applying for another loan")
+	ErrLoanCooldown      = errors.New("you must wait before applying for another loan")
+	ErrActiveLoan        = errors.New("you already have an active loan")
 )
 
 type LoanService interface {
@@ -78,22 +79,22 @@ func (s *loanService) ApplyForLoan(ctx context.Context, crewMemberID uuid.UUID, 
 			ErrTenureExceedsTier, tier.MaxTenureDays, tier.Grade)
 	}
 
-	// 3. Check cooldown (no back-to-back loans)
-	if tier.CooldownDays > 0 {
-		loans, _, _ := s.loanRepo.List(ctx, repository.LoanApplicationFilter{
-			CrewMemberID: &crewMemberID,
-		}, 1, 5)
-		for _, l := range loans {
-			if l.Status == models.LoanCompleted && l.RepaidAt != nil {
-				cooldownEnd := l.RepaidAt.AddDate(0, 0, tier.CooldownDays)
-				if time.Now().Before(cooldownEnd) {
-					return nil, fmt.Errorf("%w: next eligible on %s",
-						ErrLoanCooldown, cooldownEnd.Format("2006-01-02"))
-				}
-			}
-			// Block if there's an active loan
-			if l.Status == models.LoanDisbursed || l.Status == models.LoanRepaying || l.Status == models.LoanApplied || l.Status == models.LoanApproved {
-				return nil, errors.New("you already have an active loan")
+	// 3. Check for active loans (always enforced — no concurrent loans by default)
+	loans, _, _ := s.loanRepo.List(ctx, repository.LoanApplicationFilter{
+		CrewMemberID: &crewMemberID,
+	}, 1, 10)
+	for _, l := range loans {
+		// Block if there's an active loan (applied, approved, disbursed, or repaying)
+		if l.Status == models.LoanDisbursed || l.Status == models.LoanRepaying ||
+			l.Status == models.LoanApplied || l.Status == models.LoanApproved {
+			return nil, ErrActiveLoan
+		}
+		// Check cooldown between completed loans
+		if tier.CooldownDays > 0 && l.Status == models.LoanCompleted && l.RepaidAt != nil {
+			cooldownEnd := l.RepaidAt.AddDate(0, 0, tier.CooldownDays)
+			if time.Now().Before(cooldownEnd) {
+				return nil, fmt.Errorf("%w: next eligible on %s",
+					ErrLoanCooldown, cooldownEnd.Format("2006-01-02"))
 			}
 		}
 	}
