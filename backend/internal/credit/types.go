@@ -64,6 +64,13 @@ type FeatureVector struct {
 	AccountAgeDays       int     `json:"account_age_days"`
 	FirstShiftAgeDays    int     `json:"first_shift_age_days"`
 	DaysSinceLastShift   int     `json:"days_since_last_shift"`
+
+	// --- External Credit (CRB) ---
+	CRBScoreAvailable    bool    `json:"crb_score_available"`
+	CRBScore             int     `json:"crb_score"`              // 0-900 from CRB
+	CRBTotalLoans        int     `json:"crb_total_loans"`
+	CRBDefaultedLoans    int     `json:"crb_defaulted_loans"`
+	CRBExposureKES       float64 `json:"crb_exposure_kes"`
 }
 
 // --- Scorer Interface ---

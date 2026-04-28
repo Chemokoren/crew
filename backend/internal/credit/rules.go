@@ -63,6 +63,13 @@ func (s *RulesScorer) Score(ctx context.Context, fv *FeatureVector) (*ScoreResul
 	factors = append(factors, tenureFactors...)
 	totalPoints += tenurePts
 
+	// --- F. CRB External Credit (bonus — max 50 pts) ---
+	if fv.CRBScoreAvailable {
+		crbFactors, crbPts := s.scoreCRB(fv)
+		factors = append(factors, crbFactors...)
+		totalPoints += crbPts
+	}
+
 	// Clamp to [300, 850]
 	if totalPoints > 850 {
 		totalPoints = 850
@@ -481,4 +488,67 @@ func boolDesc(b bool, yes, no string) string {
 		return yes
 	}
 	return no
+}
+
+// --- F. CRB External Credit (bonus — max 50 pts) ---
+// This is purely additive — CRB data enhances the score but its absence
+// doesn't penalize. External defaults DO penalize.
+
+func (s *RulesScorer) scoreCRB(fv *FeatureVector) ([]ScoreFactor, int) {
+	total := 0
+
+	// F1. CRB Score mapping (max 35)
+	// Map CRB 0-900 to 0-35 points
+	crbPts := 0
+	if fv.CRBScore >= 700 {
+		crbPts = 35
+	} else if fv.CRBScore >= 500 {
+		crbPts = int(float64(fv.CRBScore-500) / 200 * 25) + 10
+	} else if fv.CRBScore >= 300 {
+		crbPts = int(float64(fv.CRBScore-300) / 200 * 10)
+	}
+	total += crbPts
+
+	f1 := ScoreFactor{
+		Category:    "EXTERNAL_CREDIT",
+		Name:        "CRB Credit Score",
+		Points:      crbPts,
+		MaxPoints:   35,
+		Percentage:  float64(crbPts) / 35,
+		Description: fmt.Sprintf("CRB score: %d/900", fv.CRBScore),
+		Impact:      impact(crbPts, 35),
+	}
+
+	// F2. CRB Default penalty (max -20)
+	defaultPenalty := 0
+	if fv.CRBDefaultedLoans > 0 {
+		defaultPenalty = -minI(fv.CRBDefaultedLoans*10, 20)
+	}
+	total += defaultPenalty
+
+	f2 := ScoreFactor{
+		Category:    "EXTERNAL_CREDIT",
+		Name:        "CRB Defaults",
+		Points:      defaultPenalty,
+		MaxPoints:   0,
+		Percentage:  0,
+		Description: fmt.Sprintf("%d defaulted loans in CRB records", fv.CRBDefaultedLoans),
+		Impact:      func() string { if defaultPenalty < 0 { return "NEGATIVE" }; return "POSITIVE" }(),
+	}
+
+	// F3. CRB Loan history breadth (max 15)
+	histPts := minI(fv.CRBTotalLoans*3, 15)
+	total += histPts
+
+	f3 := ScoreFactor{
+		Category:    "EXTERNAL_CREDIT",
+		Name:        "CRB Loan History",
+		Points:      histPts,
+		MaxPoints:   15,
+		Percentage:  float64(histPts) / 15,
+		Description: fmt.Sprintf("%d loans in CRB records", fv.CRBTotalLoans),
+		Impact:      impact(histPts, 15),
+	}
+
+	return []ScoreFactor{f1, f2, f3}, total
 }
