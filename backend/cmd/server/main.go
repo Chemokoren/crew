@@ -156,6 +156,7 @@ func main() {
 	loanRepo := pgRepo.NewLoanApplicationRepo(db)
 	insuranceRepo := pgRepo.NewInsurancePolicyRepo(db)
 	snapshotRepo := pgRepo.NewWalletSnapshotRepo(db)
+	scoreHistoryRepo := pgRepo.NewCreditScoreHistoryRepo(db)
 
 	// --- 8. Initialize transaction manager ---
 	txMgr := database.NewTxManager(db)
@@ -253,8 +254,8 @@ func main() {
 		insuranceRepo, crewRepo, userRepo, snapshotRepo, logger,
 	)
 	creditScorer := credit.NewRulesScorer() // Swap to MLScorer/HybridScorer for V3
-	creditEngine := credit.NewEngine(featureComputer, creditScorer, creditScoreRepo, logger)
-	creditSvc := service.NewCreditService(creditEngine, creditScoreRepo)
+	creditEngine := credit.NewEngine(featureComputer, creditScorer, creditScoreRepo, scoreHistoryRepo, logger)
+	creditSvc := service.NewCreditService(creditEngine, creditScoreRepo, scoreHistoryRepo)
 	loanSvc := service.NewLoanService(loanRepo, creditScoreRepo, walletRepo, txMgr)
 	insuranceSvc := service.NewInsuranceService(insuranceRepo, logger)
 
@@ -551,6 +552,7 @@ func main() {
 		{
 			credit.GET("/:crew_member_id", creditHandler.GetScore)
 			credit.GET("/:crew_member_id/detailed", creditHandler.GetDetailedScore)
+			credit.GET("/:crew_member_id/history", creditHandler.GetScoreHistory)
 			credit.POST("/:crew_member_id/calculate", creditHandler.CalculateScore)
 		}
 

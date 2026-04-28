@@ -309,4 +309,8 @@ type WalletSnapshotRepository interface {
 	GetLatest(ctx context.Context, crewMemberID uuid.UUID) (*models.WalletDailySnapshot, error)
 }
 
-
+// CreditScoreHistoryRepository handles score history persistence.
+type CreditScoreHistoryRepository interface {
+	Create(ctx context.Context, entry *models.CreditScoreHistory) error
+	GetHistory(ctx context.Context, crewMemberID uuid.UUID, limit int) ([]models.CreditScoreHistory, error)
+}

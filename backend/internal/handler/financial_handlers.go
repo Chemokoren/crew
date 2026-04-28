@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -107,6 +108,39 @@ func (h *CreditHandler) GetDetailedScore(c *gin.Context) {
 		return
 	}
 	SuccessResponse(c, http.StatusOK, result)
+}
+
+// GetScoreHistory godoc
+// @Summary Get score history for a crew member
+// @Description Returns historical score computations for trajectory analysis
+// @Tags Credit
+// @Produce json
+// @Param crew_member_id path string true "Crew Member ID"
+// @Param limit query int false "Number of records (default 30, max 100)"
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/credit/{crew_member_id}/history [get]
+func (h *CreditHandler) GetScoreHistory(c *gin.Context) {
+	crewID, err := uuid.Parse(c.Param("crew_member_id"))
+	if err != nil {
+		BadRequest(c, "Invalid crew member ID")
+		return
+	}
+
+	if denied := enforceWalletAccess(c, crewID); denied {
+		return
+	}
+
+	limit := 30
+	if l := c.Query("limit"); l != "" {
+		fmt.Sscanf(l, "%d", &limit)
+	}
+
+	history, err := h.creditSvc.GetScoreHistory(c.Request.Context(), crewID, limit)
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, history)
 }
 
 // --- Loan Handler ---

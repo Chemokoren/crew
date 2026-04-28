@@ -15,20 +15,24 @@ type CreditService interface {
 	CalculateScore(ctx context.Context, crewMemberID uuid.UUID) (*models.CreditScore, error)
 	GetScore(ctx context.Context, crewMemberID uuid.UUID) (*models.CreditScore, error)
 	GetDetailedScore(ctx context.Context, crewMemberID uuid.UUID) (*credit.ScoreResult, error)
+	GetScoreHistory(ctx context.Context, crewMemberID uuid.UUID, limit int) ([]models.CreditScoreHistory, error)
 }
 
 type creditService struct {
-	engine     *credit.Engine
-	creditRepo repository.CreditScoreRepository
+	engine      *credit.Engine
+	creditRepo  repository.CreditScoreRepository
+	historyRepo repository.CreditScoreHistoryRepository
 }
 
 func NewCreditService(
 	engine *credit.Engine,
 	creditRepo repository.CreditScoreRepository,
+	historyRepo repository.CreditScoreHistoryRepository,
 ) CreditService {
 	return &creditService{
-		engine:     engine,
-		creditRepo: creditRepo,
+		engine:      engine,
+		creditRepo:  creditRepo,
+		historyRepo: historyRepo,
 	}
 }
 
@@ -52,6 +56,13 @@ func (s *creditService) CalculateScore(ctx context.Context, crewMemberID uuid.UU
 // GetDetailedScore returns the full ScoreResult with factor breakdown, suggestions, and features.
 func (s *creditService) GetDetailedScore(ctx context.Context, crewMemberID uuid.UUID) (*credit.ScoreResult, error) {
 	return s.engine.GetScore(ctx, crewMemberID)
+}
+
+func (s *creditService) GetScoreHistory(ctx context.Context, crewMemberID uuid.UUID, limit int) ([]models.CreditScoreHistory, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 30
+	}
+	return s.historyRepo.GetHistory(ctx, crewMemberID, limit)
 }
 
 func (s *creditService) resultToModel(crewMemberID uuid.UUID, result *credit.ScoreResult) (*models.CreditScore, error) {

@@ -111,3 +111,16 @@ type WalletDailySnapshot struct {
 
 func (WalletDailySnapshot) TableName() string { return "wallet_daily_snapshots" }
 
+// CreditScoreHistory records every score computation for trajectory analysis.
+type CreditScoreHistory struct {
+	ID            uuid.UUID       `json:"id" gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
+	CrewMemberID  uuid.UUID       `json:"crew_member_id" gorm:"type:uuid;not null;index:idx_csh_crew_date"`
+	Score         int             `json:"score" gorm:"index:idx_csh_score"`
+	Grade         string          `json:"grade" gorm:"type:varchar(20);not null"`
+	ModelVersion  string          `json:"model_version" gorm:"type:varchar(50);not null"`
+	Factors       json.RawMessage `json:"factors" gorm:"type:jsonb"`
+	Suggestions   json.RawMessage `json:"suggestions" gorm:"type:jsonb"`
+	ComputedAt    time.Time       `json:"computed_at" gorm:"not null;default:now()"`
+}
+
+func (CreditScoreHistory) TableName() string { return "credit_score_history" }

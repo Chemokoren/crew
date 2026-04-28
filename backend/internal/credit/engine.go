@@ -15,10 +15,11 @@ import (
 // Engine is the top-level credit scoring engine.
 // It orchestrates: Feature Engineering → Scoring → Persistence → Explanation.
 type Engine struct {
-	features   *FeatureComputer
-	scorer     Scorer
-	creditRepo repository.CreditScoreRepository
-	logger     *slog.Logger
+	features    *FeatureComputer
+	scorer      Scorer
+	creditRepo  repository.CreditScoreRepository
+	historyRepo repository.CreditScoreHistoryRepository
+	logger      *slog.Logger
 }
 
 // NewEngine creates a new credit scoring engine with the given scorer.
@@ -26,13 +27,15 @@ func NewEngine(
 	features *FeatureComputer,
 	scorer Scorer,
 	creditRepo repository.CreditScoreRepository,
+	historyRepo repository.CreditScoreHistoryRepository,
 	logger *slog.Logger,
 ) *Engine {
 	return &Engine{
-		features:   features,
-		scorer:     scorer,
-		creditRepo: creditRepo,
-		logger:     logger,
+		features:    features,
+		scorer:      scorer,
+		creditRepo:  creditRepo,
+		historyRepo: historyRepo,
+		logger:      logger,
 	}
 }
 
@@ -70,6 +73,25 @@ func (e *Engine) CalculateScore(ctx context.Context, crewMemberID uuid.UUID) (*S
 			slog.String("error", err.Error()),
 		)
 		// Non-fatal — still return the computed score
+	}
+
+	// 4. Log to score history (for trajectory analysis + ML training)
+	if e.historyRepo != nil {
+		suggestionsJSON, _ := json.Marshal(result.Suggestions)
+		historyEntry := &models.CreditScoreHistory{
+			CrewMemberID: crewMemberID,
+			Score:        result.Score,
+			Grade:        result.Grade,
+			ModelVersion: result.ModelVersion,
+			Factors:      factorsJSON,
+			Suggestions:  suggestionsJSON,
+			ComputedAt:   time.Now(),
+		}
+		if err := e.historyRepo.Create(ctx, historyEntry); err != nil {
+			e.logger.Warn("credit: failed to log score history",
+				slog.String("error", err.Error()),
+			)
+		}
 	}
 
 	e.logger.Info("credit score calculated",
