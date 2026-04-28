@@ -90,6 +90,8 @@ func (e *Engine) Process(ctx context.Context, sess *session.Data, userInput stri
 		return e.handleLoanStatus(ctx, sess, userInput)
 	case session.StateLoanApply:
 		return e.handleLoanApply(ctx, sess, userInput)
+	case session.StateLoanCategory:
+		return e.handleLoanCategory(ctx, sess, userInput)
 	case session.StateLoanAmount:
 		return e.handleLoanAmount(ctx, sess, userInput)
 	case session.StateLoanTenure:
@@ -554,27 +556,71 @@ func (e *Engine) handleLoanApply(ctx context.Context, sess *session.Data, input 
 		return e.continueWithMessage(sess, msg), nil
 	}
 
-	// Check for active loans EARLY — don't let user go through the entire flow
+	// Check if score qualifies for any tier at all
+	tier := computeLocalTier(score.Score)
+	if tier == nil {
+		msg := fmt.Sprintf(e.t(sess, "loan.low_score"), score.Score, 400)
+		return e.continueWithMessage(sess, msg), nil
+	}
+
+	// Store score/tier for use after category selection
+	sess.SetInput("loan_score", fmt.Sprintf("%d", score.Score))
+
+	// Show category selection menu
+	sess.CurrentState = session.StateLoanCategory
+	return e.continueWithMessage(sess, e.t(sess, "loan.select_category")), nil
+}
+
+// handleLoanCategory processes the category selection and checks active loan status.
+func (e *Engine) handleLoanCategory(ctx context.Context, sess *session.Data, input string) (*Response, error) {
+	if input == "0" {
+		return e.backToMainMenu(sess), nil
+	}
+
+	// Map input to category
+	var category string
+	switch strings.TrimSpace(input) {
+	case "1":
+		category = "PERSONAL"
+	case "2":
+		category = "EMERGENCY"
+	case "3":
+		category = "EDUCATION"
+	case "4":
+		category = "BUSINESS"
+	case "5":
+		category = "ASSET"
+	default:
+		return e.continueWithMessage(sess, e.t(sess, "error.invalid_input")), nil
+	}
+	sess.SetInput("loan_category", category)
+
+	// Check for active loans in this category — warn user EARLY
 	loans, loansErr := e.backendClient.GetLoans(ctx, sess.CrewMemberID)
 	if loansErr == nil && len(loans) > 0 {
 		for _, l := range loans {
 			if l.Status == "APPLIED" || l.Status == "APPROVED" ||
 				l.Status == "DISBURSED" || l.Status == "REPAYING" {
-				return e.continueWithMessage(sess, e.t(sess, "loan.active_loan")), nil
+				// Check if this blocks the user depending on policy
+				// (Backend enforces policy properly, but we show a warning for UX)
+				if l.Category == category {
+					return e.continueWithMessage(sess,
+						fmt.Sprintf(e.t(sess, "loan.active_in_category"), category)), nil
+				}
 			}
 		}
 	}
 
-	// Try to fetch the graduated lending tier from the backend
+	// Fetch tier info
+	scoreVal := 0
+	fmt.Sscanf(sess.GetInput("loan_score"), "%d", &scoreVal)
+
 	tier, err := e.backendClient.GetLoanTier(ctx, sess.CrewMemberID)
 	if err != nil || tier == nil {
-		// Backend tier API failed (e.g., auth issue) — compute tier locally
-		tier = computeLocalTier(score.Score)
+		tier = computeLocalTier(scoreVal)
 	}
-
-	// Check if the user actually qualifies (score < 400 = no tier)
 	if tier == nil {
-		msg := fmt.Sprintf(e.t(sess, "loan.low_score"), score.Score, 400)
+		msg := fmt.Sprintf(e.t(sess, "loan.low_score"), scoreVal, 400)
 		return e.continueWithMessage(sess, msg), nil
 	}
 
@@ -587,7 +633,7 @@ func (e *Engine) handleLoanApply(ctx context.Context, sess *session.Data, input 
 	// Show tier info and prompt for amount
 	msg := fmt.Sprintf(e.t(sess, "loan.tier_info"),
 		tier.Grade,
-		score.Score,
+		scoreVal,
 		tier.MaxLoanKES,
 		tier.InterestRate,
 		tier.MaxTenureDays,
@@ -730,10 +776,16 @@ func (e *Engine) handleLoanConfirm(ctx context.Context, sess *session.Data, inpu
 			fmt.Sscanf(t, "%d", &tenure)
 		}
 
-		loan, err := e.backendClient.ApplyForLoan(ctx, sess.CrewMemberID, amount, tenure)
+		category := sess.GetInput("loan_category")
+		if category == "" {
+			category = "PERSONAL"
+		}
+
+		loan, err := e.backendClient.ApplyForLoan(ctx, sess.CrewMemberID, amount, tenure, category, "")
 		if err != nil {
 			e.logger.Error("loan application failed",
 				slog.String("crew_member_id", sess.CrewMemberID),
+				slog.String("category", category),
 				slog.String("error", err.Error()),
 			)
 			// Show the actual error to the user if it's a business rule

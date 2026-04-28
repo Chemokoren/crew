@@ -44,6 +44,9 @@ func (r *loanApplicationRepo) List(ctx context.Context, filter repository.LoanAp
 	if filter.Status != "" {
 		query = query.Where("status = ?", filter.Status)
 	}
+	if filter.Category != "" {
+		query = query.Where("category = ?", filter.Category)
+	}
 	if filter.LenderID != nil {
 		query = query.Where("lender_id = ?", *filter.LenderID)
 	}

@@ -265,6 +265,7 @@ type CreditScoreRepository interface {
 type LoanApplicationFilter struct {
 	CrewMemberID *uuid.UUID
 	Status       string
+	Category     string // Filter by loan category (PERSONAL, EMERGENCY, etc)
 	LenderID     *uuid.UUID
 }
 

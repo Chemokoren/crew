@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/kibsoft/amy-mis/internal/middleware"
+	"github.com/kibsoft/amy-mis/internal/models"
 	"github.com/kibsoft/amy-mis/internal/repository"
 	"github.com/kibsoft/amy-mis/internal/service"
 )
@@ -203,6 +204,7 @@ func (h *LoanHandler) Apply(c *gin.Context) {
 		CrewMemberID uuid.UUID `json:"crew_member_id" binding:"required"`
 		AmountCents  int64     `json:"amount_cents" binding:"required"`
 		TenureDays   int       `json:"tenure_days" binding:"required"`
+		Category     string    `json:"category"`
 		Purpose      string    `json:"purpose"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -215,7 +217,12 @@ func (h *LoanHandler) Apply(c *gin.Context) {
 		return
 	}
 
-	loan, err := h.loanSvc.ApplyForLoan(c.Request.Context(), req.CrewMemberID, req.AmountCents, req.TenureDays)
+	category := models.LoanCategory(req.Category)
+	if category == "" {
+		category = models.LoanCatPersonal
+	}
+
+	loan, err := h.loanSvc.ApplyForLoan(c.Request.Context(), req.CrewMemberID, req.AmountCents, req.TenureDays, category, req.Purpose)
 	if err != nil {
 		MapServiceError(c, err)
 		return

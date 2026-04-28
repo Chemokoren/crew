@@ -37,6 +37,7 @@ const (
 	StateLastPayment       State = "LAST_PAYMENT"
 	StateLoanStatus        State = "LOAN_STATUS"
 	StateLoanApply         State = "LOAN_APPLY"
+	StateLoanCategory      State = "LOAN_CATEGORY"
 	StateLoanAmount        State = "LOAN_AMOUNT"
 	StateLoanTenure        State = "LOAN_TENURE"
 	StateLoanConfirm       State = "LOAN_CONFIRM"

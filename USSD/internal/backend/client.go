@@ -123,6 +123,8 @@ type CreditScoreResponse struct {
 // LoanResponse represents a loan application.
 type LoanResponse struct {
 	ID                   string `json:"id"`
+	Category             string `json:"category"`
+	Purpose              string `json:"purpose,omitempty"`
 	AmountRequestedCents int64  `json:"amount_requested_cents"`
 	AmountApprovedCents  int64  `json:"amount_approved_cents"`
 	Currency             string `json:"currency"`
@@ -394,11 +396,13 @@ func (c *Client) GetLoans(ctx context.Context, crewMemberID string) ([]LoanRespo
 }
 
 // ApplyForLoan submits a new loan application.
-func (c *Client) ApplyForLoan(ctx context.Context, crewMemberID string, amountCents int64, tenureDays int) (*LoanResponse, error) {
+func (c *Client) ApplyForLoan(ctx context.Context, crewMemberID string, amountCents int64, tenureDays int, category, purpose string) (*LoanResponse, error) {
 	body := map[string]interface{}{
 		"crew_member_id": crewMemberID,
 		"amount_cents":   amountCents,
 		"tenure_days":    tenureDays,
+		"category":       category,
+		"purpose":        purpose,
 	}
 
 	resp, err := c.post(ctx, "/api/v1/loans", body)

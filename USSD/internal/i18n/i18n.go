@@ -150,7 +150,9 @@ func (t *Translator) loadEnglish() {
 		"loan.confirm_with_rate": "Apply for %s loan?\nRepay in %d days\nInterest: %s%%\nTier: %s\n1. Confirm\n2. Cancel",
 		"loan.confirm_options": "1. Confirm\n2. Cancel",
 		"loan.applied_success": "Loan application of %s submitted!\nYou will be notified of the decision.",
+		"loan.select_category": "Select loan type\n1. Personal\n2. Emergency\n3. Education\n4. Business\n5. Asset Finance\n0. Back",
 		"loan.active_loan":    "You already have an active loan in progress.\nCheck your loan status from the menu.\n0. Back to Menu",
+		"loan.active_in_category": "You already have an active %s loan.\nPlease repay or check status from the menu.\n0. Back to Menu",
 		"loan.apply_failed":   "Loan application failed:\n%s\n0. Back to Menu",
 
 		// Registration
@@ -258,7 +260,9 @@ func (t *Translator) loadSwahili() {
 		"loan.confirm_with_rate": "Omba mkopo wa %s?\nLipa ndani ya siku %d\nRiba: %s%%\nKiwango: %s\n1. Thibitisha\n2. Ghairi",
 		"loan.confirm_options": "1. Thibitisha\n2. Ghairi",
 		"loan.applied_success": "Maombi ya mkopo wa %s yamewasilishwa!\nUtaarifiwa kuhusu uamuzi.",
+		"loan.select_category": "Chagua aina ya mkopo\n1. Binafsi\n2. Dharura\n3. Elimu\n4. Biashara\n5. Mali\n0. Rudi",
 		"loan.active_loan":    "Una mkopo unaoendelea tayari.\nAngalia hali ya mkopo wako kwenye menyu.\n0. Rudi kwenye Menyu",
+		"loan.active_in_category": "Una mkopo wa %s unaoendelea tayari.\nTafadhali lipa au angalia hali kwenye menyu.\n0. Rudi kwenye Menyu",
 		"loan.apply_failed":   "Maombi ya mkopo yameshindwa:\n%s\n0. Rudi kwenye Menyu",
 
 		// Registration

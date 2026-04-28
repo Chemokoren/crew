@@ -116,6 +116,17 @@ type Config struct {
 	WebhookPerpaySecret   string // HMAC-SHA256 secret for PerPay webhook verification
 
 	// =============================================
+	// LOAN POLICY — Concurrent Loan Configuration
+	// =============================================
+	// Controls whether borrowers can hold multiple active loans.
+	// See models.LoanConcurrencyPolicy for available options.
+
+	LoanConcurrencyPolicy          string  // SINGLE | PER_CATEGORY | AGGREGATE (default: SINGLE)
+	LoanMaxConcurrent              int     // Max concurrent loans under AGGREGATE policy (default: 3)
+	LoanAggregateExposureMultiplier float64 // Max total exposure as multiple of tier limit (default: 2.0)
+	LoanCategoriesEnabled          string  // Comma-separated enabled categories (default: all)
+
+	// =============================================
 	// OPERATIONAL TUNING
 	// =============================================
 
@@ -213,6 +224,12 @@ func Load() (*Config, error) {
 		WebhookJamboPaySecret: os.Getenv("WEBHOOK_JAMBOPAY_SECRET"),
 		WebhookPerpaySecret:   os.Getenv("WEBHOOK_PERPAY_SECRET"),
 
+		// Loan policy
+		LoanConcurrencyPolicy:          getEnv("LOAN_CONCURRENCY_POLICY", "SINGLE"),
+		LoanMaxConcurrent:              getEnvInt("LOAN_MAX_CONCURRENT", 3),
+		LoanAggregateExposureMultiplier: getEnvFloat("LOAN_AGGREGATE_EXPOSURE_MULTIPLIER", 2.0),
+		LoanCategoriesEnabled:          getEnv("LOAN_CATEGORIES_ENABLED", ""),
+
 		// Operational tuning
 		DBMaxOpenConns:    getEnvInt("DB_MAX_OPEN_CONNS", 25),
 		DBMaxIdleConns:    getEnvInt("DB_MAX_IDLE_CONNS", 10),
@@ -301,6 +318,15 @@ func getEnvBool(key string, defaultVal bool) bool {
 	if val := os.Getenv(key); val != "" {
 		if b, err := strconv.ParseBool(val); err == nil {
 			return b
+		}
+	}
+	return defaultVal
+}
+
+func getEnvFloat(key string, defaultVal float64) float64 {
+	if val := os.Getenv(key); val != "" {
+		if f, err := strconv.ParseFloat(val, 64); err == nil {
+			return f
 		}
 	}
 	return defaultVal

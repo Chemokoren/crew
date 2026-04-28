@@ -29,6 +29,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -46,6 +47,7 @@ import (
 	"github.com/kibsoft/amy-mis/internal/external/storage"
 	"github.com/kibsoft/amy-mis/internal/handler"
 	"github.com/kibsoft/amy-mis/internal/middleware"
+	"github.com/kibsoft/amy-mis/internal/models"
 	pgRepo "github.com/kibsoft/amy-mis/internal/repository/postgres"
 	"github.com/kibsoft/amy-mis/internal/credit"
 	"github.com/kibsoft/amy-mis/internal/service"
@@ -257,7 +259,9 @@ func main() {
 	creditScorer := credit.NewRulesScorer() // Swap to MLScorer/HybridScorer for V3
 	creditEngine := credit.NewEngine(featureComputer, creditScorer, creditScoreRepo, scoreHistoryRepo, logger)
 	creditSvc := service.NewCreditService(creditEngine, creditScoreRepo, scoreHistoryRepo)
-	loanSvc := service.NewLoanService(loanRepo, creditScoreRepo, walletRepo, txMgr)
+	loanPolicy := buildLoanPolicy(cfg)
+	loanSvc := service.NewLoanService(loanRepo, creditScoreRepo, walletRepo, txMgr,
+		service.WithLoanPolicy(loanPolicy))
 	insuranceSvc := service.NewInsuranceService(insuranceRepo, logger)
 
 	// --- 13. Initialize handlers ---
@@ -660,4 +664,43 @@ func main() {
 	slog.Info("database connection closed")
 
 	slog.Info("AMY MIS server shutdown complete")
+}
+
+// buildLoanPolicy constructs a LoanPolicyConfig from env-loaded Config.
+func buildLoanPolicy(cfg *config.Config) *models.LoanPolicyConfig {
+	policy := models.DefaultLoanPolicy()
+
+	// Set concurrency policy
+	switch cfg.LoanConcurrencyPolicy {
+	case "PER_CATEGORY":
+		policy.ConcurrencyPolicy = models.PolicyPerCategory
+	case "AGGREGATE":
+		policy.ConcurrencyPolicy = models.PolicyAggregate
+	default:
+		policy.ConcurrencyPolicy = models.PolicySingle
+	}
+
+	policy.MaxConcurrentLoans = cfg.LoanMaxConcurrent
+	policy.AggregateExposureMultiplier = cfg.LoanAggregateExposureMultiplier
+
+	// Parse enabled categories
+	if cfg.LoanCategoriesEnabled != "" {
+		policy.CategoryEnabled = make(map[models.LoanCategory]bool)
+		for _, cat := range strings.Split(cfg.LoanCategoriesEnabled, ",") {
+			cat = strings.TrimSpace(cat)
+			lc := models.LoanCategory(cat)
+			if lc.IsValid() {
+				policy.CategoryEnabled[lc] = true
+			}
+		}
+	}
+
+	slog.Info("loan policy configured",
+		slog.String("concurrency", string(policy.ConcurrencyPolicy)),
+		slog.Int("max_concurrent", policy.MaxConcurrentLoans),
+		slog.Float64("exposure_multiplier", policy.AggregateExposureMultiplier),
+		slog.Int("categories_enabled", len(policy.EnabledCategories())),
+	)
+
+	return policy
 }

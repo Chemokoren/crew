@@ -50,7 +50,7 @@ func TestLoanService(t *testing.T) {
 	creditRepo.Upsert(ctx, creditScore)
 
 	// 1. Apply For Loan (within FAIR tier limits)
-	loan, err := svc.ApplyForLoan(ctx, crew.ID, 100000, 14) // 1000 KES, 14 days
+	loan, err := svc.ApplyForLoan(ctx, crew.ID, 100000, 14, models.LoanCatPersonal, "Test") // 1000 KES, 14 days
 	if err != nil {
 		t.Fatalf("ApplyForLoan: %v", err)
 	}

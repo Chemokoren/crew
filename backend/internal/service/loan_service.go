@@ -20,10 +20,14 @@ var (
 	ErrTenureExceedsTier = errors.New("requested tenure exceeds your loan tier limit")
 	ErrLoanCooldown      = errors.New("you must wait before applying for another loan")
 	ErrActiveLoan        = errors.New("you already have an active loan")
+	ErrActiveLoanInCat   = errors.New("you already have an active loan in this category")
+	ErrExposureLimit     = errors.New("total outstanding would exceed your exposure limit")
+	ErrCategoryDisabled  = errors.New("this loan category is not currently available")
+	ErrInvalidCategory   = errors.New("unrecognized loan category")
 )
 
 type LoanService interface {
-	ApplyForLoan(ctx context.Context, crewMemberID uuid.UUID, amountCents int64, tenureDays int) (*models.LoanApplication, error)
+	ApplyForLoan(ctx context.Context, crewMemberID uuid.UUID, amountCents int64, tenureDays int, category models.LoanCategory, purpose string) (*models.LoanApplication, error)
 	ApproveLoan(ctx context.Context, loanID uuid.UUID, lenderID uuid.UUID, approvedAmountCents int64, interestRate float64) (*models.LoanApplication, error)
 	DisburseLoan(ctx context.Context, loanID uuid.UUID) (*models.LoanApplication, error)
 	RejectLoan(ctx context.Context, loanID uuid.UUID) (*models.LoanApplication, error)
@@ -33,6 +37,7 @@ type LoanService interface {
 	ListLoans(ctx context.Context, filter repository.LoanApplicationFilter, page, perPage int) ([]models.LoanApplication, int64, error)
 	GetOverdueLoans(ctx context.Context) ([]models.LoanApplication, error)
 	GetLoanTier(ctx context.Context, crewMemberID uuid.UUID) (*credit.LoanTier, int, error)
+	GetLoanPolicy() *models.LoanPolicyConfig
 }
 
 type loanService struct {
@@ -40,6 +45,7 @@ type loanService struct {
 	creditRepo repository.CreditScoreRepository
 	walletRepo repository.WalletRepository
 	txMgr      *database.TxManager
+	policy     *models.LoanPolicyConfig
 }
 
 func NewLoanService(
@@ -47,16 +53,56 @@ func NewLoanService(
 	creditRepo repository.CreditScoreRepository,
 	walletRepo repository.WalletRepository,
 	txMgr *database.TxManager,
+	opts ...LoanServiceOption,
 ) LoanService {
-	return &loanService{
+	svc := &loanService{
 		loanRepo:   loanRepo,
 		creditRepo: creditRepo,
 		walletRepo: walletRepo,
 		txMgr:      txMgr,
+		policy:     models.DefaultLoanPolicy(),
+	}
+	for _, opt := range opts {
+		opt(svc)
+	}
+	return svc
+}
+
+// LoanServiceOption is a functional option for configuring LoanService.
+type LoanServiceOption func(*loanService)
+
+// WithLoanPolicy sets the concurrent loan policy configuration.
+func WithLoanPolicy(policy *models.LoanPolicyConfig) LoanServiceOption {
+	return func(s *loanService) {
+		if policy != nil {
+			s.policy = policy
+		}
 	}
 }
 
-func (s *loanService) ApplyForLoan(ctx context.Context, crewMemberID uuid.UUID, amountCents int64, tenureDays int) (*models.LoanApplication, error) {
+// GetLoanPolicy exposes the current lending policy for USSD/API introspection.
+func (s *loanService) GetLoanPolicy() *models.LoanPolicyConfig {
+	return s.policy
+}
+
+// isActiveLoanStatus returns true if the loan status is considered "active".
+func isActiveLoanStatus(status models.LoanStatus) bool {
+	return status == models.LoanApplied || status == models.LoanApproved ||
+		status == models.LoanDisbursed || status == models.LoanRepaying
+}
+
+func (s *loanService) ApplyForLoan(ctx context.Context, crewMemberID uuid.UUID, amountCents int64, tenureDays int, category models.LoanCategory, purpose string) (*models.LoanApplication, error) {
+	// 0. Validate category
+	if category == "" {
+		category = models.LoanCatPersonal
+	}
+	if !category.IsValid() {
+		return nil, ErrInvalidCategory
+	}
+	if !s.policy.IsCategoryEnabled(category) {
+		return nil, fmt.Errorf("%w: %s", ErrCategoryDisabled, category.Label())
+	}
+
 	// 1. Get credit score and resolve loan tier
 	score, err := s.creditRepo.GetByCrewMemberID(ctx, crewMemberID)
 	if err != nil || score == nil {
@@ -79,18 +125,22 @@ func (s *loanService) ApplyForLoan(ctx context.Context, crewMemberID uuid.UUID, 
 			ErrTenureExceedsTier, tier.MaxTenureDays, tier.Grade)
 	}
 
-	// 3. Check for active loans (always enforced — no concurrent loans by default)
+	// 3. Enforce concurrency policy
 	loans, _, _ := s.loanRepo.List(ctx, repository.LoanApplicationFilter{
 		CrewMemberID: &crewMemberID,
-	}, 1, 10)
+	}, 1, 50) // Fetch all recent loans for policy checks
+
+	if err := s.checkConcurrencyPolicy(loans, category, amountCents, tier); err != nil {
+		return nil, err
+	}
+
+	// 4. Check cooldown between completed loans (per-category in PER_CATEGORY mode)
 	for _, l := range loans {
-		// Block if there's an active loan (applied, approved, disbursed, or repaying)
-		if l.Status == models.LoanDisbursed || l.Status == models.LoanRepaying ||
-			l.Status == models.LoanApplied || l.Status == models.LoanApproved {
-			return nil, ErrActiveLoan
-		}
-		// Check cooldown between completed loans
 		if tier.CooldownDays > 0 && l.Status == models.LoanCompleted && l.RepaidAt != nil {
+			// In PER_CATEGORY mode, cooldown only applies within the same category
+			if s.policy.ConcurrencyPolicy == models.PolicyPerCategory && l.Category != category {
+				continue
+			}
 			cooldownEnd := l.RepaidAt.AddDate(0, 0, tier.CooldownDays)
 			if time.Now().Before(cooldownEnd) {
 				return nil, fmt.Errorf("%w: next eligible on %s",
@@ -99,9 +149,11 @@ func (s *loanService) ApplyForLoan(ctx context.Context, crewMemberID uuid.UUID, 
 		}
 	}
 
-	// 4. Create loan with tier-assigned interest rate
+	// 5. Create loan with tier-assigned interest rate
 	loan := &models.LoanApplication{
 		CrewMemberID:         crewMemberID,
+		Category:             category,
+		Purpose:              purpose,
 		AmountRequestedCents: amountCents,
 		InterestRate:         tier.InterestRate,
 		TenureDays:           tenureDays,
@@ -113,6 +165,87 @@ func (s *loanService) ApplyForLoan(ctx context.Context, crewMemberID uuid.UUID, 
 		return nil, err
 	}
 	return loan, nil
+}
+
+// checkConcurrencyPolicy enforces the system's loan concurrency rules.
+//
+// Policy behaviors:
+//
+//	SINGLE       → Block if ANY active loan exists (conservative, default)
+//	PER_CATEGORY → Block only if active loan exists in the SAME category
+//	              (allows Personal + Emergency simultaneously)
+//	AGGREGATE    → Block if total active count exceeds MaxConcurrentLoans
+//	              OR if total outstanding principal + new amount > exposure limit
+func (s *loanService) checkConcurrencyPolicy(
+	loans []models.LoanApplication,
+	category models.LoanCategory,
+	newAmountCents int64,
+	tier *credit.LoanTier,
+) error {
+	var activeCount int
+	var totalOutstandingCents int64
+
+	for _, l := range loans {
+		if !isActiveLoanStatus(l.Status) {
+			continue
+		}
+		activeCount++
+
+		// Track outstanding principal for aggregate exposure check
+		outstandingCents := l.AmountRequestedCents
+		if l.AmountApprovedCents > 0 {
+			outstandingCents = l.AmountApprovedCents
+		}
+		totalOutstandingCents += outstandingCents - l.TotalRepaidCents
+
+		// Per-policy blocking
+		switch s.policy.ConcurrencyPolicy {
+		case models.PolicySingle:
+			return ErrActiveLoan
+
+		case models.PolicyPerCategory:
+			if l.Category == category {
+				return fmt.Errorf("%w: you have an active %s loan",
+					ErrActiveLoanInCat, category.Label())
+			}
+
+		case models.PolicyAggregate:
+			// Checked after the loop (need total counts)
+		}
+	}
+
+	// Aggregate-specific checks
+	if s.policy.ConcurrencyPolicy == models.PolicyAggregate {
+		// Check max concurrent count
+		if activeCount >= s.policy.MaxConcurrentLoans {
+			return fmt.Errorf("%w: maximum %d concurrent loans allowed",
+				ErrActiveLoan, s.policy.MaxConcurrentLoans)
+		}
+
+		// Check absolute exposure limit
+		if s.policy.MaxAggregateExposureCents > 0 {
+			if totalOutstandingCents+newAmountCents > s.policy.MaxAggregateExposureCents {
+				return fmt.Errorf("%w: total outstanding would be KES %.0f (max KES %.0f)",
+					ErrExposureLimit,
+					float64(totalOutstandingCents+newAmountCents)/100,
+					float64(s.policy.MaxAggregateExposureCents)/100)
+			}
+		}
+
+		// Check tier-based exposure multiplier
+		if s.policy.AggregateExposureMultiplier > 0 && tier != nil {
+			maxExposure := int64(float64(tier.MaxLoanCents) * s.policy.AggregateExposureMultiplier)
+			if totalOutstandingCents+newAmountCents > maxExposure {
+				return fmt.Errorf("%w: total outstanding would be KES %.0f (max KES %.0f for your %s tier)",
+					ErrExposureLimit,
+					float64(totalOutstandingCents+newAmountCents)/100,
+					float64(maxExposure)/100,
+					tier.Grade)
+			}
+		}
+	}
+
+	return nil
 }
 
 func (s *loanService) ApproveLoan(ctx context.Context, loanID uuid.UUID, lenderID uuid.UUID, approvedAmountCents int64, interestRate float64) (*models.LoanApplication, error) {

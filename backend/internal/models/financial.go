@@ -34,22 +34,24 @@ const (
 
 // LoanApplication represents a crew member's loan request.
 type LoanApplication struct {
-	ID                   uuid.UUID  `json:"id" gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
-	CrewMemberID         uuid.UUID  `json:"crew_member_id" gorm:"type:uuid;not null;index"`
-	AmountRequestedCents int64      `json:"amount_requested_cents" gorm:"type:bigint"`
-	AmountApprovedCents  int64      `json:"amount_approved_cents" gorm:"type:bigint"`
-	InterestRate         float64    `json:"interest_rate" gorm:"type:decimal(5,4)"`
-	TenureDays           int        `json:"tenure_days"`
-	Currency             string     `json:"currency" gorm:"default:'KES';not null"`
-	Status               LoanStatus `json:"status" gorm:"default:'APPLIED'"`
-	LenderID             *uuid.UUID `json:"lender_id,omitempty" gorm:"type:uuid"`
-	DisbursedAt          *time.Time `json:"disbursed_at,omitempty"`
-	DueAt                *time.Time `json:"due_at,omitempty"`
-	RepaidAt             *time.Time `json:"repaid_at,omitempty"`
-	TotalRepaidCents     int64      `json:"total_repaid_cents" gorm:"type:bigint;default:0"`
-	DaysPastDue          int        `json:"days_past_due" gorm:"default:0"`
-	CreatedAt            time.Time  `json:"created_at"`
-	UpdatedAt            time.Time  `json:"updated_at"`
+	ID                   uuid.UUID    `json:"id" gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
+	CrewMemberID         uuid.UUID    `json:"crew_member_id" gorm:"type:uuid;not null;index"`
+	Category             LoanCategory `json:"category" gorm:"type:varchar(30);not null;default:'PERSONAL';index:idx_loan_crew_cat"`
+	Purpose              string       `json:"purpose,omitempty" gorm:"type:varchar(255)"`
+	AmountRequestedCents int64        `json:"amount_requested_cents" gorm:"type:bigint"`
+	AmountApprovedCents  int64        `json:"amount_approved_cents" gorm:"type:bigint"`
+	InterestRate         float64      `json:"interest_rate" gorm:"type:decimal(5,4)"`
+	TenureDays           int          `json:"tenure_days"`
+	Currency             string       `json:"currency" gorm:"default:'KES';not null"`
+	Status               LoanStatus   `json:"status" gorm:"default:'APPLIED'"`
+	LenderID             *uuid.UUID   `json:"lender_id,omitempty" gorm:"type:uuid"`
+	DisbursedAt          *time.Time   `json:"disbursed_at,omitempty"`
+	DueAt                *time.Time   `json:"due_at,omitempty"`
+	RepaidAt             *time.Time   `json:"repaid_at,omitempty"`
+	TotalRepaidCents     int64        `json:"total_repaid_cents" gorm:"type:bigint;default:0"`
+	DaysPastDue          int          `json:"days_past_due" gorm:"default:0"`
+	CreatedAt            time.Time    `json:"created_at"`
+	UpdatedAt            time.Time    `json:"updated_at"`
 }
 
 func (LoanApplication) TableName() string { return "loan_applications" }
