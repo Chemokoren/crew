@@ -19,6 +19,16 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// MaxInputs is the maximum number of named inputs stored in a session.
+// This prevents unbounded memory growth from multi-step flows.
+// Normal USSD flows use 8-10 keys max; 20 provides generous headroom.
+const MaxInputs = 20
+
+// MaxSteps is the maximum number of steps allowed in a single session.
+// Prevents runaway sessions from consuming resources indefinitely.
+// Normal flows complete in 5-8 steps; 30 allows for retry/back navigation.
+const MaxSteps = 30
+
 // State represents the current position in the USSD menu tree.
 type State string
 
@@ -88,9 +98,14 @@ type Data struct {
 }
 
 // SetInput stores a named input value in the session.
+// Silently drops new entries if MaxInputs is reached (safety bound).
 func (d *Data) SetInput(key, value string) {
 	if d.Inputs == nil {
-		d.Inputs = make(map[string]string)
+		d.Inputs = make(map[string]string, 8) // Pre-size for typical flow
+	}
+	// Allow overwrites of existing keys (no growth), block new keys beyond cap
+	if _, exists := d.Inputs[key]; !exists && len(d.Inputs) >= MaxInputs {
+		return
 	}
 	d.Inputs[key] = value
 }
@@ -110,17 +125,19 @@ func (d *Data) ClearInputs() {
 
 // Store manages USSD session persistence in Redis.
 type Store struct {
-	client *redis.Client
-	prefix string
-	ttl    time.Duration
+	client     *redis.Client
+	prefix     string
+	ttl        time.Duration
+	counterKey string // Atomic counter key for active sessions
 }
 
 // NewStore creates a new session store backed by Redis.
 func NewStore(client *redis.Client, prefix string, ttl time.Duration) *Store {
 	return &Store{
-		client: client,
-		prefix: prefix,
-		ttl:    ttl,
+		client:     client,
+		prefix:     prefix,
+		ttl:        ttl,
+		counterKey: prefix + "_active_count",
 	}
 }
 
@@ -167,11 +184,21 @@ func (s *Store) Save(ctx context.Context, data *Data) error {
 	return nil
 }
 
-// Delete removes a session from Redis (called on END or timeout).
+// SaveNew persists a brand-new session and increments the atomic active counter.
+func (s *Store) SaveNew(ctx context.Context, data *Data) error {
+	if err := s.Save(ctx, data); err != nil {
+		return err
+	}
+	s.client.Incr(ctx, s.counterKey) // Best-effort — metric only
+	return nil
+}
+
+// Delete removes a session from Redis and decrements the active counter.
 func (s *Store) Delete(ctx context.Context, sessionID string) error {
 	if err := s.client.Del(ctx, s.key(sessionID)).Err(); err != nil {
 		return fmt.Errorf("session delete: %w", err)
 	}
+	s.client.Decr(ctx, s.counterKey) // Best-effort — metric only
 	return nil
 }
 
@@ -192,21 +219,18 @@ func (s *Store) Touch(ctx context.Context, sessionID string) error {
 	return nil
 }
 
-// ActiveCount returns the approximate number of active sessions.
-// Uses SCAN to avoid blocking Redis with KEYS.
+// ActiveCount returns the approximate number of active sessions using an atomic counter.
+// O(1) operation — safe to call from /metrics endpoint at any scale.
 func (s *Store) ActiveCount(ctx context.Context) (int64, error) {
-	var count int64
-	var cursor uint64
-	for {
-		keys, nextCursor, err := s.client.Scan(ctx, cursor, s.prefix+"*", 1000).Result()
-		if err != nil {
-			return 0, fmt.Errorf("session count scan: %w", err)
-		}
-		count += int64(len(keys))
-		cursor = nextCursor
-		if cursor == 0 {
-			break
-		}
+	count, err := s.client.Get(ctx, s.counterKey).Int64()
+	if err == redis.Nil {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("session count: %w", err)
+	}
+	if count < 0 {
+		return 0, nil // Clamp to 0 (can drift negative due to TTL expiry without decrement)
 	}
 	return count, nil
 }

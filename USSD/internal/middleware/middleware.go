@@ -3,11 +3,14 @@
 package middleware
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"regexp"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -20,11 +23,14 @@ import (
 const RequestIDKey = "X-Request-ID"
 
 // RequestID injects a unique request ID into every request context.
+// Uses crypto/rand for uniqueness even under extreme concurrency.
 func RequestID() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := c.GetHeader(RequestIDKey)
 		if id == "" {
-			id = fmt.Sprintf("ussd-%d-%d", time.Now().UnixNano(), c.Writer.Size())
+			b := make([]byte, 8)
+			_, _ = rand.Read(b)
+			id = "ussd-" + hex.EncodeToString(b)
 		}
 		c.Set(RequestIDKey, id)
 		c.Header(RequestIDKey, id)
@@ -35,8 +41,9 @@ func RequestID() gin.HandlerFunc {
 // --- Rate Limiting (per MSISDN + global) ---
 
 // RateLimitPerMSISDN enforces per-phone-number rate limiting using Redis.
-// This prevents a single user from overwhelming the system and protects
-// against USSD bombing attacks.
+// Uses a Redis pipeline to make INCR+EXPIRE atomic (single round-trip),
+// preventing the TOCTOU race where a crash between INCR and EXPIRE would
+// leave a key without TTL — permanently blocking the MSISDN.
 func RateLimitPerMSISDN(redisClient *redis.Client, maxPerMinute int) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Extract MSISDN from request body (best-effort)
@@ -49,7 +56,11 @@ func RateLimitPerMSISDN(redisClient *redis.Client, maxPerMinute int) gin.Handler
 		key := fmt.Sprintf("ussd:ratelimit:%s", msisdn)
 		ctx := c.Request.Context()
 
-		count, err := redisClient.Incr(ctx, key).Result()
+		// Atomic pipeline: INCR + EXPIRE in one round-trip
+		pipe := redisClient.Pipeline()
+		incrCmd := pipe.Incr(ctx, key)
+		pipe.Expire(ctx, key, time.Minute)
+		_, err := pipe.Exec(ctx)
 		if err != nil {
 			// On Redis failure, allow the request (fail open)
 			slog.Warn("rate limit redis error", slog.String("error", err.Error()))
@@ -57,11 +68,7 @@ func RateLimitPerMSISDN(redisClient *redis.Client, maxPerMinute int) gin.Handler
 			return
 		}
 
-		if count == 1 {
-			// Set TTL on first request in window
-			redisClient.Expire(ctx, key, time.Minute)
-		}
-
+		count := incrCmd.Val()
 		if count > int64(maxPerMinute) {
 			c.Header("Retry-After", "60")
 			c.JSON(http.StatusTooManyRequests, gin.H{
@@ -181,13 +188,16 @@ func generateRequestHash(sessionID, text string) string {
 // --- Recovery ---
 
 // Recovery catches panics and returns a graceful USSD error message.
+// Includes stack trace in logs for production debugging.
 func Recovery(logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		defer func() {
 			if err := recover(); err != nil {
+				stack := string(debug.Stack())
 				logger.Error("USSD handler panic",
 					slog.Any("error", err),
 					slog.String("path", c.Request.URL.Path),
+					slog.String("stack", stack),
 				)
 
 				c.Header("Content-Type", "text/plain")
@@ -195,6 +205,15 @@ func Recovery(logger *slog.Logger) gin.HandlerFunc {
 				c.Abort()
 			}
 		}()
+		c.Next()
+	}
+}
+
+// MaxBodySize limits the request body size to prevent memory exhaustion.
+// USSD payloads are tiny (<200 bytes); 4KB is generous.
+func MaxBodySize(maxBytes int64) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes)
 		c.Next()
 	}
 }

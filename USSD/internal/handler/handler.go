@@ -110,7 +110,22 @@ func (h *USSDHandler) Handle(gw gateway.Gateway) gin.HandlerFunc {
 			)
 		}
 
-		// 3. Process through FSM engine
+		// 3. Enforce step limit to prevent runaway sessions
+		if sess.StepCount > session.MaxSteps {
+			h.logger.Warn("session exceeded max steps",
+				slog.String("session_id", req.SessionID),
+				slog.Int("steps", sess.StepCount),
+			)
+			_ = h.sessionStore.Delete(ctx, req.SessionID)
+			metrics.USSDSessionsCompleted.Inc()
+			if !isNewSession {
+				metrics.USSDSessionsActive.Dec()
+			}
+			gw.SendResponse(c, "Session expired. Please dial again.", true)
+			return
+		}
+
+		// 4. Process through FSM engine
 		resp, err := h.engine.Process(ctx, sess, req.Input)
 		if err != nil {
 			h.logger.Error("engine processing error",
@@ -123,7 +138,7 @@ func (h *USSDHandler) Handle(gw gateway.Gateway) gin.HandlerFunc {
 			return
 		}
 
-		// 4. Persist session state
+		// 5. Persist session state
 		if resp.EndSession {
 			// Session completed — clean up
 			if err := h.sessionStore.Delete(ctx, req.SessionID); err != nil {
@@ -139,11 +154,13 @@ func (h *USSDHandler) Handle(gw gateway.Gateway) gin.HandlerFunc {
 		} else {
 			// Session continues — persist updated state
 			if err := h.sessionStore.Save(ctx, sess); err != nil {
-				h.logger.Error("failed to save session",
+				h.logger.Error("failed to save session — aborting response to prevent state desync",
 					slog.String("session_id", req.SessionID),
 					slog.String("error", err.Error()),
 				)
-				metrics.USSDErrorsTotal.WithLabelValues("session_error").Inc()
+				metrics.USSDErrorsTotal.WithLabelValues("session_save_error").Inc()
+				gw.SendResponse(c, "Service temporarily unavailable. Please try again.", true)
+				return
 			}
 		}
 

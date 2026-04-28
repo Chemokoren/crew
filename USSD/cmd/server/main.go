@@ -140,6 +140,7 @@ func main() {
 	router.Use(middleware.SecureHeaders())
 	router.Use(middleware.RequestID())
 	router.Use(middleware.Recovery(logger))
+	router.Use(middleware.MaxBodySize(4096)) // 4KB — USSD payloads are < 200 bytes
 	router.Use(middleware.Logger(logger))
 
 	// --- 12. Register routes ---
