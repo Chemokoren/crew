@@ -67,10 +67,16 @@ type FeatureVector struct {
 
 	// --- External Credit (CRB) ---
 	CRBScoreAvailable    bool    `json:"crb_score_available"`
-	CRBScore             int     `json:"crb_score"`              // 0-900 from CRB
+	CRBScore             int     `json:"crb_score"`
 	CRBTotalLoans        int     `json:"crb_total_loans"`
 	CRBDefaultedLoans    int     `json:"crb_defaulted_loans"`
 	CRBExposureKES       float64 `json:"crb_exposure_kes"`
+
+	// --- Negative Signals ---
+	UnresolvedNegativeEvents int `json:"unresolved_negative_events"`
+	FraudFlags               int `json:"fraud_flags"`
+	Disputes                 int `json:"disputes"`
+	AccountLocks             int `json:"account_locks"`
 }
 
 // --- Scorer Interface ---

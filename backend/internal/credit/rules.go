@@ -283,19 +283,32 @@ func (s *RulesScorer) scorePaymentHistory(fv *FeatureVector) ([]ScoreFactor, int
 	// C4. Clean record — no negative incidents (max 50)
 	negativePts := 50
 	if fv.TotalLoansDefaulted > 0 {
-		negativePts -= minI(fv.TotalLoansDefaulted*25, 50)
+		negativePts -= minI(fv.TotalLoansDefaulted*25, 30)
+	}
+	// Negative events: fraud flags, disputes, account locks
+	if fv.FraudFlags > 0 {
+		negativePts -= minI(fv.FraudFlags*15, 20)
+	}
+	if fv.Disputes > 0 {
+		negativePts -= minI(fv.Disputes*5, 10)
+	}
+	if fv.AccountLocks > 0 {
+		negativePts -= minI(fv.AccountLocks*10, 15)
 	}
 	if negativePts < 0 {
 		negativePts = 0
 	}
 	total += negativePts
+
+	negDesc := fmt.Sprintf("Defaults: %d, Fraud: %d, Disputes: %d, Locks: %d",
+		fv.TotalLoansDefaulted, fv.FraudFlags, fv.Disputes, fv.AccountLocks)
 	f4 := ScoreFactor{
 		Category:    "PAYMENT_HISTORY",
 		Name:        "Clean Record",
 		Points:      negativePts,
 		MaxPoints:   50,
 		Percentage:  pct(negativePts, 50),
-		Description: fmt.Sprintf("Defaults: %d", fv.TotalLoansDefaulted),
+		Description: negDesc,
 		Impact:      impact(negativePts, 50),
 	}
 

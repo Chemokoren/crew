@@ -323,6 +323,37 @@ func (c *Client) GetCreditScore(ctx context.Context, crewMemberID string) (*Cred
 	return &score, nil
 }
 
+// DetailedScoreResponse holds the full factor breakdown for USSD display.
+type DetailedScoreResponse struct {
+	Score        int              `json:"score"`
+	Grade        string           `json:"grade"`
+	Factors      []ScoreFactorItem `json:"factors"`
+	Suggestions  []string         `json:"suggestions"`
+	ModelVersion string           `json:"model_version"`
+}
+
+type ScoreFactorItem struct {
+	Category    string  `json:"category"`
+	Name        string  `json:"name"`
+	Points      int     `json:"points"`
+	MaxPoints   int     `json:"max_points"`
+	Impact      string  `json:"impact"`
+}
+
+// GetDetailedScore retrieves the full score breakdown for a crew member.
+func (c *Client) GetDetailedScore(ctx context.Context, crewMemberID string) (*DetailedScoreResponse, error) {
+	resp, err := c.get(ctx, fmt.Sprintf("/api/v1/credit/%s/detailed", crewMemberID))
+	if err != nil {
+		return nil, err
+	}
+
+	var result DetailedScoreResponse
+	if err := c.parseResponse(resp, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 // LoanTierResponse represents a crew member's qualified loan tier.
 type LoanTierResponse struct {
 	Score        int     `json:"score"`

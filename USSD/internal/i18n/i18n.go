@@ -134,9 +134,10 @@ func (t *Translator) loadEnglish() {
 		"payment.last_result":     "Last Transaction\nType: %s\nAmount: %s\nDate: %s\nRef: %s",
 
 		// Loans
-		"loan.menu":           "Loans\n1. Check Status\n2. Apply for Loan\n0. Back",
+		"loan.menu":           "Loans\n1. Check Status\n2. Apply for Loan\n3. Score Details\n0. Back",
 		"loan.no_loans":       "You have no active loans.",
 		"loan.status_result":  "Loan: %s\nStatus: %s",
+		"loan.score_details":  "Credit Score: %d (%s)\n\nTop Factors:%s\n\nTips:%s",
 		"loan.low_score":      "Your credit score (%d) is too low to apply for a loan.\nMinimum required: %d\n0. Back to Menu",
 		"loan.tier_info":      "Your Loan Tier: %s\nCredit Score: %d\nMax Loan: KES %.0f\nInterest: %.0f%%\nMax Tenure: %d days\n\nEnter loan amount (KES)\n0. Back",
 		"loan.enter_amount":   "Enter loan amount (KES)\n0. Back",
@@ -239,9 +240,10 @@ func (t *Translator) loadSwahili() {
 		"payment.last_result":     "Muamala wa Mwisho\nAina: %s\nKiasi: %s\nTarehe: %s\nRef: %s",
 
 		// Loans
-		"loan.menu":           "Mikopo\n1. Angalia Hali\n2. Omba Mkopo\n0. Rudi",
+		"loan.menu":           "Mikopo\n1. Angalia Hali\n2. Omba Mkopo\n3. Maelezo ya Alama\n0. Rudi",
 		"loan.no_loans":       "Huna mikopo inayoendelea.",
 		"loan.status_result":  "Mkopo: %s\nHali: %s",
+		"loan.score_details":  "Alama ya Mkopo: %d (%s)\n\nSababu Kuu:%s\n\nUshauri:%s",
 		"loan.low_score":      "Alama yako ya mkopo (%d) ni ndogo sana kuomba mkopo.\nKiwango cha chini kinachohitajika: %d\n0. Rudi kwenye Menyu",
 		"loan.tier_info":      "Kiwango Chako: %s\nAlama ya Mkopo: %d\nMkopo wa Juu: KES %.0f\nRiba: %.0f%%\nMuda wa Juu: Siku %d\n\nIngiza kiasi cha mkopo (KES)\n0. Rudi",
 		"loan.enter_amount":   "Ingiza kiasi cha mkopo (KES)\n0. Rudi",

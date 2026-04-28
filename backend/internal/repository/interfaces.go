@@ -314,3 +314,10 @@ type CreditScoreHistoryRepository interface {
 	Create(ctx context.Context, entry *models.CreditScoreHistory) error
 	GetHistory(ctx context.Context, crewMemberID uuid.UUID, limit int) ([]models.CreditScoreHistory, error)
 }
+
+// NegativeEventRepository handles negative credit event persistence.
+type NegativeEventRepository interface {
+	Create(ctx context.Context, event *models.CreditNegativeEvent) error
+	CountUnresolved(ctx context.Context, crewMemberID uuid.UUID) (int64, error)
+	CountByType(ctx context.Context, crewMemberID uuid.UUID, eventType string) (int64, error)
+}

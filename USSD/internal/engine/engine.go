@@ -500,6 +500,44 @@ func (e *Engine) handleLoanStatus(ctx context.Context, sess *session.Data, input
 		sess.CurrentState = session.StateLoanApply
 		return e.handleLoanApply(ctx, sess, "")
 
+	case "3": // View Score Details
+		detailed, err := e.backendClient.GetDetailedScore(ctx, sess.CrewMemberID)
+		if err != nil || detailed == nil {
+			return e.endWithMessage(sess, e.t(sess, "error.service_unavailable")), nil
+		}
+
+		// Build top 3 factors summary
+		var factorLines string
+		count := 0
+		for _, f := range detailed.Factors {
+			if count >= 3 {
+				break
+			}
+			symbol := "●"
+			if f.Impact == "POSITIVE" {
+				symbol = "✓"
+			} else if f.Impact == "NEGATIVE" {
+				symbol = "✗"
+			}
+			factorLines += fmt.Sprintf("\n%s %s: %d/%d", symbol, f.Name, f.Points, f.MaxPoints)
+			count++
+		}
+
+		// Build top 2 suggestions
+		var sugLines string
+		for i, s := range detailed.Suggestions {
+			if i >= 2 {
+				break
+			}
+			sugLines += fmt.Sprintf("\n→ %s", s)
+		}
+
+		msg := fmt.Sprintf(e.t(sess, "loan.score_details"),
+			detailed.Score, detailed.Grade,
+			factorLines, sugLines,
+		)
+		return e.endWithMessage(sess, msg), nil
+
 	case "0": // Back
 		return e.backToMainMenu(sess), nil
 

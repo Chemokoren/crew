@@ -157,6 +157,7 @@ func main() {
 	insuranceRepo := pgRepo.NewInsurancePolicyRepo(db)
 	snapshotRepo := pgRepo.NewWalletSnapshotRepo(db)
 	scoreHistoryRepo := pgRepo.NewCreditScoreHistoryRepo(db)
+	negativeEventRepo := pgRepo.NewNegativeEventRepo(db)
 
 	// --- 8. Initialize transaction manager ---
 	txMgr := database.NewTxManager(db)
@@ -251,7 +252,7 @@ func main() {
 	// --- Credit Scoring Engine (V3 architecture) ---
 	featureComputer := credit.NewFeatureComputer(
 		earningRepo, assignmentRepo, walletRepo, loanRepo,
-		insuranceRepo, crewRepo, userRepo, snapshotRepo, logger,
+		insuranceRepo, crewRepo, userRepo, snapshotRepo, negativeEventRepo, logger,
 	)
 	creditScorer := credit.NewRulesScorer() // Swap to MLScorer/HybridScorer for V3
 	creditEngine := credit.NewEngine(featureComputer, creditScorer, creditScoreRepo, scoreHistoryRepo, logger)

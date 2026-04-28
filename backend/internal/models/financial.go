@@ -124,3 +124,26 @@ type CreditScoreHistory struct {
 }
 
 func (CreditScoreHistory) TableName() string { return "credit_score_history" }
+
+// NegativeEventType constants
+const (
+	EventFraudFlag   = "FRAUD_FLAG"
+	EventDispute     = "DISPUTE"
+	EventAccountLock = "ACCOUNT_LOCK"
+	EventKYCFailure  = "KYC_FAILURE"
+	EventReversedTx  = "REVERSED_TX"
+)
+
+// CreditNegativeEvent records risk signals that impact credit scoring.
+type CreditNegativeEvent struct {
+	ID            uuid.UUID  `json:"id" gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
+	CrewMemberID  uuid.UUID  `json:"crew_member_id" gorm:"type:uuid;not null;index:idx_cne_crew"`
+	EventType     string     `json:"event_type" gorm:"type:varchar(50);not null;index:idx_cne_type"`
+	Severity      string     `json:"severity" gorm:"type:varchar(20);not null;default:'MEDIUM'"`
+	Description   string     `json:"description" gorm:"type:text"`
+	Resolved      bool       `json:"resolved" gorm:"default:false"`
+	ResolvedAt    *time.Time `json:"resolved_at,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+}
+
+func (CreditNegativeEvent) TableName() string { return "credit_negative_events" }

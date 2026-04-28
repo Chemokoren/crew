@@ -22,6 +22,7 @@ type FeatureComputer struct {
 	crewRepo       repository.CrewRepository
 	userRepo       repository.UserRepository
 	snapshotRepo   repository.WalletSnapshotRepository
+	negativeRepo   repository.NegativeEventRepository
 	logger         *slog.Logger
 }
 
@@ -35,6 +36,7 @@ func NewFeatureComputer(
 	crewRepo repository.CrewRepository,
 	userRepo repository.UserRepository,
 	snapshotRepo repository.WalletSnapshotRepository,
+	negativeRepo repository.NegativeEventRepository,
 	logger *slog.Logger,
 ) *FeatureComputer {
 	return &FeatureComputer{
@@ -46,6 +48,7 @@ func NewFeatureComputer(
 		crewRepo:       crewRepo,
 		userRepo:       userRepo,
 		snapshotRepo:   snapshotRepo,
+		negativeRepo:   negativeRepo,
 		logger:         logger,
 	}
 }
@@ -308,6 +311,11 @@ func (fc *FeatureComputer) computePaymentHistory(ctx context.Context, fv *Featur
 	if err == nil && user != nil {
 		fv.HasPINSet = user.PINHash != ""
 	}
+
+	// Negative events
+	if fc.negativeRepo != nil {
+		fc.computeNegativeEvents(ctx, fv, crewMemberID)
+	}
 }
 
 func (fc *FeatureComputer) computeAccountHealth(ctx context.Context, fv *FeatureVector, crewMemberID uuid.UUID) {
@@ -390,4 +398,21 @@ func (fc *FeatureComputer) computeTenure(ctx context.Context, fv *FeatureVector,
 	if err == nil && len(assignments) > 0 {
 		fv.FirstShiftAgeDays = int(now.Sub(assignments[0].ShiftDate).Hours() / 24)
 	}
+}
+
+func (fc *FeatureComputer) computeNegativeEvents(ctx context.Context, fv *FeatureVector, crewMemberID uuid.UUID) {
+	total, err := fc.negativeRepo.CountUnresolved(ctx, crewMemberID)
+	if err != nil {
+		return
+	}
+	fv.UnresolvedNegativeEvents = int(total)
+
+	fraud, _ := fc.negativeRepo.CountByType(ctx, crewMemberID, "FRAUD_FLAG")
+	fv.FraudFlags = int(fraud)
+
+	disputes, _ := fc.negativeRepo.CountByType(ctx, crewMemberID, "DISPUTE")
+	fv.Disputes = int(disputes)
+
+	locks, _ := fc.negativeRepo.CountByType(ctx, crewMemberID, "ACCOUNT_LOCK")
+	fv.AccountLocks = int(locks)
 }
