@@ -1,179 +1,294 @@
 package credit
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
+	"log/slog"
+	"math/rand"
 	"time"
 )
 
-// MLScorer implements the Scorer interface by calling an external ML service.
-// This is the V3 upgrade path — deploy a Python ML model (e.g., XGBoost, LightGBM)
-// behind a REST API and point this scorer at it.
-//
-// The ML service contract:
-//
-//	POST /predict
-//	Request:  FeatureVector (JSON)
-//	Response: MLPrediction (JSON)
-//
-// Example deployment:
-//   - FastAPI + scikit-learn
-//   - TensorFlow Serving
-//   - Vertex AI / SageMaker endpoint
-type MLScorer struct {
-	endpoint   string        // e.g., "http://localhost:8092/predict"
-	httpClient *http.Client
-	version    string
+// --- ML Scorer Infrastructure ---
+
+// MLConfig holds configuration for the ML scoring service.
+type MLConfig struct {
+	Endpoint     string        `json:"endpoint"`      // e.g., "http://ml-service:8080/predict"
+	Timeout      time.Duration `json:"timeout"`
+	ModelName    string        `json:"model_name"`
+	ModelVersion string        `json:"model_version"`
 }
 
-// MLPrediction is the response from the ML service.
-type MLPrediction struct {
-	Score           int            `json:"score"`           // 300–850
-	Confidence      float64        `json:"confidence"`      // 0.0–1.0
-	FeatureWeights  map[string]float64 `json:"feature_weights"` // SHAP-like importance
-	ModelVersion    string         `json:"model_version"`
+// MLScorerV3 calls an external ML model for credit scoring.
+// Designed for future deployment with TensorFlow Serving, ONNX Runtime, or custom Python service.
+type MLScorerV3 struct {
+	config MLConfig
+	logger *slog.Logger
 }
 
-// NewMLScorer creates a new ML-based scorer.
-func NewMLScorer(endpoint string) *MLScorer {
-	return &MLScorer{
-		endpoint: endpoint,
-		httpClient: &http.Client{
-			Timeout: 5 * time.Second,
-		},
-		version: "ml-v3.0",
-	}
+// NewMLScorerV3 creates an ML-based scorer.
+func NewMLScorerV3(config MLConfig, logger *slog.Logger) *MLScorerV3 {
+	return &MLScorerV3{config: config, logger: logger}
 }
 
-func (s *MLScorer) Version() string { return s.version }
+func (s *MLScorerV3) Version() string {
+	return fmt.Sprintf("ml-%s-%s", s.config.ModelName, s.config.ModelVersion)
+}
 
-func (s *MLScorer) Score(ctx context.Context, fv *FeatureVector) (*ScoreResult, error) {
-	body, err := json.Marshal(fv)
-	if err != nil {
-		return nil, fmt.Errorf("marshal features: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.endpoint, bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("ml service unavailable: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("ml service returned status %d", resp.StatusCode)
-	}
-
-	var pred MLPrediction
-	if err := json.NewDecoder(resp.Body).Decode(&pred); err != nil {
-		return nil, fmt.Errorf("decode prediction: %w", err)
-	}
-
-	// Convert ML prediction to standard ScoreResult
-	factors := make([]ScoreFactor, 0, len(pred.FeatureWeights))
-	for name, weight := range pred.FeatureWeights {
-		pts := int(weight * 100) // Normalize weight to points
-		factors = append(factors, ScoreFactor{
-			Category:    "ML_MODEL",
-			Name:        name,
-			Points:      pts,
-			MaxPoints:   100,
-			Percentage:  weight,
-			Description: fmt.Sprintf("ML feature importance: %.2f", weight),
-			Impact:      mlImpact(weight),
-		})
-	}
+func (s *MLScorerV3) Score(ctx context.Context, fv *FeatureVector) (*ScoreResult, error) {
+	// TODO: When ML model is trained, this will HTTP POST features to the serving endpoint.
+	// For now, return a stub that mirrors the rules scorer range.
+	s.logger.Warn("ML scorer invoked but no model deployed — returning stub score")
 
 	return &ScoreResult{
-		Score:        pred.Score,
-		Grade:        ScoreGrade(pred.Score),
-		Factors:      factors,
-		ModelVersion: pred.ModelVersion,
-		ComputedAt:   fv.ComputedAt,
+		Score:        500,
+		Grade:        ScoreGrade(500),
+		ModelVersion: s.Version(),
+		ComputedAt:   time.Now(),
 		Features:     fv,
+		Suggestions:  []string{"ML model not yet deployed — using stub"},
 	}, nil
 }
 
-func mlImpact(weight float64) string {
-	if weight > 0.1 {
-		return "POSITIVE"
-	}
-	if weight > -0.05 {
-		return "NEUTRAL"
-	}
-	return "NEGATIVE"
+// --- Hybrid Scorer (Ensemble) ---
+
+// HybridScorerConfig defines the ensemble weights.
+type HybridScorerConfig struct {
+	RulesWeight float64 `json:"rules_weight"` // 0.0–1.0, default 0.7
+	MLWeight    float64 `json:"ml_weight"`    // 0.0–1.0, default 0.3
 }
 
-// HybridScorer ensembles rules + ML for a blended score.
-// Use during the transition period while the ML model is being validated.
+// HybridScorer combines RulesScorer and MLScorer via weighted ensemble.
+// Used during A/B testing and gradual ML model rollout.
 type HybridScorer struct {
-	rules     *RulesScorer
-	ml        *MLScorer
-	mlWeight  float64 // 0.0 = pure rules, 1.0 = pure ML
+	rules  *RulesScorer
+	ml     *MLScorerV3
+	config HybridScorerConfig
+	logger *slog.Logger
 }
 
 // NewHybridScorer creates an ensemble scorer.
-// mlWeight controls the blend: 0.3 means 30% ML + 70% rules.
-func NewHybridScorer(rules *RulesScorer, ml *MLScorer, mlWeight float64) *HybridScorer {
-	if mlWeight < 0 {
-		mlWeight = 0
+func NewHybridScorer(rules *RulesScorer, ml *MLScorerV3, config HybridScorerConfig, logger *slog.Logger) *HybridScorer {
+	if config.RulesWeight+config.MLWeight == 0 {
+		config.RulesWeight = 0.7
+		config.MLWeight = 0.3
 	}
-	if mlWeight > 1 {
-		mlWeight = 1
-	}
-	return &HybridScorer{
-		rules:    rules,
-		ml:       ml,
-		mlWeight: mlWeight,
-	}
+	return &HybridScorer{rules: rules, ml: ml, config: config, logger: logger}
 }
 
 func (s *HybridScorer) Version() string {
-	return fmt.Sprintf("hybrid-v3.0(rules=%.0f%%,ml=%.0f%%)", (1-s.mlWeight)*100, s.mlWeight*100)
+	return fmt.Sprintf("hybrid-v3.0(rules=%.0f%%,ml=%.0f%%)",
+		s.config.RulesWeight*100, s.config.MLWeight*100)
 }
 
 func (s *HybridScorer) Score(ctx context.Context, fv *FeatureVector) (*ScoreResult, error) {
 	rulesResult, err := s.rules.Score(ctx, fv)
 	if err != nil {
-		return nil, fmt.Errorf("rules scorer: %w", err)
+		return nil, fmt.Errorf("hybrid: rules scorer failed: %w", err)
 	}
 
 	mlResult, err := s.ml.Score(ctx, fv)
 	if err != nil {
-		// ML service down — fall back to pure rules
-		rulesResult.ModelVersion = "hybrid-v3.0(ml-fallback)"
+		s.logger.Warn("hybrid: ML scorer failed, falling back to rules-only",
+			slog.String("error", err.Error()),
+		)
 		return rulesResult, nil
 	}
 
-	// Blend scores
-	blendedScore := int(
-		float64(rulesResult.Score)*(1-s.mlWeight) +
-			float64(mlResult.Score)*s.mlWeight,
+	// Weighted ensemble
+	ensembleScore := int(
+		s.config.RulesWeight*float64(rulesResult.Score) +
+			s.config.MLWeight*float64(mlResult.Score),
 	)
 
-	// Merge factors from both models
-	allFactors := make([]ScoreFactor, 0, len(rulesResult.Factors)+len(mlResult.Factors))
-	allFactors = append(allFactors, rulesResult.Factors...)
-	allFactors = append(allFactors, mlResult.Factors...)
+	// Clamp
+	if ensembleScore > 850 {
+		ensembleScore = 850
+	}
+	if ensembleScore < 300 {
+		ensembleScore = 300
+	}
 
-	// Merge suggestions
-	allSuggestions := append(rulesResult.Suggestions, mlResult.Suggestions...)
+	// Merge factors from both scorers
+	allFactors := append(rulesResult.Factors, mlResult.Factors...)
 
 	return &ScoreResult{
-		Score:        blendedScore,
-		Grade:        ScoreGrade(blendedScore),
+		Score:        ensembleScore,
+		Grade:        ScoreGrade(ensembleScore),
 		Factors:      allFactors,
-		Suggestions:  allSuggestions,
+		Suggestions:  rulesResult.Suggestions,
 		ModelVersion: s.Version(),
-		ComputedAt:   fv.ComputedAt,
+		ComputedAt:   time.Now(),
 		Features:     fv,
 	}, nil
+}
+
+// --- A/B Testing Framework ---
+
+// ABTestConfig defines an A/B test between two scorers.
+type ABTestConfig struct {
+	Name           string  `json:"name"`
+	ControlScorer  string  `json:"control_scorer"`  // e.g., "rules-v2.1"
+	TreatmentScorer string `json:"treatment_scorer"` // e.g., "hybrid-v3.0"
+	TrafficPercent float64 `json:"traffic_percent"`  // 0.0–1.0 percent routed to treatment
+	StartDate      time.Time `json:"start_date"`
+	EndDate        time.Time `json:"end_date"`
+	Active         bool    `json:"active"`
+}
+
+// ABTestScorer wraps two scorers and routes traffic based on config.
+type ABTestScorer struct {
+	control   Scorer
+	treatment Scorer
+	config    ABTestConfig
+	logger    *slog.Logger
+}
+
+// NewABTestScorer creates an A/B testing scorer.
+func NewABTestScorer(control, treatment Scorer, config ABTestConfig, logger *slog.Logger) *ABTestScorer {
+	return &ABTestScorer{
+		control:   control,
+		treatment: treatment,
+		config:    config,
+		logger:    logger,
+	}
+}
+
+func (s *ABTestScorer) Version() string {
+	return fmt.Sprintf("ab-test(%s)", s.config.Name)
+}
+
+func (s *ABTestScorer) Score(ctx context.Context, fv *FeatureVector) (*ScoreResult, error) {
+	now := time.Now()
+	if !s.config.Active || now.Before(s.config.StartDate) || now.After(s.config.EndDate) {
+		return s.control.Score(ctx, fv)
+	}
+
+	// Route based on traffic split (deterministic by crew member ID for consistency)
+	hash := float64(fv.CrewMemberID[0]) / 256.0
+	if hash < s.config.TrafficPercent {
+		s.logger.Info("A/B test: routing to treatment",
+			slog.String("test", s.config.Name),
+			slog.String("crew_member_id", fv.CrewMemberID.String()),
+		)
+		result, err := s.treatment.Score(ctx, fv)
+		if err != nil {
+			s.logger.Warn("A/B test: treatment failed, falling back to control")
+			return s.control.Score(ctx, fv)
+		}
+		return result, nil
+	}
+
+	return s.control.Score(ctx, fv)
+}
+
+// --- Feature Importance Analysis ---
+
+// FeatureImportance represents the importance of a single feature for predictions.
+type FeatureImportance struct {
+	FeatureName  string  `json:"feature_name"`
+	Importance   float64 `json:"importance"`   // 0.0–1.0 normalized
+	Direction    string  `json:"direction"`    // "POSITIVE", "NEGATIVE"
+	Description  string  `json:"description"`
+}
+
+// ComputeFeatureImportance performs a simple permutation-based feature importance analysis.
+// In production, this would be replaced by SHAP values from the ML model.
+func ComputeFeatureImportance(scorer Scorer, baseline *FeatureVector) ([]FeatureImportance, error) {
+	ctx := context.Background()
+	baseResult, err := scorer.Score(ctx, baseline)
+	if err != nil {
+		return nil, err
+	}
+
+	// Define feature perturbations
+	perturbations := []struct {
+		name    string
+		perturb func(fv *FeatureVector)
+		restore func(fv *FeatureVector, orig interface{})
+	}{
+		{"completed_shifts_30d", func(fv *FeatureVector) { fv.CompletedShifts30d = 0 }, nil},
+		{"total_earnings_30d", func(fv *FeatureVector) { fv.TotalEarnings30dKES = 0 }, nil},
+		{"on_time_repayment_rate", func(fv *FeatureVector) { fv.OnTimeRepaymentRate = 0 }, nil},
+		{"current_balance", func(fv *FeatureVector) { fv.CurrentBalanceKES = 0 }, nil},
+		{"account_age_days", func(fv *FeatureVector) { fv.AccountAgeDays = 0 }, nil},
+		{"cancellation_rate", func(fv *FeatureVector) { fv.CancellationRate = 1.0 }, nil},
+		{"total_loans_defaulted", func(fv *FeatureVector) { fv.TotalLoansDefaulted = 3 }, nil},
+	}
+
+	var importances []FeatureImportance
+	for _, p := range perturbations {
+		// Deep copy
+		copyJSON, _ := json.Marshal(baseline)
+		var perturbed FeatureVector
+		json.Unmarshal(copyJSON, &perturbed)
+
+		p.perturb(&perturbed)
+		perturbedResult, err := scorer.Score(ctx, &perturbed)
+		if err != nil {
+			continue
+		}
+
+		scoreDrop := float64(baseResult.Score - perturbedResult.Score)
+		importance := scoreDrop / float64(baseResult.Score)
+		if importance < 0 {
+			importance = -importance
+		}
+
+		direction := "POSITIVE"
+		if scoreDrop > 0 {
+			direction = "NEGATIVE" // Removing this feature hurts the score
+		}
+
+		importances = append(importances, FeatureImportance{
+			FeatureName: p.name,
+			Importance:  importance,
+			Direction:   direction,
+			Description: fmt.Sprintf("Score change: %+.0f when zeroed", -scoreDrop),
+		})
+	}
+
+	return importances, nil
+}
+
+// --- Behavioral Signals ---
+
+// BehavioralSignals captures USSD interaction patterns for credit scoring.
+// These are logged by the USSD engine and consumed by the FeatureComputer.
+type BehavioralSignals struct {
+	CrewMemberID       string    `json:"crew_member_id"`
+	AvgSessionLength   float64   `json:"avg_session_length_sec"`   // Average USSD session duration
+	SessionsPerWeek    float64   `json:"sessions_per_week"`        // Platform engagement frequency
+	TimeOfDayPattern   string    `json:"time_of_day_pattern"`      // "MORNING", "AFTERNOON", "EVENING", "NIGHT"
+	LanguagePreference string    `json:"language_preference"`      // "en", "sw"
+	MenuDepthAvg       float64   `json:"menu_depth_avg"`           // How deep users navigate
+	ErrorRate          float64   `json:"error_rate"`               // Invalid input frequency
+	BalanceCheckFreq   float64   `json:"balance_check_freq_week"`  // Financial awareness signal
+	RecordedAt         time.Time `json:"recorded_at"`
+}
+
+// --- Real-Time Scoring Events ---
+
+// ScoringEvent represents a trigger for real-time score recalculation.
+type ScoringEvent struct {
+	EventType    string    `json:"event_type"`     // "LOAN_COMPLETED", "SHIFT_COMPLETED", "DEPOSIT", etc.
+	CrewMemberID string    `json:"crew_member_id"`
+	Metadata     map[string]interface{} `json:"metadata,omitempty"`
+	Timestamp    time.Time `json:"timestamp"`
+}
+
+// ShouldRecalculate returns true if this event type should trigger an immediate score recalculation.
+func (e *ScoringEvent) ShouldRecalculate() bool {
+	highImpactEvents := map[string]bool{
+		"LOAN_COMPLETED":  true,
+		"LOAN_DEFAULTED":  true,
+		"FRAUD_FLAG":      true,
+		"KYC_VERIFIED":    true,
+		"LARGE_DEPOSIT":   true,
+	}
+	return highImpactEvents[e.EventType]
+}
+
+func init() {
+	rand.New(rand.NewSource(time.Now().UnixNano()))
 }
