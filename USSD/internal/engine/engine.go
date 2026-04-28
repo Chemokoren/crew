@@ -547,15 +547,23 @@ func (e *Engine) handleLoanStatus(ctx context.Context, sess *session.Data, input
 }
 
 func (e *Engine) handleLoanApply(ctx context.Context, sess *session.Data, input string) (*Response, error) {
-	// Fetch the user's graduated lending tier from the backend
+	// First, always get the credit score — we need it either way
+	score, scoreErr := e.backendClient.GetCreditScore(ctx, sess.CrewMemberID)
+	if scoreErr != nil || score == nil {
+		msg := fmt.Sprintf(e.t(sess, "loan.low_score"), 0, 400)
+		return e.continueWithMessage(sess, msg), nil
+	}
+
+	// Try to fetch the graduated lending tier from the backend
 	tier, err := e.backendClient.GetLoanTier(ctx, sess.CrewMemberID)
 	if err != nil || tier == nil {
-		// Fallback: check credit score directly
-		score, scoreErr := e.backendClient.GetCreditScore(ctx, sess.CrewMemberID)
-		if scoreErr != nil || score == nil {
-			msg := fmt.Sprintf(e.t(sess, "loan.low_score"), 0, 400)
-			return e.continueWithMessage(sess, msg), nil
-		}
+		// Backend tier API failed (e.g., auth issue) — compute tier locally
+		// Tier thresholds: EXCELLENT ≥750, GOOD ≥650, FAIR ≥500, POOR ≥400
+		tier = computeLocalTier(score.Score)
+	}
+
+	// Check if the user actually qualifies (score < 400 = no tier)
+	if tier == nil {
 		msg := fmt.Sprintf(e.t(sess, "loan.low_score"), score.Score, 400)
 		return e.continueWithMessage(sess, msg), nil
 	}
@@ -569,13 +577,49 @@ func (e *Engine) handleLoanApply(ctx context.Context, sess *session.Data, input 
 	// Show tier info and prompt for amount
 	msg := fmt.Sprintf(e.t(sess, "loan.tier_info"),
 		tier.Grade,
-		tier.Score,
+		score.Score,
 		tier.MaxLoanKES,
 		tier.InterestRate,
 		tier.MaxTenureDays,
 	)
 	sess.CurrentState = session.StateLoanAmount
 	return e.continueWithMessage(sess, msg), nil
+}
+
+// computeLocalTier applies the same tier logic as the backend when the
+// tier API is unavailable (e.g., auth middleware blocks USSD calls).
+func computeLocalTier(score int) *backend.LoanTierResponse {
+	type tierDef struct {
+		grade       string
+		minScore    int
+		maxLoanKES  float64
+		rate        float64
+		tenureDays  int
+		cooldown    int
+		description string
+	}
+
+	tiers := []tierDef{
+		{"EXCELLENT", 750, 50000, 5, 30, 0, "Premium — KES 50,000 max at 5%"},
+		{"GOOD", 650, 20000, 8, 30, 3, "Standard — KES 20,000 max at 8%"},
+		{"FAIR", 500, 5000, 12, 14, 7, "Growth — KES 5,000 max at 12%"},
+		{"POOR", 400, 1000, 15, 7, 14, "Starter — KES 1,000 max at 15%"},
+	}
+
+	for _, t := range tiers {
+		if score >= t.minScore {
+			return &backend.LoanTierResponse{
+				Score:         score,
+				Grade:         t.grade,
+				MaxLoanKES:    t.maxLoanKES,
+				InterestRate:  t.rate,
+				MaxTenureDays: t.tenureDays,
+				CooldownDays:  t.cooldown,
+				Description:   t.description,
+			}
+		}
+	}
+	return nil // Below 400 — not eligible
 }
 
 func (e *Engine) handleLoanAmount(ctx context.Context, sess *session.Data, input string) (*Response, error) {
