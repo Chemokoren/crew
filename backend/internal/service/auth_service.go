@@ -347,6 +347,11 @@ func (s *AuthService) GetSystemStats(ctx context.Context) (*SystemStats, error) 
 	}, nil
 }
 
+// ListUsers returns a paginated list of users for admin management.
+func (s *AuthService) ListUsers(ctx context.Context, page, perPage int) ([]models.User, int64, error) {
+	return s.userRepo.List(ctx, page, perPage)
+}
+
 // SetPIN sets or updates the transaction PIN for a user identified by phone.
 func (s *AuthService) SetPIN(ctx context.Context, phone, pin string) error {
 	if len(pin) < 4 || len(pin) > 6 {

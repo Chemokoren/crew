@@ -667,6 +667,7 @@ func main() {
 		admin.Use(middleware.RequireRole(types.RoleSystemAdmin))
 		{
 			admin.GET("/stats", adminHandler.SystemStats)
+			admin.GET("/users", adminHandler.ListUsers)
 			admin.POST("/users/:id/disable", adminHandler.DisableAccount)
 			admin.POST("/users/:id/enable", adminHandler.EnableAccount)
 			admin.POST("/users/:id/reset-password", adminHandler.ResetPassword)

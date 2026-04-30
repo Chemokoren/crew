@@ -8,7 +8,8 @@ import {
   SACCO, Vehicle, Route, PayrollRun, PayrollEntry,
   Earning, DailySummary, CreditScore, DetailedScoreResult, CreditScoreHistory,
   LoanApplication, LoanTier, InsurancePolicy, Notification, NotificationPreference,
-  AuditLog, SystemStats, SACCOFloat, SACCOMembership, SACCOFloatTransaction,
+  AuditLog, AdminUser, NotificationTemplate,
+  SystemStats, SACCOFloat, SACCOMembership, SACCOFloatTransaction,
   StatutoryRate
 } from '../models';
 
@@ -317,6 +318,10 @@ export class ApiService {
     return this.http.get<ApiResponse<SystemStats>>(`${this.API}/admin/stats`);
   }
 
+  getUsers(params?: Record<string, string>): Observable<ApiListResponse<AdminUser>> {
+    return this.http.get<ApiListResponse<AdminUser>>(`${this.API}/admin/users`, { params: this.buildParams(params) });
+  }
+
   disableAccount(userId: string): Observable<unknown> {
     return this.http.post(`${this.API}/admin/users/${userId}/disable`, {});
   }
@@ -335,6 +340,18 @@ export class ApiService {
 
   getStatutoryRates(): Observable<ApiResponse<StatutoryRate[]>> {
     return this.http.get<ApiResponse<StatutoryRate[]>>(`${this.API}/admin/statutory-rates`);
+  }
+
+  getNotificationTemplates(): Observable<ApiResponse<NotificationTemplate[]>> {
+    return this.http.get<ApiResponse<NotificationTemplate[]>>(`${this.API}/admin/notifications/templates`);
+  }
+
+  createNotificationTemplate(data: Partial<NotificationTemplate>): Observable<ApiResponse<NotificationTemplate>> {
+    return this.http.post<ApiResponse<NotificationTemplate>>(`${this.API}/admin/notifications/templates`, data);
+  }
+
+  updateNotificationTemplate(data: Partial<NotificationTemplate>): Observable<ApiResponse<NotificationTemplate>> {
+    return this.http.put<ApiResponse<NotificationTemplate>>(`${this.API}/admin/notifications/templates`, data);
   }
 
   // --- Helpers ---

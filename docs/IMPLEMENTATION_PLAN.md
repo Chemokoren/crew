@@ -306,14 +306,14 @@
 |---|------|--------|
 | 152 | **Admin dashboard** — System stats cards from `GET /admin/stats` | ✅ Done |
 | 153 | **Audit logs table** — Action, resource, time from `GET /admin/audit-logs` | ✅ Done |
-| 154 | **Disable user account** — `POST /admin/users/:id/disable` | ❌ Not started |
-| 155 | **Enable user account** — `POST /admin/users/:id/enable` | ❌ Not started |
-| 156 | **Reset user password** — `POST /admin/users/:id/reset-password` | ❌ Not started |
-| 157 | **Statutory rates view** — `GET /admin/statutory-rates` | ❌ Not started |
-| 158 | **Notification templates** — List (`GET /admin/notifications/templates`), Create (`POST`), Update (`PUT`) | ❌ Not started |
-| 159 | Audit log filtering (by resource, actor, date range) | ❌ Not started |
-| 160 | Audit log pagination | ❌ Not started |
-| 161 | User management table (list all users, search, enable/disable toggle) | ❌ Not started |
+| 154 | **Disable user account** — `POST /admin/users/:id/disable` | ✅ Done |
+| 155 | **Enable user account** — `POST /admin/users/:id/enable` | ✅ Done |
+| 156 | **Reset user password** — `POST /admin/users/:id/reset-password` | ✅ Done |
+| 157 | **Statutory rates view** — `GET /admin/statutory-rates` | ✅ Done |
+| 158 | **Notification templates** — List (`GET /admin/notifications/templates`), Create (`POST`), Update (`PUT`) | ✅ Done |
+| 159 | Audit log filtering (by resource, actor, date range) | ✅ Done |
+| 160 | Audit log pagination | ✅ Done |
+| 161 | User management table (list all users, search, enable/disable toggle) | ✅ Done |
 
 ---
 
@@ -370,11 +370,11 @@
 | 11 | Credit & Loans | 12 | **12** | **0** |
 | 12 | Insurance | 4 | **4** | **0** |
 | 13 | Notifications | 5 | **5** | **0** |
-| 14 | System Administration | 10 | 2 | 8 |
+| 14 | System Administration | 10 | **10** | **0** |
 | 15 | Documents | 6 | 0 | 6 |
 | 16 | UX Polish | 12 | 0 | 12 |
-| **TOTAL** | | **179** | **153** | **26** |
+| **TOTAL** | | **179** | **161** | **18** |
 
-> **Current progress: 85% complete** (153 / 179 tasks)
+> **Current progress: 90% complete** (161 / 179 tasks)
 >
 > **All backend API endpoints are covered in `ApiService`** (72 methods). The remaining work is building UI components that consume them.

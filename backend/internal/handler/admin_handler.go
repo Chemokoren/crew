@@ -42,6 +42,26 @@ func (h *AdminHandler) SystemStats(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, stats)
 }
 
+// ListUsers godoc
+// @Summary List all users (admin)
+// @Tags Admin
+// @Produce json
+// @Param page query int false "Page number"
+// @Param per_page query int false "Items per page"
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/admin/users [get]
+func (h *AdminHandler) ListUsers(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "20"))
+
+	users, total, err := h.authSvc.ListUsers(c.Request.Context(), page, perPage)
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+	ListResponse(c, users, buildMeta(page, perPage, total))
+}
+
 // DisableAccount godoc
 // @Summary Disable a user account
 // @Tags Admin

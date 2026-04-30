@@ -332,6 +332,28 @@ export interface AuditLog {
   created_at: string;
 }
 
+export interface AdminUser {
+  id: string;
+  phone: string;
+  email?: string;
+  system_role: string;
+  crew_member_id?: string;
+  sacco_id?: string;
+  is_active: boolean;
+  last_login_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NotificationTemplate {
+  id: string;
+  event_name: string;
+  channel: string;
+  title_template: string;
+  body_template: string;
+  is_active: boolean;
+}
+
 export interface SystemStats {
   total_users: number;
   active_users: number;
