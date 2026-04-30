@@ -278,9 +278,9 @@
 | # | Task | Status |
 |---|------|--------|
 | 143 | **Insurance list** — Provider, type, premium, frequency, period, status | ✅ Done |
-| 144 | **Create insurance policy** (admin) — Form calling `POST /insurance` | ❌ Not started |
-| 145 | **Lapse policy** (admin) — `POST /insurance/:id/lapse` | ❌ Not started |
-| 146 | Filter by crew member, status, policy type | ❌ Not started |
+| 144 | **Create insurance policy** (admin) — Form calling `POST /insurance` | ✅ Done |
+| 145 | **Lapse policy** (admin) — `POST /insurance/:id/lapse` | ✅ Done |
+| 146 | Filter by crew member, status, policy type | ✅ Done |
 
 ---
 
@@ -368,13 +368,13 @@
 | 9 | Earnings Engine | 6 | **6** | **0** |
 | 10 | Payroll & Compliance | 10 | **10** | **0** |
 | 11 | Credit & Loans | 12 | **12** | **0** |
-| 12 | Insurance | 4 | 1 | 3 |
+| 12 | Insurance | 4 | **4** | **0** |
 | 13 | Notifications | 5 | 2 | 3 |
 | 14 | System Administration | 10 | 2 | 8 |
 | 15 | Documents | 6 | 0 | 6 |
 | 16 | UX Polish | 12 | 0 | 12 |
-| **TOTAL** | | **179** | **147** | **32** |
+| **TOTAL** | | **179** | **150** | **29** |
 
-> **Current progress: 82% complete** (147 / 179 tasks)
+> **Current progress: 84% complete** (150 / 179 tasks)
 >
 > **All backend API endpoints are covered in `ApiService`** (72 methods). The remaining work is building UI components that consume them.
