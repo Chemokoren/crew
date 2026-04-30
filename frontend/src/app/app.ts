@@ -6,11 +6,12 @@ import { AuthService } from './core/services/auth.service';
 import { SidebarComponent } from './shared/components/sidebar/sidebar.component';
 import { TopbarComponent } from './shared/components/topbar/topbar.component';
 import { ToastComponent } from './shared/components/toast/toast.component';
+import { ConfirmDialogComponent } from './shared/components/confirm-dialog/confirm-dialog.component';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, RouterOutlet, SidebarComponent, TopbarComponent, ToastComponent],
+  imports: [CommonModule, RouterOutlet, SidebarComponent, TopbarComponent, ToastComponent, ConfirmDialogComponent],
   template: `
     @if (isAuthRoute()) {
       <router-outlet />
@@ -18,12 +19,13 @@ import { ToastComponent } from './shared/components/toast/toast.component';
       <div class="app-layout">
         <app-sidebar [(mobileOpen)]="sidebarMobileOpen" />
         <app-topbar (menuToggle)="toggleMobileSidebar()" />
-        <main class="main-content">
+        <main class="main-content" id="main-content">
           <router-outlet />
         </main>
       </div>
     }
     <app-toast />
+    <app-confirm-dialog />
   `,
   styles: [`
     .app-layout {

@@ -2,9 +2,11 @@ import { HttpInterceptorFn, HttpErrorResponse } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { catchError, switchMap, throwError } from 'rxjs';
 import { AuthService } from '../services/auth.service';
+import { ToastService } from '../services/toast.service';
 
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const authService = inject(AuthService);
+  const toast = inject(ToastService);
   const token = authService.accessToken;
 
   // Skip auth for login/register/refresh
@@ -28,6 +30,7 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
             return next(newReq);
           }),
           catchError(() => {
+            toast.error('Session expired. Please log in again.');
             authService.logout();
             return throwError(() => error);
           })

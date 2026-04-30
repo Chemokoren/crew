@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { AuthService } from '../../../core/services/auth.service';
 import { NotificationStateService } from '../../../core/services/notification-state.service';
+import { ThemeService } from '../../../core/services/theme.service';
 
 @Component({
   selector: 'app-topbar',
@@ -17,12 +18,16 @@ import { NotificationStateService } from '../../../core/services/notification-st
       <div class="topbar-spacer"></div>
 
       <div class="topbar-actions">
-        <a routerLink="/notifications" class="topbar-btn" id="topbar-notifications">
+        <a routerLink="/notifications" class="topbar-btn" id="topbar-notifications" aria-label="Notifications">
           <span class="material-icons-round">notifications_none</span>
           @if (notifState.unreadCount() > 0) {
             <span class="notification-badge">{{ notifState.unreadCount() > 9 ? '9+' : notifState.unreadCount() }}</span>
           }
         </a>
+
+        <button class="topbar-btn" (click)="themeSvc.toggle()" id="topbar-theme-toggle" [attr.aria-label]="themeSvc.theme()==='dark'?'Switch to light mode':'Switch to dark mode'">
+          <span class="material-icons-round">{{ themeSvc.theme() === 'dark' ? 'light_mode' : 'dark_mode' }}</span>
+        </button>
 
         <a routerLink="/profile" class="user-menu" id="topbar-profile-link">
           <div class="user-avatar">
@@ -191,6 +196,7 @@ import { NotificationStateService } from '../../../core/services/notification-st
 export class TopbarComponent implements OnInit {
   auth = inject(AuthService);
   notifState = inject(NotificationStateService);
+  themeSvc = inject(ThemeService);
   menuToggle = output<void>();
 
   ngOnInit(): void {

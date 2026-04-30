@@ -338,18 +338,18 @@
 
 | # | Task | Status |
 |---|------|--------|
-| 168 | Replace raw UUID inputs with **dropdown selectors** (crew, vehicle, SACCO, route) fetched from API | ❌ Not started |
-| 169 | **Confirm dialog component** — Reusable modal replacing `window.confirm()` and `window.prompt()` | ❌ Not started |
-| 170 | **Loading spinner component** — Reusable full-page or inline loading indicator | ❌ Not started |
-| 171 | **Breadcrumb component** on detail pages | ❌ Not started |
-| 172 | **Form validation** — Reactive forms with inline error messages (replace `FormsModule` with `ReactiveFormsModule` where needed) | ❌ Not started |
-| 173 | **404 page** — Styled "not found" page for unknown routes | ❌ Not started |
-| 174 | **Session expiry handling** — Redirect + toast when refresh token expires | ❌ Not started |
-| 175 | **PWA manifest** + service worker for offline shell | ❌ Not started |
-| 176 | Idempotency key generation helper (UUID v4 for wallet operations) | ❌ Not started |
-| 177 | **Dark/light mode toggle** (currently dark-only) | ❌ Not started |
-| 178 | Table sorting (click column header to sort) | ❌ Not started |
-| 179 | Accessibility audit (ARIA labels, keyboard navigation, focus management) | ❌ Not started |
+| 168 | Replace raw UUID inputs with **dropdown selectors** (crew, vehicle, SACCO, route) fetched from API | ✅ Done |
+| 169 | **Confirm dialog component** — Reusable modal replacing `window.confirm()` and `window.prompt()` | ✅ Done |
+| 170 | **Loading spinner component** — Reusable full-page or inline loading indicator | ✅ Done |
+| 171 | **Breadcrumb component** on detail pages | ✅ Done |
+| 172 | **Form validation** — Reactive forms with inline error messages (replace `FormsModule` with `ReactiveFormsModule` where needed) | ✅ Done |
+| 173 | **404 page** — Styled "not found" page for unknown routes | ✅ Done |
+| 174 | **Session expiry handling** — Redirect + toast when refresh token expires | ✅ Done |
+| 175 | **PWA manifest** + service worker for offline shell | ✅ Done |
+| 176 | Idempotency key generation helper (UUID v4 for wallet operations) | ✅ Done |
+| 177 | **Dark/light mode toggle** (currently dark-only) | ✅ Done |
+| 178 | Table sorting (click column header to sort) | ✅ Done |
+| 179 | Accessibility audit (ARIA labels, keyboard navigation, focus management) | ✅ Done |
 
 ---
 
@@ -372,9 +372,9 @@
 | 13 | Notifications | 5 | **5** | **0** |
 | 14 | System Administration | 10 | **10** | **0** |
 | 15 | Documents | 6 | **6** | **0** |
-| 16 | UX Polish | 12 | 0 | 12 |
-| **TOTAL** | | **179** | **167** | **12** |
+| 16 | UX Polish | 12 | **12** | **0** |
+| **TOTAL** | | **179** | **179** | **0** |
 
-> **Current progress: 93% complete** (167 / 179 tasks)
+> **Current progress: 100% complete** (179 / 179 tasks) 🎉
 >
 > **All backend API endpoints are covered in `ApiService`** (72 methods). The remaining work is building UI components that consume them.
