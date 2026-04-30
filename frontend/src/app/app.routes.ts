@@ -79,9 +79,19 @@ export const routes: Routes = [
         loadComponent: () => import('./features/vehicles/vehicle-list/vehicle-list.component').then(m => m.VehicleListComponent),
       },
       {
+        path: 'vehicles/:id',
+        canActivate: [roleGuard('SYSTEM_ADMIN', 'SACCO_ADMIN')],
+        loadComponent: () => import('./features/vehicles/vehicle-detail/vehicle-detail.component').then(m => m.VehicleDetailComponent),
+      },
+      {
         path: 'routes',
         canActivate: [roleGuard('SYSTEM_ADMIN', 'SACCO_ADMIN')],
         loadComponent: () => import('./features/routes/route-list/route-list.component').then(m => m.RouteListComponent),
+      },
+      {
+        path: 'routes/:id',
+        canActivate: [roleGuard('SYSTEM_ADMIN', 'SACCO_ADMIN')],
+        loadComponent: () => import('./features/routes/route-detail/route-detail.component').then(m => m.RouteDetailComponent),
       },
       {
         path: 'payroll',

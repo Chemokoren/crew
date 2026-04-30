@@ -201,14 +201,14 @@
 | 104 | **Vehicle list** — Reg no, type, capacity, status | ✅ Done |
 | 105 | **Create vehicle modal** | ✅ Done |
 | 106 | Delete vehicle | ✅ Done |
-| 107 | **Update vehicle** — Edit form calling `PUT /vehicles/:id` | ❌ Not started |
-| 108 | **Vehicle detail page** — Full info, assigned route, linked SACCO | ❌ Not started |
-| 109 | Filter by SACCO or vehicle type | ❌ Not started |
+| 107 | **Update vehicle** — Edit form calling `PUT /vehicles/:id` | ✅ Done |
+| 108 | **Vehicle detail page** — Full info, assigned route, linked SACCO | ✅ Done |
+| 109 | Filter by SACCO or vehicle type | ✅ Done |
 | 110 | **Route list** — Code, name, origin → destination, status | ✅ Done |
 | 111 | **Create route modal** | ✅ Done |
 | 112 | Delete route | ✅ Done |
-| 113 | **Update route** — Edit form calling `PUT /routes/:id` | ❌ Not started |
-| 114 | **Route detail page** — Full info, distance, assigned vehicles | ❌ Not started |
+| 113 | **Update route** — Edit form calling `PUT /routes/:id` | ✅ Done |
+| 114 | **Route detail page** — Full info, distance, assigned vehicles | ✅ Done |
 
 ---
 
@@ -364,7 +364,7 @@
 | 5 | Assignment Engine | 12 | **12** | **0** |
 | 6 | Wallet & Payments | 9 | **9** | **0** |
 | 7 | SACCO Management | 11 | **11** | **0** |
-| 8 | Vehicle & Route | 11 | 6 | 5 |
+| 8 | Vehicle & Route | 11 | **11** | **0** |
 | 9 | Earnings Engine | 6 | 1 | 5 |
 | 10 | Payroll & Compliance | 10 | 5 | 5 |
 | 11 | Credit & Loans | 12 | 2 | 10 |
@@ -373,8 +373,8 @@
 | 14 | System Administration | 10 | 2 | 8 |
 | 15 | Documents | 6 | 0 | 6 |
 | 16 | UX Polish | 12 | 0 | 12 |
-| **TOTAL** | | **179** | **122** | **57** |
+| **TOTAL** | | **179** | **127** | **52** |
 
-> **Current progress: 68% complete** (122 / 179 tasks)
+> **Current progress: 71% complete** (127 / 179 tasks)
 >
 > **All backend API endpoints are covered in `ApiService`** (72 methods). The remaining work is building UI components that consume them.

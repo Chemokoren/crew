@@ -1,9 +1,10 @@
 import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 import { ApiService } from '../../../core/services/api.service';
 import { ToastService } from '../../../core/services/toast.service';
-import { Vehicle } from '../../../core/models';
+import { Vehicle, SACCO } from '../../../core/models';
 
 @Component({
   selector: 'app-vehicle-list', standalone: true, imports: [CommonModule, FormsModule],
@@ -14,24 +15,48 @@ import { Vehicle } from '../../../core/models';
         <div><h1 class="page-title">Fleet Management</h1><p class="page-subtitle">Manage matatus, boda bodas, and tuk tuks</p></div>
         <div class="page-actions"><button class="btn btn-primary" (click)="showModal.set(true)" id="btn-add-vehicle"><span class="material-icons-round">add</span> Add Vehicle</button></div>
       </div>
+
+      <!-- Filters -->
+      <div class="filters-bar">
+        <select class="form-select" [(ngModel)]="filterSacco" (ngModelChange)="load()" id="filter-sacco" style="max-width:220px;">
+          <option value="">All SACCOs</option>
+          @for (s of saccos(); track s.id) { <option [value]="s.id">{{ s.name }}</option> }
+        </select>
+        <select class="form-select" [(ngModel)]="filterType" (ngModelChange)="applyLocalFilter()" id="filter-type" style="max-width:180px;">
+          <option value="">All Types</option>
+          <option value="MATATU">Matatu</option>
+          <option value="BODA">Boda Boda</option>
+          <option value="TUK_TUK">Tuk Tuk</option>
+        </select>
+      </div>
+
       @if (loading()) { @for(i of [1,2,3];track i){<div class="skeleton" style="height:56px;margin:4px 0;"></div>} }
-      @else if (items().length === 0) { <div class="empty-state"><span class="material-icons-round empty-icon">directions_bus</span><div class="empty-title">No vehicles registered</div></div> }
+      @else if (filtered().length === 0) { <div class="empty-state"><span class="material-icons-round empty-icon">directions_bus</span><div class="empty-title">No vehicles found</div><div class="empty-subtitle">Try adjusting your filters</div></div> }
       @else {
         <div class="data-table-wrapper"><table class="data-table"><thead><tr><th>Reg No.</th><th>Type</th><th>Capacity</th><th>Status</th><th>Actions</th></tr></thead>
-          <tbody>@for(v of items();track v.id){<tr>
+          <tbody>@for(v of filtered();track v.id){<tr style="cursor:pointer;" (click)="viewVehicle(v)">
             <td style="color:var(--color-text-primary);font-weight:600;">{{v.registration_no}}</td>
             <td><span class="badge badge-accent">{{v.vehicle_type}}</span></td>
             <td>{{v.capacity}} pax</td>
             <td><span class="badge" [ngClass]="v.is_active?'badge-success':'badge-danger'">{{v.is_active?'Active':'Inactive'}}</span></td>
-            <td><button class="btn btn-ghost btn-sm" (click)="deleteVehicle(v)" id="del-vehicle-{{v.id}}">Delete</button></td>
+            <td style="display:flex;gap:var(--space-xs);">
+              <button class="btn btn-ghost btn-sm" (click)="viewVehicle(v);$event.stopPropagation()">View</button>
+              <button class="btn btn-ghost btn-sm" style="color:var(--color-danger);" (click)="deleteVehicle(v);$event.stopPropagation()">Delete</button>
+            </td>
           </tr>}</tbody></table></div>
       }
+
       @if (showModal()) {
         <div class="modal-backdrop" (click)="showModal.set(false)"><div class="modal-content" (click)="$event.stopPropagation()">
           <div class="modal-header"><h3>Add Vehicle</h3><button class="btn btn-ghost btn-icon" (click)="showModal.set(false)"><span class="material-icons-round">close</span></button></div>
           <div class="modal-body">
             <div class="form-group"><label class="form-label">Registration Number</label><input class="form-input" [(ngModel)]="form.registration_no" placeholder="KAA 123A" /></div>
-            <div class="form-group"><label class="form-label">SACCO ID</label><input class="form-input" [(ngModel)]="form.sacco_id" placeholder="UUID" /></div>
+            <div class="form-group"><label class="form-label">SACCO</label>
+              <select class="form-select" [(ngModel)]="form.sacco_id">
+                <option value="">— Select SACCO —</option>
+                @for (s of saccos(); track s.id) { <option [value]="s.id">{{ s.name }}</option> }
+              </select>
+            </div>
             <div class="form-group"><label class="form-label">Type</label><select class="form-select" [(ngModel)]="form.vehicle_type"><option value="MATATU">Matatu</option><option value="BODA">Boda Boda</option><option value="TUK_TUK">Tuk Tuk</option></select></div>
             <div class="form-group"><label class="form-label">Capacity</label><input class="form-input" type="number" [(ngModel)]="form.capacity" placeholder="14" /></div>
           </div>
@@ -41,11 +66,34 @@ import { Vehicle } from '../../../core/models';
     </div>`,
 })
 export class VehicleListComponent implements OnInit {
-  private api = inject(ApiService); private toast = inject(ToastService);
-  items = signal<Vehicle[]>([]); loading = signal(true); showModal = signal(false); creating = signal(false);
-  form = {registration_no:'',sacco_id:'',vehicle_type:'MATATU',capacity:14};
-  ngOnInit() { this.load(); }
-  load() { this.loading.set(true); this.api.getVehicles().subscribe({next:r=>{this.items.set(r.data);this.loading.set(false);},error:()=>this.loading.set(false)}); }
-  create() { this.creating.set(true); this.api.createVehicle(this.form as any).subscribe({next:()=>{this.toast.success('Vehicle added');this.showModal.set(false);this.creating.set(false);this.load();},error:()=>this.creating.set(false)}); }
-  deleteVehicle(v:Vehicle) { if(confirm(`Delete ${v.registration_no}?`)){this.api.deleteVehicle(v.id).subscribe({next:()=>{this.toast.success('Vehicle deleted');this.load();}}); } }
+  private api = inject(ApiService); private toast = inject(ToastService); private router = inject(Router);
+  items = signal<Vehicle[]>([]); filtered = signal<Vehicle[]>([]); saccos = signal<SACCO[]>([]);
+  loading = signal(true); showModal = signal(false); creating = signal(false);
+  filterSacco = ''; filterType = '';
+  form = { registration_no: '', sacco_id: '', vehicle_type: 'MATATU', capacity: 14 };
+
+  ngOnInit() {
+    this.api.getSACCOs({ per_page: '200' }).subscribe({ next: r => this.saccos.set(r.data) });
+    this.load();
+  }
+
+  load() {
+    this.loading.set(true);
+    const params: Record<string, string> = {};
+    if (this.filterSacco) params['sacco_id'] = this.filterSacco;
+    this.api.getVehicles(params).subscribe({
+      next: r => { this.items.set(r.data); this.applyLocalFilter(); this.loading.set(false); },
+      error: () => this.loading.set(false),
+    });
+  }
+
+  applyLocalFilter() {
+    let data = this.items();
+    if (this.filterType) data = data.filter(v => v.vehicle_type === this.filterType);
+    this.filtered.set(data);
+  }
+
+  create() { this.creating.set(true); this.api.createVehicle(this.form as any).subscribe({ next: () => { this.toast.success('Vehicle added'); this.showModal.set(false); this.creating.set(false); this.load(); }, error: () => this.creating.set(false) }); }
+  deleteVehicle(v: Vehicle) { if (confirm(`Delete ${v.registration_no}?`)) { this.api.deleteVehicle(v.id).subscribe({ next: () => { this.toast.success('Vehicle deleted'); this.load(); } }); } }
+  viewVehicle(v: Vehicle) { this.router.navigate(['/vehicles', v.id]); }
 }
