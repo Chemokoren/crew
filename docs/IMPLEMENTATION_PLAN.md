@@ -220,11 +220,11 @@
 | # | Task | Status |
 |---|------|--------|
 | 115 | **Earnings list** — Date, type, amount with date range filters | ✅ Done |
-| 116 | **Earnings summary dashboard** — Call `GET /earnings/summary/:crew_member_id` | ❌ Not started |
-| 117 | Filter by crew member ID (admin view) | ❌ Not started |
-| 118 | Filter by assignment ID | ❌ Not started |
-| 119 | Daily / weekly / monthly aggregation view | ❌ Not started |
-| 120 | Earnings chart (bar chart showing daily earnings over time) | ❌ Not started |
+| 116 | **Earnings summary dashboard** — Call `GET /earnings/summary/:crew_member_id` | ✅ Done |
+| 117 | Filter by crew member ID (admin view) | ✅ Done |
+| 118 | Filter by assignment ID | ✅ Done |
+| 119 | Daily / weekly / monthly aggregation view | ✅ Done |
+| 120 | Earnings chart (bar chart showing daily earnings over time) | ✅ Done |
 
 ---
 
@@ -365,7 +365,7 @@
 | 6 | Wallet & Payments | 9 | **9** | **0** |
 | 7 | SACCO Management | 11 | **11** | **0** |
 | 8 | Vehicle & Route | 11 | **11** | **0** |
-| 9 | Earnings Engine | 6 | 1 | 5 |
+| 9 | Earnings Engine | 6 | **6** | **0** |
 | 10 | Payroll & Compliance | 10 | 5 | 5 |
 | 11 | Credit & Loans | 12 | 2 | 10 |
 | 12 | Insurance | 4 | 1 | 3 |
@@ -373,8 +373,8 @@
 | 14 | System Administration | 10 | 2 | 8 |
 | 15 | Documents | 6 | 0 | 6 |
 | 16 | UX Polish | 12 | 0 | 12 |
-| **TOTAL** | | **179** | **127** | **52** |
+| **TOTAL** | | **179** | **132** | **47** |
 
-> **Current progress: 71% complete** (127 / 179 tasks)
+> **Current progress: 74% complete** (132 / 179 tasks)
 >
 > **All backend API endpoints are covered in `ApiService`** (72 methods). The remaining work is building UI components that consume them.

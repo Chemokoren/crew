@@ -134,10 +134,10 @@ import { SystemStats, Wallet, WalletTransaction, DailySummary } from '../../core
           </h2>
           <div class="today-card glass-card">
             <div class="today-main">
-              <div class="today-amount">{{ todayEarnings()!.total_earnings_cents | currencyKes }}</div>
+              <div class="today-amount">{{ todayEarnings()!.total_earned_cents | currencyKes }}</div>
               <div class="today-meta">
                 <span class="today-tag"><span class="material-icons-round">event</span> {{ todayEarnings()!.assignment_count }} assignment{{ todayEarnings()!.assignment_count !== 1 ? 's' : '' }}</span>
-                <span class="today-tag"><span class="material-icons-round">work</span> {{ todayEarnings()!.shifts_worked }} shift{{ todayEarnings()!.shifts_worked !== 1 ? 's' : '' }}</span>
+                <span class="today-tag"><span class="material-icons-round">account_balance_wallet</span> Net: {{ todayEarnings()!.net_amount_cents | currencyKes }}</span>
               </div>
             </div>
           </div>
@@ -156,12 +156,12 @@ import { SystemStats, Wallet, WalletTransaction, DailySummary } from '../../core
               @for (day of earningsHistory(); track day.date) {
                 <div class="sparkline-col">
                   <div class="sparkline-bar-wrapper">
-                    <div class="sparkline-bar" [style.height.%]="barHeight(day.total_earnings_cents)"
-                         [title]="(day.total_earnings_cents | currencyKes)">
+                    <div class="sparkline-bar" [style.height.%]="barHeight(day.total_earned_cents)"
+                         [title]="(day.total_earned_cents | currencyKes)">
                     </div>
                   </div>
                   <span class="sparkline-label">{{ dayLabel(day.date) }}</span>
-                  <span class="sparkline-amount">{{ day.total_earnings_cents | currencyKes }}</span>
+                  <span class="sparkline-amount">{{ day.total_earned_cents | currencyKes }}</span>
                 </div>
               }
             </div>
@@ -451,7 +451,7 @@ export class DashboardComponent implements OnInit {
   private loadEarningsHistory(cmId: string): void {
     const days: DailySummary[] = [];
     let pending = 7;
-    const emptyDay = (date: string): DailySummary => ({ date, total_earnings_cents: 0, assignment_count: 0, shifts_worked: 0 });
+    const emptyDay = (date: string): DailySummary => ({ id: '', crew_member_id: '', date, total_earned_cents: 0, total_deductions_cents: 0, net_amount_cents: 0, currency: 'KES', assignment_count: 0, is_processed: false, created_at: '' });
 
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
@@ -464,7 +464,7 @@ export class DashboardComponent implements OnInit {
         pending--;
         if (pending === 0) {
           const sorted = days.sort((a, b) => a.date.localeCompare(b.date));
-          this.maxEarning = Math.max(...sorted.map(d => d.total_earnings_cents), 1);
+          this.maxEarning = Math.max(...sorted.map(d => d.total_earned_cents), 1);
           this.earningsHistory.set(sorted);
         }
       });
@@ -481,7 +481,7 @@ export class DashboardComponent implements OnInit {
   }
 
   weekTotal(): number {
-    return this.earningsHistory().reduce((s, d) => s + d.total_earnings_cents, 0);
+    return this.earningsHistory().reduce((s, d) => s + d.total_earned_cents, 0);
   }
 
   weekAvg(): number {

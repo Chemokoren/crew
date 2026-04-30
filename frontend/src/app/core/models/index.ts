@@ -180,15 +180,25 @@ export interface Earning {
   crew_member_id: string;
   assignment_id: string;
   amount_cents: number;
+  currency: string;
   earning_type: string;
+  description?: string;
+  is_verified: boolean;
+  earned_at: string;
   created_at: string;
 }
 
 export interface DailySummary {
+  id: string;
+  crew_member_id: string;
   date: string;
-  total_earnings_cents: number;
+  total_earned_cents: number;
+  total_deductions_cents: number;
+  net_amount_cents: number;
+  currency: string;
   assignment_count: number;
-  shifts_worked: number;
+  is_processed: boolean;
+  created_at: string;
 }
 
 export interface CreditScore {
