@@ -99,8 +99,26 @@ export const routes: Routes = [
         loadComponent: () => import('./features/payroll/payroll-list/payroll-list.component').then(m => m.PayrollListComponent),
       },
       {
+        path: 'payroll/:id',
+        canActivate: [roleGuard('SYSTEM_ADMIN', 'SACCO_ADMIN')],
+        loadComponent: () => import('./features/payroll/payroll-detail/payroll-detail.component').then(m => m.PayrollDetailComponent),
+      },
+      {
+        path: 'statutory-rates',
+        canActivate: [roleGuard('SYSTEM_ADMIN')],
+        loadComponent: () => import('./features/payroll/statutory-rates/statutory-rates.component').then(m => m.StatutoryRatesComponent),
+      },
+      {
         path: 'loans',
         loadComponent: () => import('./features/loans/loan-list/loan-list.component').then(m => m.LoanListComponent),
+      },
+      {
+        path: 'loans/:id',
+        loadComponent: () => import('./features/loans/loan-detail/loan-detail.component').then(m => m.LoanDetailComponent),
+      },
+      {
+        path: 'credit',
+        loadComponent: () => import('./features/credit/credit-score/credit-score.component').then(m => m.CreditScoreComponent),
       },
       {
         path: 'insurance',

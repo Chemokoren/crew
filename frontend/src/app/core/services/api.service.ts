@@ -6,9 +6,10 @@ import {
   ApiResponse, ApiListResponse,
   CrewMember, Assignment, Wallet, WalletTransaction,
   SACCO, Vehicle, Route, PayrollRun, PayrollEntry,
-  Earning, DailySummary, CreditScore, LoanApplication,
-  LoanTier, InsurancePolicy, Notification, AuditLog,
-  SystemStats, SACCOFloat, SACCOMembership, SACCOFloatTransaction
+  Earning, DailySummary, CreditScore, DetailedScoreResult, CreditScoreHistory,
+  LoanApplication, LoanTier, InsurancePolicy, Notification, AuditLog,
+  SystemStats, SACCOFloat, SACCOMembership, SACCOFloatTransaction,
+  StatutoryRate
 } from '../models';
 
 @Injectable({ providedIn: 'root' })
@@ -235,18 +236,26 @@ export class ApiService {
     return this.http.get<ApiResponse<CreditScore>>(`${this.API}/credit/${crewMemberId}`);
   }
 
-  getDetailedScore(crewMemberId: string): Observable<ApiResponse<unknown>> {
-    return this.http.get<ApiResponse<unknown>>(`${this.API}/credit/${crewMemberId}/detailed`);
+  getDetailedScore(crewMemberId: string): Observable<ApiResponse<DetailedScoreResult>> {
+    return this.http.get<ApiResponse<DetailedScoreResult>>(`${this.API}/credit/${crewMemberId}/detailed`);
   }
 
-  getScoreHistory(crewMemberId: string, limit?: number): Observable<ApiResponse<unknown>> {
+  getScoreHistory(crewMemberId: string, limit?: number): Observable<ApiResponse<CreditScoreHistory[]>> {
     const params = this.buildParams(limit ? { limit: limit.toString() } : undefined);
-    return this.http.get<ApiResponse<unknown>>(`${this.API}/credit/${crewMemberId}/history`, { params });
+    return this.http.get<ApiResponse<CreditScoreHistory[]>>(`${this.API}/credit/${crewMemberId}/history`, { params });
+  }
+
+  calculateScore(crewMemberId: string): Observable<ApiResponse<CreditScore>> {
+    return this.http.post<ApiResponse<CreditScore>>(`${this.API}/credit/${crewMemberId}/calculate`, {});
   }
 
   // --- Loans ---
   getLoans(params?: Record<string, string>): Observable<ApiListResponse<LoanApplication>> {
     return this.http.get<ApiListResponse<LoanApplication>>(`${this.API}/loans`, { params: this.buildParams(params) });
+  }
+
+  getLoan(id: string): Observable<ApiResponse<LoanApplication>> {
+    return this.http.get<ApiResponse<LoanApplication>>(`${this.API}/loans/${id}`);
   }
 
   getLoanTier(crewMemberId: string): Observable<ApiResponse<LoanTier>> {
@@ -324,8 +333,8 @@ export class ApiService {
     return this.http.get<ApiListResponse<AuditLog>>(`${this.API}/admin/audit-logs`, { params: this.buildParams(params) });
   }
 
-  getStatutoryRates(): Observable<ApiResponse<unknown>> {
-    return this.http.get<ApiResponse<unknown>>(`${this.API}/admin/statutory-rates`);
+  getStatutoryRates(): Observable<ApiResponse<StatutoryRate[]>> {
+    return this.http.get<ApiResponse<StatutoryRate[]>>(`${this.API}/admin/statutory-rates`);
   }
 
   // --- Helpers ---

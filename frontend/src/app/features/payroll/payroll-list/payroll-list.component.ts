@@ -1,10 +1,11 @@
 import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 import { ApiService } from '../../../core/services/api.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { CurrencyKesPipe } from '../../../shared/pipes/currency-kes.pipe';
-import { PayrollRun } from '../../../core/models';
+import { PayrollRun, SACCO } from '../../../core/models';
 
 @Component({
   selector: 'app-payroll-list', standalone: true, imports: [CommonModule, FormsModule, CurrencyKesPipe],
@@ -13,7 +14,7 @@ import { PayrollRun } from '../../../core/models';
     <div class="animate-fade-in">
       <div class="page-header">
         <div><h1 class="page-title">Payroll & Compliance</h1><p class="page-subtitle">Process payroll runs with statutory deductions (SHA, NSSF, Housing Levy)</p></div>
-        <div class="page-actions"><button class="btn btn-primary" (click)="showModal.set(true)" id="btn-create-payroll"><span class="material-icons-round">add</span> New Payroll Run</button></div>
+        <div class="page-actions"><button class="btn btn-ghost" (click)="viewRates()" style="color:var(--color-text-muted);"><span class="material-icons-round">gavel</span> Statutory Rates</button><button class="btn btn-primary" (click)="showModal.set(true)" id="btn-create-payroll"><span class="material-icons-round">add</span> New Payroll Run</button></div>
       </div>
       @if (loading()) { @for(i of [1,2,3];track i){<div class="skeleton" style="height:56px;margin:4px 0;"></div>} }
       @else if (items().length === 0) { <div class="empty-state"><span class="material-icons-round empty-icon">receipt_long</span><div class="empty-title">No payroll runs</div><div class="empty-description">Create your first payroll run to process statutory deductions and compliance.</div></div> }
@@ -28,9 +29,10 @@ import { PayrollRun } from '../../../core/models';
             <td>{{p.entry_count}}</td>
             <td>
               <div style="display:flex;gap:4px;flex-wrap:wrap;">
-                @if(p.status==='DRAFT'){<button class="btn btn-sm btn-secondary" (click)="processRun(p)">Process</button>}
-                @if(p.status==='PROCESSED'){<button class="btn btn-sm btn-primary" (click)="approveRun(p)">Approve</button>}
-                @if(p.status==='APPROVED'){<button class="btn btn-sm btn-primary" (click)="submitRun(p)">Submit</button>}
+                <button class="btn btn-sm btn-ghost" (click)="viewRun(p, $event)" style="color:var(--color-accent);">View</button>
+                @if(p.status==='DRAFT'){<button class="btn btn-sm btn-secondary" (click)="processRun(p, $event)">Process</button>}
+                @if(p.status==='PROCESSED'){<button class="btn btn-primary btn-sm" (click)="approveRun(p, $event)">Approve</button>}
+                @if(p.status==='APPROVED'){<button class="btn btn-primary btn-sm" (click)="submitRun(p, $event)">Submit</button>}
               </div>
             </td>
           </tr>}</tbody></table></div>
@@ -39,7 +41,12 @@ import { PayrollRun } from '../../../core/models';
         <div class="modal-backdrop" (click)="showModal.set(false)"><div class="modal-content" (click)="$event.stopPropagation()">
           <div class="modal-header"><h3>Create Payroll Run</h3><button class="btn btn-ghost btn-icon" (click)="showModal.set(false)"><span class="material-icons-round">close</span></button></div>
           <div class="modal-body">
-            <div class="form-group"><label class="form-label">SACCO ID</label><input class="form-input" [(ngModel)]="form.sacco_id" placeholder="UUID" /></div>
+            <div class="form-group"><label class="form-label">SACCO</label>
+              <select class="form-select" [(ngModel)]="form.sacco_id" id="select-sacco">
+                <option value="">— Select SACCO —</option>
+                @for (s of saccos(); track s.id) { <option [value]="s.id">{{ s.name }}</option> }
+              </select>
+            </div>
             <div class="form-group"><label class="form-label">Period Start</label><input class="form-input" type="date" [(ngModel)]="form.period_start" /></div>
             <div class="form-group"><label class="form-label">Period End</label><input class="form-input" type="date" [(ngModel)]="form.period_end" /></div>
           </div>
@@ -47,16 +54,35 @@ import { PayrollRun } from '../../../core/models';
         </div></div>
       }
     </div>`,
+  styles: [`.text-danger { color: #ef4444; }`],
 })
 export class PayrollListComponent implements OnInit {
-  private api = inject(ApiService); private toast = inject(ToastService);
+  private api = inject(ApiService);
+  private toast = inject(ToastService);
+  private router = inject(Router);
   items = signal<PayrollRun[]>([]); loading = signal(true); showModal = signal(false); creating = signal(false);
-  form = {sacco_id:'',period_start:'',period_end:''};
-  ngOnInit() { this.load(); }
-  load() { this.loading.set(true); this.api.getPayrollRuns().subscribe({next:r=>{this.items.set(r.data);this.loading.set(false);},error:()=>this.loading.set(false)}); }
-  create() { this.creating.set(true); this.api.createPayrollRun(this.form).subscribe({next:()=>{this.toast.success('Payroll run created');this.showModal.set(false);this.creating.set(false);this.load();},error:()=>this.creating.set(false)}); }
-  processRun(p:PayrollRun) { this.api.processPayrollRun(p.id).subscribe({next:()=>{this.toast.success('Payroll processed');this.load();}}); }
-  approveRun(p:PayrollRun) { this.api.approvePayrollRun(p.id).subscribe({next:()=>{this.toast.success('Payroll approved');this.load();}}); }
-  submitRun(p:PayrollRun) { this.api.submitPayrollRun(p.id).subscribe({next:()=>{this.toast.success('Payroll submitted to PerPay');this.load();}}); }
-  statusBadge(s:string) { return s==='COMPLETED'||s==='APPROVED'?'badge-success':s==='FAILED'?'badge-danger':s==='SUBMITTED'?'badge-info':'badge-warning'; }
+  saccos = signal<SACCO[]>([]);
+  form = { sacco_id: '', period_start: '', period_end: '' };
+
+  ngOnInit() {
+    this.load();
+    this.api.getSACCOs().subscribe({ next: r => this.saccos.set(r.data) });
+  }
+
+  load() { this.loading.set(true); this.api.getPayrollRuns().subscribe({ next: r => { this.items.set(r.data); this.loading.set(false); }, error: () => this.loading.set(false) }); }
+
+  create() {
+    this.creating.set(true);
+    this.api.createPayrollRun(this.form).subscribe({
+      next: () => { this.toast.success('Payroll run created'); this.showModal.set(false); this.creating.set(false); this.form = { sacco_id: '', period_start: '', period_end: '' }; this.load(); },
+      error: () => this.creating.set(false),
+    });
+  }
+
+  viewRun(p: PayrollRun, e: Event) { e.stopPropagation(); this.router.navigate(['/payroll', p.id]); }
+  viewRates() { this.router.navigate(['/statutory-rates']); }
+  processRun(p: PayrollRun, e: Event) { e.stopPropagation(); this.api.processPayrollRun(p.id).subscribe({ next: () => { this.toast.success('Payroll processed'); this.load(); } }); }
+  approveRun(p: PayrollRun, e: Event) { e.stopPropagation(); this.api.approvePayrollRun(p.id).subscribe({ next: () => { this.toast.success('Payroll approved'); this.load(); } }); }
+  submitRun(p: PayrollRun, e: Event) { e.stopPropagation(); this.api.submitPayrollRun(p.id).subscribe({ next: () => { this.toast.success('Payroll submitted to PerPay'); this.load(); } }); }
+  statusBadge(s: string) { return s === 'COMPLETED' || s === 'APPROVED' ? 'badge-success' : s === 'FAILED' ? 'badge-danger' : s === 'SUBMITTED' ? 'badge-info' : 'badge-warning'; }
 }

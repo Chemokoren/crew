@@ -337,6 +337,7 @@ export class SidebarComponent {
     { label: 'Routes', icon: 'route', route: '/routes', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Organization' },
     { label: 'Payroll', icon: 'receipt_long', route: '/payroll', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Finance' },
     { label: 'Loans', icon: 'savings', route: '/loans', section: 'Finance' },
+    { label: 'Credit Score', icon: 'credit_score', route: '/credit', section: 'Finance' },
     { label: 'Insurance', icon: 'health_and_safety', route: '/insurance', section: 'Finance' },
     { label: 'Notifications', icon: 'notifications', route: '/notifications', section: 'System' },
     { label: 'Admin', icon: 'admin_panel_settings', route: '/admin', roles: ['SYSTEM_ADMIN'], section: 'System' },

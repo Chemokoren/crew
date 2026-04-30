@@ -168,11 +168,25 @@ export interface PayrollEntry {
   id: string;
   payroll_run_id: string;
   crew_member_id: string;
-  gross_cents: number;
-  sha_cents: number;
-  nssf_cents: number;
-  housing_levy_cents: number;
-  net_cents: number;
+  gross_earnings_cents: number;
+  sha_deduction_cents: number;
+  nssf_deduction_cents: number;
+  housing_levy_deduction_cents: number;
+  other_deductions_cents: number;
+  net_pay_cents: number;
+  created_at: string;
+}
+
+export type RateType = 'PERCENTAGE' | 'FIXED' | 'TIERED';
+
+export interface StatutoryRate {
+  id: string;
+  name: string;
+  rate: number;
+  rate_type: RateType;
+  effective_from: string;
+  is_active: boolean;
+  created_at: string;
 }
 
 export interface Earning {
@@ -209,10 +223,42 @@ export interface CreditScore {
   computed_at: string;
 }
 
+export interface ScoreFactor {
+  category: string;
+  name: string;
+  points: number;
+  max_points: number;
+  percentage: number;
+  description: string;
+  impact: 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE';
+}
+
+export interface DetailedScoreResult {
+  score: number;
+  grade: string;
+  factors: ScoreFactor[];
+  suggestions: string[];
+  model_version: string;
+  computed_at: string;
+  features?: Record<string, unknown>;
+}
+
+export interface CreditScoreHistory {
+  id: string;
+  crew_member_id: string;
+  score: number;
+  grade: string;
+  model_version: string;
+  factors?: unknown;
+  suggestions?: unknown;
+  computed_at: string;
+}
+
 export interface LoanApplication {
   id: string;
   crew_member_id: string;
   amount_cents: number;
+  amount_requested_cents: number;
   approved_amount_cents?: number;
   interest_rate?: number;
   tenure_days: number;
@@ -221,18 +267,22 @@ export interface LoanApplication {
   status: LoanStatus;
   disbursed_at?: string;
   due_date?: string;
+  due_at?: string;
   total_repaid_cents: number;
   approved_by?: string;
+  lender_id?: string;
   created_at: string;
 }
 
-export type LoanStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'DISBURSED' | 'REPAID' | 'DEFAULTED';
+export type LoanStatus = 'APPLIED' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'DISBURSED' | 'REPAYING' | 'COMPLETED' | 'REPAID' | 'DEFAULTED';
+
+export type LoanCategory = 'PERSONAL' | 'EMERGENCY' | 'EDUCATION' | 'BUSINESS' | 'ASSET';
 
 export interface LoanTier {
   score: number;
   grade: string;
-  max_loan_kes: string;
-  interest_rate: string;
+  max_loan_kes: number;
+  interest_rate: number;
   max_tenure_days: number;
   cooldown_days: number;
   description: string;

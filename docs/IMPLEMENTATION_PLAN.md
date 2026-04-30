@@ -240,11 +240,11 @@
 | 123 | **Process payroll** — `POST /payroll/:id/process` | ✅ Done |
 | 124 | **Approve payroll** — `POST /payroll/:id/approve` | ✅ Done |
 | 125 | **Submit to PerPay** — `POST /payroll/:id/submit` | ✅ Done |
-| 126 | **Payroll detail page** — Full run info + entries table | ❌ Not started |
-| 127 | **Payroll entries table** — Per-crew breakdown (gross, SHA, NSSF, Housing Levy, net) from `GET /payroll/:id/entries` | ❌ Not started |
-| 128 | Payroll status badge progression visualization | ❌ Not started |
-| 129 | SACCO dropdown selector in create modal | ❌ Not started |
-| 130 | **Statutory rates view** — `GET /admin/statutory-rates` | ❌ Not started |
+| 126 | **Payroll detail page** — Full run info + entries table | ✅ Done |
+| 127 | **Payroll entries table** — Per-crew breakdown (gross, SHA, NSSF, Housing Levy, net) from `GET /payroll/:id/entries` | ✅ Done |
+| 128 | Payroll status badge progression visualization | ✅ Done |
+| 129 | SACCO dropdown selector in create modal | ✅ Done |
+| 130 | **Statutory rates view** — `GET /admin/statutory-rates` | ✅ Done |
 
 ---
 
@@ -257,16 +257,16 @@
 |---|------|--------|
 | 131 | **Loan list** — Category, amount, tenure, status, repaid, actions | ✅ Done |
 | 132 | **Repay loan** — Prompt for amount → `POST /loans/:id/repay` | ✅ Done |
-| 133 | **Credit score page** (`/credit`) — Score gauge/visualization from `GET /credit/:crew_member_id` | ❌ Not started |
-| 134 | **Detailed score breakdown** — `GET /credit/:crew_member_id/detailed` | ❌ Not started |
-| 135 | **Score history chart** — `GET /credit/:crew_member_id/history` | ❌ Not started |
-| 136 | **Calculate score** — Trigger `POST /credit/:crew_member_id/calculate` | ❌ Not started |
-| 137 | **Loan tier display** — `GET /loans/tier/:crew_member_id` showing max amount, rate, tenure | ❌ Not started |
-| 138 | **Apply for loan modal** — Amount, tenure, category, purpose → `POST /loans` | ❌ Not started |
-| 139 | **Admin: Approve loan** — `POST /loans/:id/approve` with approved amount and interest rate | ❌ Not started |
-| 140 | **Admin: Reject loan** — `POST /loans/:id/reject` | ❌ Not started |
-| 141 | **Admin: Disburse loan** — `POST /loans/:id/disburse` | ❌ Not started |
-| 142 | Loan detail page with full lifecycle timeline | ❌ Not started |
+| 133 | **Credit score page** (`/credit`) — Score gauge/visualization from `GET /credit/:crew_member_id` | ✅ Done |
+| 134 | **Detailed score breakdown** — `GET /credit/:crew_member_id/detailed` | ✅ Done |
+| 135 | **Score history chart** — `GET /credit/:crew_member_id/history` | ✅ Done |
+| 136 | **Calculate score** — Trigger `POST /credit/:crew_member_id/calculate` | ✅ Done |
+| 137 | **Loan tier display** — `GET /loans/tier/:crew_member_id` showing max amount, rate, tenure | ✅ Done |
+| 138 | **Apply for loan modal** — Amount, tenure, category, purpose → `POST /loans` | ✅ Done |
+| 139 | **Admin: Approve loan** — `POST /loans/:id/approve` with approved amount and interest rate | ✅ Done |
+| 140 | **Admin: Reject loan** — `POST /loans/:id/reject` | ✅ Done |
+| 141 | **Admin: Disburse loan** — `POST /loans/:id/disburse` | ✅ Done |
+| 142 | Loan detail page with full lifecycle timeline | ✅ Done |
 
 ---
 
@@ -366,15 +366,15 @@
 | 7 | SACCO Management | 11 | **11** | **0** |
 | 8 | Vehicle & Route | 11 | **11** | **0** |
 | 9 | Earnings Engine | 6 | **6** | **0** |
-| 10 | Payroll & Compliance | 10 | 5 | 5 |
-| 11 | Credit & Loans | 12 | 2 | 10 |
+| 10 | Payroll & Compliance | 10 | **10** | **0** |
+| 11 | Credit & Loans | 12 | **12** | **0** |
 | 12 | Insurance | 4 | 1 | 3 |
 | 13 | Notifications | 5 | 2 | 3 |
 | 14 | System Administration | 10 | 2 | 8 |
 | 15 | Documents | 6 | 0 | 6 |
 | 16 | UX Polish | 12 | 0 | 12 |
-| **TOTAL** | | **179** | **132** | **47** |
+| **TOTAL** | | **179** | **147** | **32** |
 
-> **Current progress: 74% complete** (132 / 179 tasks)
+> **Current progress: 82% complete** (147 / 179 tasks)
 >
 > **All backend API endpoints are covered in `ApiService`** (72 methods). The remaining work is building UI components that consume them.
