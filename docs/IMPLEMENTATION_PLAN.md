@@ -323,12 +323,12 @@
 
 | # | Task | Status |
 |---|------|--------|
-| 162 | **Documents list** — `GET /documents` | ❌ Not started |
-| 163 | **Upload document** — `POST /documents/upload` (multipart file upload) | ❌ Not started |
-| 164 | **Download document** — `GET /documents/:id/download` | ❌ Not started |
-| 165 | **Delete document** — `DELETE /documents/:id` | ❌ Not started |
-| 166 | Add `documents` route, guard, and lazy-loaded component | ❌ Not started |
-| 167 | Add `documents` API methods to ApiService | ❌ Not started |
+| 162 | **Documents list** — `GET /documents` | ✅ Done |
+| 163 | **Upload document** — `POST /documents/upload` (multipart file upload) | ✅ Done |
+| 164 | **Download document** — `GET /documents/:id/download` | ✅ Done |
+| 165 | **Delete document** — `DELETE /documents/:id` | ✅ Done |
+| 166 | Add `documents` route, guard, and lazy-loaded component | ✅ Done |
+| 167 | Add `documents` API methods to ApiService | ✅ Done |
 
 ---
 
@@ -371,10 +371,10 @@
 | 12 | Insurance | 4 | **4** | **0** |
 | 13 | Notifications | 5 | **5** | **0** |
 | 14 | System Administration | 10 | **10** | **0** |
-| 15 | Documents | 6 | 0 | 6 |
+| 15 | Documents | 6 | **6** | **0** |
 | 16 | UX Polish | 12 | 0 | 12 |
-| **TOTAL** | | **179** | **161** | **18** |
+| **TOTAL** | | **179** | **167** | **12** |
 
-> **Current progress: 90% complete** (161 / 179 tasks)
+> **Current progress: 93% complete** (167 / 179 tasks)
 >
 > **All backend API endpoints are covered in `ApiService`** (72 methods). The remaining work is building UI components that consume them.

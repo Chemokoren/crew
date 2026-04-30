@@ -354,6 +354,21 @@ export interface NotificationTemplate {
   is_active: boolean;
 }
 
+export type DocumentType = 'KYC_ID_FRONT' | 'KYC_ID_BACK' | 'KYC_SELFIE' | 'SACCO_REGISTRATION' | 'VEHICLE_LOGBOOK' | 'OTHER';
+
+export interface Document {
+  id: string;
+  crew_member_id?: string;
+  sacco_id?: string;
+  vehicle_id?: string;
+  document_type: DocumentType;
+  file_name: string;
+  file_size: number;
+  mime_type: string;
+  uploaded_by_id: string;
+  created_at: string;
+}
+
 export interface SystemStats {
   total_users: number;
   active_users: number;

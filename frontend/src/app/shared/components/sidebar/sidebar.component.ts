@@ -360,6 +360,7 @@ export class SidebarComponent {
     { label: 'Loans', icon: 'savings', route: '/loans', section: 'Finance' },
     { label: 'Credit Score', icon: 'credit_score', route: '/credit', section: 'Finance' },
     { label: 'Insurance', icon: 'health_and_safety', route: '/insurance', section: 'Finance' },
+    { label: 'Documents', icon: 'folder', route: '/documents', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'System' },
     { label: 'Notifications', icon: 'notifications', route: '/notifications', section: 'System' },
     { label: 'Admin', icon: 'admin_panel_settings', route: '/admin', roles: ['SYSTEM_ADMIN'], section: 'System' },
   ];

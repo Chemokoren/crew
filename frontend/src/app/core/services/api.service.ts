@@ -8,7 +8,7 @@ import {
   SACCO, Vehicle, Route, PayrollRun, PayrollEntry,
   Earning, DailySummary, CreditScore, DetailedScoreResult, CreditScoreHistory,
   LoanApplication, LoanTier, InsurancePolicy, Notification, NotificationPreference,
-  AuditLog, AdminUser, NotificationTemplate,
+  AuditLog, AdminUser, NotificationTemplate, Document,
   SystemStats, SACCOFloat, SACCOMembership, SACCOFloatTransaction,
   StatutoryRate
 } from '../models';
@@ -352,6 +352,23 @@ export class ApiService {
 
   updateNotificationTemplate(data: Partial<NotificationTemplate>): Observable<ApiResponse<NotificationTemplate>> {
     return this.http.put<ApiResponse<NotificationTemplate>>(`${this.API}/admin/notifications/templates`, data);
+  }
+
+  // --- Documents ---
+  getDocuments(params?: Record<string, string>): Observable<ApiListResponse<Document>> {
+    return this.http.get<ApiListResponse<Document>>(`${this.API}/documents`, { params: this.buildParams(params) });
+  }
+
+  uploadDocument(formData: FormData): Observable<ApiResponse<Document>> {
+    return this.http.post<ApiResponse<Document>>(`${this.API}/documents/upload`, formData);
+  }
+
+  downloadDocument(id: string): Observable<ApiResponse<{ download_url: string }>> {
+    return this.http.get<ApiResponse<{ download_url: string }>>(`${this.API}/documents/${id}/download`);
+  }
+
+  deleteDocument(id: string): Observable<unknown> {
+    return this.http.delete(`${this.API}/documents/${id}`);
   }
 
   // --- Helpers ---
