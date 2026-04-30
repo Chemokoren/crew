@@ -121,6 +121,8 @@ func (r *AssignmentRepo) List(ctx context.Context, filter repository.AssignmentF
 	if err := query.
 		Preload("CrewMember").
 		Preload("Vehicle").
+		Preload("Sacco").
+		Preload("Route").
 		Offset(offset).Limit(perPage).
 		Order("shift_date DESC, shift_start DESC").
 		Find(&assignments).Error; err != nil {

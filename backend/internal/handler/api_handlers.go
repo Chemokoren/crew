@@ -446,6 +446,18 @@ func (h *WalletHandler) ListTransactions(c *gin.Context) {
 		Status:          c.Query("status"),
 	}
 
+	if df := c.Query("date_from"); df != "" {
+		if t, err := time.Parse("2006-01-02", df); err == nil {
+			filter.DateFrom = &t
+		}
+	}
+	if dt := c.Query("date_to"); dt != "" {
+		if t, err := time.Parse("2006-01-02", dt); err == nil {
+			end := t.Add(24*time.Hour - time.Nanosecond) // end of day
+			filter.DateTo = &end
+		}
+	}
+
 	txs, total, err := h.walletSvc.GetTransactions(c.Request.Context(), crewMemberID, filter, page, perPage)
 	if err != nil {
 		MapServiceError(c, err)

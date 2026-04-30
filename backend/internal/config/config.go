@@ -65,6 +65,24 @@ type Config struct {
 	StoragePrimaryProvider string // Primary storage provider: "minio" | "s3" (default: minio)
 	StorageMinIOEnabled    bool   // Enable MinIO storage (default: true if credentials present)
 
+	// Email provider configuration
+	EmailPrimaryProvider string // Primary email provider: "gmail" | "sendgrid" (default: gmail)
+	EmailGmailEnabled    bool   // Enable Gmail SMTP provider (default: true if credentials present)
+
+	// WhatsApp provider configuration
+	WhatsAppPrimaryProvider string // Primary WhatsApp provider: "meta" | "twilio" (default: meta)
+	WhatsAppMetaEnabled     bool   // Enable Meta WhatsApp Cloud API (default: true if credentials present)
+
+	// =============================================
+	// OTP & 2FA CONFIGURATION
+	// =============================================
+	// Controls OTP delivery channel and 2FA enforcement.
+
+	OTPDefaultChannel string // Default OTP channel: "email" | "sms" | "whatsapp" (default: email)
+	OTPEnabled        bool   // Enable OTP-based password reset (default: true)
+	TwoFAEnabled      bool   // Enable 2FA for login (default: true — OTP after password)
+	TwoFAEnforced     bool   // Force 2FA for all users (default: false — configurable per user)
+
 	// =============================================
 	// SMS — Optimize (default provider)
 	// =============================================
@@ -104,6 +122,25 @@ type Config struct {
 	IPRSClientSecret      string // IPRS OAuth2 client secret
 	IPRSBaseURL           string // IPRS API base URL
 	IPRSTokenEndpoint     string // IPRS OAuth2 token endpoint
+
+	// =============================================
+	// EMAIL — Gmail SMTP (default provider)
+	// =============================================
+	EmailHost        string // SMTP host (default: smtp.gmail.com)
+	EmailPort        int    // SMTP port (default: 587)
+	EmailUseTLS      bool   // Use STARTTLS (default: true)
+	EmailHostUser    string // SMTP username / from address
+	EmailHostPassword string // SMTP password (app password for Gmail)
+	EmailFromAddress string // Default sender address
+	EmailFromName    string // Display name (default: AMY MIS)
+	EmailSupport     string // Support email address
+
+	// =============================================
+	// WHATSAPP — Meta Cloud API (default provider)
+	// =============================================
+	WhatsAppPhoneNumberID string // WhatsApp Business Phone Number ID
+	WhatsAppAccessToken   string // Meta API permanent access token
+	WhatsAppAPIVersion    string // API version (default: v18.0)
 
 	// Rate Limiting
 	RateLimitRPM int // Requests per minute per IP (default: 100)
@@ -216,6 +253,31 @@ func Load() (*Config, error) {
 		IPRSClientSecret:  os.Getenv("IPRS_CLIENT_SECRET"),
 		IPRSBaseURL:       os.Getenv("IPRS_BASE_URL"),
 		IPRSTokenEndpoint: os.Getenv("IPRS_TOKEN_ENDPOINT"),
+
+		// Email — Gmail SMTP
+		EmailPrimaryProvider: getEnv("EMAIL_PRIMARY_PROVIDER", "gmail"),
+		EmailGmailEnabled:    getEnvBool("EMAIL_GMAIL_ENABLED", true),
+		EmailHost:            getEnv("EMAIL_HOST", "smtp.gmail.com"),
+		EmailPort:            getEnvInt("EMAIL_PORT", 587),
+		EmailUseTLS:          getEnvBool("EMAIL_USE_TLS", true),
+		EmailHostUser:        os.Getenv("EMAIL_HOST_USER"),
+		EmailHostPassword:    os.Getenv("EMAIL_HOST_PASSWORD"),
+		EmailFromAddress:     getEnv("DEFAULT_FROM_EMAIL", os.Getenv("EMAIL_HOST_USER")),
+		EmailFromName:        getEnv("EMAIL_FROM_NAME", "AMY MIS"),
+		EmailSupport:         getEnv("EMAIL_SUPPORT", "sales@amy.co.ke"),
+
+		// WhatsApp — Meta Cloud API
+		WhatsAppPrimaryProvider: getEnv("WHATSAPP_PRIMARY_PROVIDER", "meta"),
+		WhatsAppMetaEnabled:     getEnvBool("WHATSAPP_META_ENABLED", true),
+		WhatsAppPhoneNumberID:   os.Getenv("WHATSAPP_PHONE_NUMBER_ID"),
+		WhatsAppAccessToken:     os.Getenv("WHATSAPP_ACCESS_TOKEN"),
+		WhatsAppAPIVersion:      getEnv("WHATSAPP_API_VERSION", "v18.0"),
+
+		// OTP & 2FA
+		OTPDefaultChannel: getEnv("OTP_DEFAULT_CHANNEL", "email"),
+		OTPEnabled:        getEnvBool("OTP_ENABLED", true),
+		TwoFAEnabled:      getEnvBool("TWO_FA_ENABLED", true),
+		TwoFAEnforced:     getEnvBool("TWO_FA_ENFORCED", false),
 
 		RateLimitRPM:       getEnvInt("RATE_LIMIT_RPM", 100),
 		CORSAllowedOrigins: getEnv("CORS_ALLOWED_ORIGINS", "*"),

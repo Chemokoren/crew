@@ -37,14 +37,17 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"github.com/kibsoft/amy-mis/internal/config"
 	"github.com/kibsoft/amy-mis/internal/database"
+	"github.com/kibsoft/amy-mis/internal/external/email"
 	"github.com/kibsoft/amy-mis/internal/external/identity"
 	"github.com/kibsoft/amy-mis/internal/external/iprs"
 	"github.com/kibsoft/amy-mis/internal/external/jambopay"
+	"github.com/kibsoft/amy-mis/internal/external/messaging"
 	"github.com/kibsoft/amy-mis/internal/external/payment"
 	"github.com/kibsoft/amy-mis/internal/external/payroll"
 	"github.com/kibsoft/amy-mis/internal/external/perpay"
 	"github.com/kibsoft/amy-mis/internal/external/sms"
 	"github.com/kibsoft/amy-mis/internal/external/storage"
+	"github.com/kibsoft/amy-mis/internal/external/whatsapp"
 	"github.com/kibsoft/amy-mis/internal/handler"
 	"github.com/kibsoft/amy-mis/internal/middleware"
 	"github.com/kibsoft/amy-mis/internal/models"
@@ -229,6 +232,70 @@ func main() {
 	notifSvc := service.NewNotificationService(notificationRepo, notificationPrefRepo, userRepo, smsMgr, logger)
 	authSvc := service.NewAuthService(userRepo, crewRepo, jwtManager, txMgr, logger)
 
+	// --- 12a. Email Provider Strategy ---
+	var emailProviders []email.Provider
+	if cfg.EmailGmailEnabled && cfg.EmailHostUser != "" {
+		gmailProvider := email.NewGmailProvider(email.GmailConfig{
+			Host:     cfg.EmailHost,
+			Port:     cfg.EmailPort,
+			Username: cfg.EmailHostUser,
+			Password: cfg.EmailHostPassword,
+			FromAddr: cfg.EmailFromAddress,
+			FromName: cfg.EmailFromName,
+			UseTLS:   cfg.EmailUseTLS,
+		}, logger)
+		emailProviders = append(emailProviders, gmailProvider)
+		slog.Info("Gmail SMTP email provider enabled")
+	}
+	// Future: SendGrid, Twilio SendGrid, etc.
+	// if cfg.EmailSendGridEnabled && cfg.SendGridAPIKey != "" {
+	//     emailProviders = append(emailProviders, email.NewSendGridProvider(...))
+	// }
+	var emailMgr *email.Manager
+	if len(emailProviders) > 0 {
+		emailMgr = email.NewManager(logger, emailProviders...)
+		if err := emailMgr.SetPrimary(cfg.EmailPrimaryProvider); err != nil {
+			slog.Warn("email primary provider not found, using default order",
+				slog.String("requested", cfg.EmailPrimaryProvider),
+			)
+		}
+	} else {
+		slog.Warn("no email providers configured — email functionality disabled")
+	}
+
+	// --- 12b. WhatsApp Provider Strategy ---
+	var whatsappProviders []whatsapp.Provider
+	if cfg.WhatsAppMetaEnabled && cfg.WhatsAppPhoneNumberID != "" {
+		metaProvider := whatsapp.NewMetaProvider(whatsapp.MetaConfig{
+			PhoneNumberID: cfg.WhatsAppPhoneNumberID,
+			AccessToken:   cfg.WhatsAppAccessToken,
+			APIVersion:    cfg.WhatsAppAPIVersion,
+		}, logger)
+		whatsappProviders = append(whatsappProviders, metaProvider)
+		slog.Info("Meta WhatsApp Cloud API provider enabled")
+	}
+	// Future: Twilio WhatsApp, etc.
+	var whatsappMgr *whatsapp.Manager
+	if len(whatsappProviders) > 0 {
+		whatsappMgr = whatsapp.NewManager(logger, whatsappProviders...)
+		if err := whatsappMgr.SetPrimary(cfg.WhatsAppPrimaryProvider); err != nil {
+			slog.Warn("WhatsApp primary provider not found, using default order",
+				slog.String("requested", cfg.WhatsAppPrimaryProvider),
+			)
+		}
+	} else {
+		slog.Warn("no WhatsApp providers configured — WhatsApp functionality disabled")
+	}
+
+	// --- 12c. Unified Messaging Engine ---
+	msgEngine := messaging.NewEngine(emailMgr, smsMgr, whatsappMgr, logger)
+
+	// --- 12d. OTP Service (uses messaging engine) ---
+	otpSvc := service.NewOTPService(redisClient, msgEngine, service.OTPConfig{
+		DefaultChannel: cfg.OTPDefaultChannel,
+		Enabled:        cfg.OTPEnabled,
+	}, logger)
+
 	// CrewService: Identity provider is optional — system continues without it (graceful degradation).
 	// If IPRS is available, wrap it in the identity Manager for failover support.
 	var crewIdProvider identity.Provider
@@ -266,7 +333,7 @@ func main() {
 
 	// --- 13. Initialize handlers ---
 	healthHandler := handler.NewHealthHandler(db, redisClient)
-	authHandler := handler.NewAuthHandler(authSvc)
+	authHandler := handler.NewAuthHandler(authSvc, otpSvc)
 	crewHandler := handler.NewCrewHandler(crewSvc)
 	walletHandler := handler.NewWalletHandler(walletSvc, cfg.CSVExportMaxRows)
 	assignmentHandler := handler.NewAssignmentHandler(assignmentSvc)
@@ -410,10 +477,13 @@ func main() {
 		auth.POST("/register", authHandler.Register)
 		auth.POST("/login", authHandler.Login)
 		auth.POST("/refresh", authHandler.Refresh)
-		auth.POST("/change-password", adminHandler.ChangePassword) // Password change for all users
 		auth.GET("/lookup", authHandler.Lookup)                    // USSD user identification
 		auth.POST("/pin", authHandler.SetPIN)                      // USSD PIN setup
 		auth.POST("/pin/verify", authHandler.VerifyPIN)            // USSD PIN verification
+		auth.POST("/forgot-password", authHandler.ForgotPassword)  // Self-service OTP request
+		auth.POST("/verify-otp", authHandler.VerifyOTP)            // OTP verification
+		auth.POST("/reset-password", authHandler.ResetPasswordOTP) // OTP-based password reset
+		auth.GET("/otp-channels", authHandler.OTPChannels)         // Available OTP channels
 	}
 
 	webhooks := v1.Group("/webhooks")
@@ -429,6 +499,7 @@ func main() {
 	{
 		// Current user
 		secured.GET("/auth/me", authHandler.Me)
+		secured.POST("/auth/change-password", adminHandler.ChangePassword) // Password change (requires auth)
 
 		// Crew members (SACCO admins & system admins)
 		crew := secured.Group("/crew")

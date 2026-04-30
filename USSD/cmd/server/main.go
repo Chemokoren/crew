@@ -116,9 +116,31 @@ func main() {
 	eng := engine.NewEngine(backendClient, sessionStore, translator, logger)
 	slog.Info("FSM engine initialized")
 
-	// --- 9. Initialize gateways ---
-	atGateway := gateway.NewAfricasTalkingGateway(logger)
-	genericGateway := gateway.NewGenericGateway(logger)
+	// --- 9. Initialize gateway registry (strategy pattern) ---
+	// Register all available gateway adapters. The primary/fallback are
+	// selected by config — no code changes needed to switch providers.
+	registry := gateway.NewRegistry(logger)
+	registry.Register(gateway.NewAfricasTalkingGateway(logger))
+	registry.Register(gateway.NewGenericGateway(logger))
+
+	// Set primary and fallback from config
+	if err := registry.SetPrimary(cfg.PrimaryGateway); err != nil {
+		slog.Error("invalid PRIMARY_GATEWAY", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	if err := registry.SetFallback(cfg.FallbackGateway); err != nil {
+		slog.Error("invalid FALLBACK_GATEWAY", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+
+	primaryGW := registry.Primary()
+	simulatorGW := registry.Get("generic") // Always available for dev/testing
+
+	slog.Info("gateway strategy configured",
+		slog.String("primary", primaryGW.Name()),
+		slog.String("fallback", cfg.FallbackGateway),
+		slog.Any("registered", registry.Names()),
+	)
 
 	// --- 10. Initialize handler ---
 	ussdHandler := handler.NewUSSDHandler(
@@ -149,26 +171,27 @@ func main() {
 	router.GET("/health", metrics.HealthHandler())
 	router.GET("/metrics", metrics.MetricsHandler())
 
-	// USSD endpoints
+	// USSD endpoints — provider-agnostic naming
 	ussd := router.Group("/ussd")
 	{
-		// Africa's Talking webhook endpoint
-		// POST /ussd/africastalking
-		at := ussd.Group("/africastalking")
-		at.Use(middleware.SanitizeInput(cfg.InputMaxLength))
-		at.Use(middleware.RateLimitPerMSISDN(redisClient, cfg.RateLimitPerMSISDN))
-		at.Use(middleware.Idempotency(redisClient, time.Duration(cfg.IdempotencyTTLSeconds)*time.Second))
-		at.Use(metrics.MetricsMiddleware("africastalking"))
+		// Production webhook — receives requests from whichever telco is configured
+		// as primary (Africa's Talking, generic, or future providers).
+		// POST /ussd/webhook
+		webhook := ussd.Group("/webhook")
+		webhook.Use(middleware.SanitizeInput(cfg.InputMaxLength))
+		webhook.Use(middleware.RateLimitPerMSISDN(redisClient, cfg.RateLimitPerMSISDN))
+		webhook.Use(middleware.Idempotency(redisClient, time.Duration(cfg.IdempotencyTTLSeconds)*time.Second))
+		webhook.Use(metrics.MetricsMiddleware(primaryGW.Name()))
 		{
-			at.POST("", ussdHandler.Handle(atGateway))
+			webhook.POST("", ussdHandler.Handle(primaryGW))
 		}
 
-		// Generic/Simulator endpoint (JSON-based)
+		// Development/testing simulator — always uses generic JSON format.
 		// POST /ussd/simulator
 		sim := ussd.Group("/simulator")
 		sim.Use(metrics.MetricsMiddleware("simulator"))
 		{
-			sim.POST("", ussdHandler.Handle(genericGateway))
+			sim.POST("", ussdHandler.Handle(simulatorGW))
 		}
 	}
 

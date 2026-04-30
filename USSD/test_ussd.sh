@@ -14,7 +14,7 @@
 # USSD gateway will be available at: http://localhost:8090
 #
 # ── Endpoints ──
-#   POST /ussd/africastalking   → Africa's Talking webhook (form-encoded)
+#   POST /ussd/webhook          → Production telco webhook (adapter auto-selected)
 #   POST /ussd/simulator        → JSON simulator (for Postman)
 #   GET  /health                → Health check
 #   GET  /metrics               → Prometheus metrics
@@ -41,8 +41,8 @@
 #      "input": "1"
 #    }
 #
-# 3) Africa's Talking format:
-#    POST http://localhost:8090/ussd/africastalking
+# 3) Production webhook (Africa's Talking format):
+#    POST http://localhost:8090/ussd/webhook
 #    Body (x-www-form-urlencoded):
 #      sessionId=ATSid_123
 #      phoneNumber=+254712345678
@@ -226,8 +226,8 @@ run_smoke_test() {
         }' | python3 -m json.tool 2>/dev/null || true
     echo ""
 
-    echo -e "${BOLD}4) Africa's Talking format:${NC}"
-    curl -s -X POST http://localhost:8090/ussd/africastalking \
+    echo -e "${BOLD}4) Production webhook (Africa's Talking format):${NC}"
+    curl -s -X POST http://localhost:8090/ussd/webhook \
         -d "sessionId=ATSid_smoke_001" \
         -d "phoneNumber=+254712345678" \
         -d "serviceCode=*384*123#" \

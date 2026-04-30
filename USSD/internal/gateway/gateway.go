@@ -1,10 +1,28 @@
-// Package gateway provides an abstraction layer for telco USSD gateways.
-// This decouples the USSD engine from specific telco implementations,
-// enabling multi-gateway failover and normalized request/response handling.
+// Package gateway provides a provider-agnostic abstraction for telco USSD gateways.
 //
-// Supported gateways:
-//   - Africa's Talking (primary, production-grade)
-//   - Generic/Simulator (development and testing)
+// Architecture: Strategy Pattern with Registry
+//
+//   ┌─────────────────────────────────────────────────────┐
+//   │                   GatewayRegistry                    │
+//   │  ┌──────────┐  ┌──────────┐  ┌──────────────────┐  │
+//   │  │  AT      │  │ Generic  │  │ Future providers  │  │
+//   │  │ (primary)│  │(fallback)│  │ (Twilio, Nexmo…)  │  │
+//   │  └────┬─────┘  └────┬─────┘  └────────┬─────────┘  │
+//   │       │             │                  │            │
+//   │       └──────┬──────┘──────────────────┘            │
+//   │              ▼                                      │
+//   │        Gateway interface                            │
+//   │     Primary() → selected adapter                    │
+//   └─────────────────────────────────────────────────────┘
+//
+// All provider-specific details (AT's form-encoded body, cumulative text, CON/END
+// prefixes) are encapsulated inside individual adapters. The handler and engine
+// never know which telco is being used.
+//
+// Adding a new provider:
+//   1. Implement the Gateway interface
+//   2. Register it in the Registry with a unique name
+//   3. Set PRIMARY_GATEWAY=<name> in .env — zero code changes needed
 package gateway
 
 import (
@@ -18,19 +36,24 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// --- Gateway Interface ---
+
 // Request represents a normalized USSD request from any telco gateway.
+// This is the common language between all gateway adapters and the FSM engine.
 type Request struct {
 	SessionID   string `json:"session_id"`
-	MSISDN      string `json:"msisdn"`       // Phone number in international format (+254...)
-	ServiceCode string `json:"service_code"`  // USSD shortcode e.g. *384*123#
-	Input       string `json:"input"`         // User's current input
-	NetworkCode string `json:"network_code"`  // MNO code (optional)
+	MSISDN      string `json:"msisdn"`        // Phone number in international format (+254...)
+	ServiceCode string `json:"service_code"`   // USSD shortcode e.g. *384*123#
+	Input       string `json:"input"`          // User's current input
+	NetworkCode string `json:"network_code"`   // MNO code (optional)
 	Timestamp   time.Time
 }
 
 // Gateway defines the interface for telco USSD gateway adapters.
+// Each telco provider implements this interface to normalize their
+// proprietary format into our common Request/Response model.
 type Gateway interface {
-	// Name returns the gateway identifier.
+	// Name returns the gateway identifier (used for metrics and logging).
 	Name() string
 
 	// ParseRequest extracts a normalized USSD request from an HTTP request.
@@ -38,6 +61,104 @@ type Gateway interface {
 
 	// SendResponse formats and sends the USSD response back to the telco.
 	SendResponse(c *gin.Context, message string, endSession bool)
+}
+
+// --- Gateway Registry (Strategy Pattern) ---
+
+// Registry manages registered gateway adapters and provides strategy selection.
+// Providers can be registered, enabled/disabled, and selected as primary or fallback
+// at startup time — no code changes required to switch providers.
+type Registry struct {
+	gateways map[string]Gateway
+	primary  string
+	fallback string
+	logger   *slog.Logger
+}
+
+// NewRegistry creates a new gateway registry.
+func NewRegistry(logger *slog.Logger) *Registry {
+	return &Registry{
+		gateways: make(map[string]Gateway),
+		logger:   logger,
+	}
+}
+
+// Register adds a gateway adapter to the registry.
+// Panics if a gateway with the same name is already registered.
+func (r *Registry) Register(gw Gateway) {
+	name := gw.Name()
+	if _, exists := r.gateways[name]; exists {
+		panic(fmt.Sprintf("gateway already registered: %s", name))
+	}
+	r.gateways[name] = gw
+	r.logger.Info("gateway registered", slog.String("name", name))
+}
+
+// SetPrimary sets the primary gateway by name.
+// Returns an error if the gateway is not registered.
+func (r *Registry) SetPrimary(name string) error {
+	if _, exists := r.gateways[name]; !exists {
+		return fmt.Errorf("gateway not registered: %s (available: %s)", name, r.availableNames())
+	}
+	r.primary = name
+	r.logger.Info("primary gateway set", slog.String("name", name))
+	return nil
+}
+
+// SetFallback sets the fallback gateway by name.
+// Returns an error if the gateway is not registered.
+func (r *Registry) SetFallback(name string) error {
+	if _, exists := r.gateways[name]; !exists {
+		return fmt.Errorf("gateway not registered: %s (available: %s)", name, r.availableNames())
+	}
+	r.fallback = name
+	r.logger.Info("fallback gateway set", slog.String("name", name))
+	return nil
+}
+
+// Primary returns the primary gateway adapter.
+// Falls back to the fallback gateway if the primary is not set.
+func (r *Registry) Primary() Gateway {
+	if gw, ok := r.gateways[r.primary]; ok {
+		return gw
+	}
+	if gw, ok := r.gateways[r.fallback]; ok {
+		r.logger.Warn("primary gateway unavailable, using fallback",
+			slog.String("primary", r.primary),
+			slog.String("fallback", r.fallback),
+		)
+		return gw
+	}
+	// Should never happen if config validation passes
+	r.logger.Error("no gateway available", slog.String("primary", r.primary))
+	return nil
+}
+
+// Fallback returns the fallback gateway adapter (used for simulator/dev).
+func (r *Registry) Fallback() Gateway {
+	if gw, ok := r.gateways[r.fallback]; ok {
+		return gw
+	}
+	return nil
+}
+
+// Get returns a gateway by name, or nil if not registered.
+func (r *Registry) Get(name string) Gateway {
+	return r.gateways[name]
+}
+
+// Names returns the names of all registered gateways.
+func (r *Registry) Names() []string {
+	names := make([]string, 0, len(r.gateways))
+	for name := range r.gateways {
+		names = append(names, name)
+	}
+	return names
+}
+
+// availableNames returns a comma-separated list of registered gateway names.
+func (r *Registry) availableNames() string {
+	return strings.Join(r.Names(), ", ")
 }
 
 // --- Africa's Talking Gateway ---

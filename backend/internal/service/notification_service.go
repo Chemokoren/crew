@@ -187,3 +187,34 @@ func renderTemplate(tmpl string, vars map[string]string) string {
 	}
 	return result
 }
+
+// SendSMSToPhone sends an SMS directly to a phone number without requiring a user ID.
+// Used for OTP delivery during self-service password reset.
+func (s *NotificationService) SendSMSToPhone(ctx context.Context, phone, message string) error {
+	if s.smsMgr == nil {
+		s.logger.Warn("SMS requested but SMS manager is nil — OTP not delivered",
+			slog.String("phone", phone),
+		)
+		return fmt.Errorf("SMS service unavailable")
+	}
+
+	res, err := s.smsMgr.Send(ctx, phone, message)
+	if err != nil {
+		s.logger.Error("failed to send OTP SMS",
+			slog.String("phone", phone),
+			slog.Any("error", err),
+		)
+		return fmt.Errorf("send SMS: %w", err)
+	}
+
+	if !res.Success {
+		s.logger.Error("SMS delivery failed",
+			slog.String("phone", phone),
+			slog.Any("result", res),
+		)
+		return fmt.Errorf("SMS delivery failed")
+	}
+
+	s.logger.Info("OTP SMS sent", slog.String("phone", phone))
+	return nil
+}

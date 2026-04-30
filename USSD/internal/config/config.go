@@ -32,8 +32,10 @@ type Config struct {
 	SessionTTLSeconds int // USSD session TTL in seconds (default: 180)
 	SessionPrefix     string // Redis key prefix for sessions (default: "ussd:session:")
 
-	// Telco Gateway
-	PrimaryGateway   string // Primary gateway: "africastalking" | "generic" (default: africastalking)
+	// Telco Gateway (Strategy Pattern)
+	// Providers: "africastalking" | "generic" (extensible — add new adapters)
+	PrimaryGateway   string // Primary webhook adapter (default: africastalking)
+	FallbackGateway  string // Fallback adapter if primary unavailable (default: generic)
 	ATAPIKey         string // Africa's Talking API key
 	ATUsername       string // Africa's Talking username
 	ATShortCode      string // Africa's Talking shortcode
@@ -87,7 +89,8 @@ func Load() (*Config, error) {
 		SessionTTLSeconds: getEnvInt("SESSION_TTL_SECONDS", 180),
 		SessionPrefix:     getEnv("SESSION_PREFIX", "ussd:session:"),
 
-		PrimaryGateway: getEnv("PRIMARY_GATEWAY", "africastalking"),
+		PrimaryGateway:  getEnv("PRIMARY_GATEWAY", "africastalking"),
+		FallbackGateway: getEnv("FALLBACK_GATEWAY", "generic"),
 		ATAPIKey:       os.Getenv("AT_API_KEY"),
 		ATUsername:      getEnv("AT_USERNAME", "sandbox"),
 		ATShortCode:     os.Getenv("AT_SHORTCODE"),

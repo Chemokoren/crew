@@ -223,27 +223,36 @@ type CreateVehicleRequest struct {
 // --- Assignment DTOs ---
 
 type AssignmentResponse struct {
-	ID               uuid.UUID              `json:"id"`
-	CrewMemberID     uuid.UUID              `json:"crew_member_id"`
-	VehicleID        uuid.UUID              `json:"vehicle_id"`
-	SaccoID          uuid.UUID              `json:"sacco_id"`
-	ShiftDate        time.Time              `json:"shift_date"`
-	ShiftStart       time.Time              `json:"shift_start"`
-	ShiftEnd         *time.Time             `json:"shift_end,omitempty"`
-	Status           models.AssignmentStatus `json:"status"`
-	EarningModel     models.EarningModel    `json:"earning_model"`
-	FixedAmountCents int64                  `json:"fixed_amount_cents,omitempty"`
-	CommissionRate   float64                `json:"commission_rate,omitempty"`
-	Notes            string                 `json:"notes,omitempty"`
-	CreatedAt        time.Time              `json:"created_at"`
+	ID                    uuid.UUID              `json:"id"`
+	CrewMemberID          uuid.UUID              `json:"crew_member_id"`
+	CrewMemberName        string                 `json:"crew_member_name"`
+	VehicleID             uuid.UUID              `json:"vehicle_id"`
+	VehicleRegistrationNo string                 `json:"vehicle_registration_no"`
+	SaccoID               uuid.UUID              `json:"sacco_id"`
+	SaccoName             string                 `json:"sacco_name"`
+	RouteID               *uuid.UUID             `json:"route_id,omitempty"`
+	RouteName             string                 `json:"route_name,omitempty"`
+	ShiftDate             time.Time              `json:"shift_date"`
+	ShiftStart            time.Time              `json:"shift_start"`
+	ShiftEnd              *time.Time             `json:"shift_end,omitempty"`
+	Status                models.AssignmentStatus `json:"status"`
+	EarningModel          models.EarningModel    `json:"earning_model"`
+	FixedAmountCents      int64                  `json:"fixed_amount_cents,omitempty"`
+	CommissionRate        float64                `json:"commission_rate,omitempty"`
+	HybridBaseCents       int64                  `json:"hybrid_base_cents,omitempty"`
+	CommissionBasis       models.CommissionBasis  `json:"commission_basis,omitempty"`
+	Notes                 string                 `json:"notes,omitempty"`
+	CreatedByID           uuid.UUID              `json:"created_by_id"`
+	CreatedAt             time.Time              `json:"created_at"`
 }
 
 func AssignmentToResponse(a *models.Assignment) AssignmentResponse {
-	return AssignmentResponse{
+	resp := AssignmentResponse{
 		ID:               a.ID,
 		CrewMemberID:     a.CrewMemberID,
 		VehicleID:        a.VehicleID,
 		SaccoID:          a.SaccoID,
+		RouteID:          a.RouteID,
 		ShiftDate:        a.ShiftDate,
 		ShiftStart:       a.ShiftStart,
 		ShiftEnd:         a.ShiftEnd,
@@ -251,9 +260,28 @@ func AssignmentToResponse(a *models.Assignment) AssignmentResponse {
 		EarningModel:     a.EarningModel,
 		FixedAmountCents: a.FixedAmountCents,
 		CommissionRate:   a.CommissionRate,
+		HybridBaseCents:  a.HybridBaseCents,
+		CommissionBasis:  a.CommissionBasis,
 		Notes:            a.Notes,
+		CreatedByID:      a.CreatedByID,
 		CreatedAt:        a.CreatedAt,
 	}
+
+	// Resolve human-readable names from preloaded relations
+	if a.CrewMember.ID != (uuid.UUID{}) {
+		resp.CrewMemberName = a.CrewMember.FullName()
+	}
+	if a.Vehicle.ID != (uuid.UUID{}) {
+		resp.VehicleRegistrationNo = a.Vehicle.RegistrationNo
+	}
+	if a.Sacco.ID != (uuid.UUID{}) {
+		resp.SaccoName = a.Sacco.Name
+	}
+	if a.Route != nil && a.Route.ID != (uuid.UUID{}) {
+		resp.RouteName = a.Route.Name
+	}
+
+	return resp
 }
 
 func AssignmentListToResponse(assignments []models.Assignment) []AssignmentResponse {

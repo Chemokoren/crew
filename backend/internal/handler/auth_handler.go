@@ -14,11 +14,12 @@ import (
 
 // AuthHandler handles authentication endpoints.
 type AuthHandler struct {
-	authSvc *service.AuthService
+	authSvc  *service.AuthService
+	otpSvc   *service.OTPService
 }
 
-func NewAuthHandler(authSvc *service.AuthService) *AuthHandler {
-	return &AuthHandler{authSvc: authSvc}
+func NewAuthHandler(authSvc *service.AuthService, otpSvc *service.OTPService) *AuthHandler {
+	return &AuthHandler{authSvc: authSvc, otpSvc: otpSvc}
 }
 
 // POST /api/v1/auth/register
@@ -180,6 +181,130 @@ func (h *AuthHandler) VerifyPIN(c *gin.Context) {
 	}
 
 	SuccessResponse(c, http.StatusOK, gin.H{"valid": true})
+}
+
+// POST /api/v1/auth/forgot-password
+// Initiates self-service password reset by generating and sending an OTP.
+// Supports configurable delivery channels: email (default), sms, or whatsapp.
+func (h *AuthHandler) ForgotPassword(c *gin.Context) {
+	var req struct {
+		Phone   string `json:"phone" binding:"required"`
+		Channel string `json:"channel"` // "email" (default), "sms", or "whatsapp"
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		BadRequest(c, err.Error())
+		return
+	}
+
+	genericResponse := gin.H{
+		"message":     "If this phone is registered, you will receive an OTP shortly",
+		"otp_length":  6,
+		"ttl_seconds": 600,
+		"channel":     req.Channel,
+	}
+
+	// 1. Verify the user exists and is active
+	user, err := h.authSvc.GetUserByPhone(c.Request.Context(), req.Phone)
+	if err != nil {
+		// Don't reveal whether the account exists — generic message
+		SuccessResponse(c, http.StatusOK, genericResponse)
+		return
+	}
+	if !user.IsActive {
+		SuccessResponse(c, http.StatusOK, genericResponse)
+		return
+	}
+
+	// 2. Generate and deliver OTP via the messaging engine
+	if err := h.otpSvc.GenerateAndSend(c.Request.Context(), req.Phone, user.Email, req.Channel); err != nil {
+		BadRequest(c, err.Error())
+		return
+	}
+
+	// Resolve actual channel used
+	channel := req.Channel
+	if channel == "" {
+		channel = string(h.otpSvc.DefaultChannel())
+	}
+	genericResponse["channel"] = channel
+
+	SuccessResponse(c, http.StatusOK, genericResponse)
+}
+
+// GET /api/v1/auth/otp-channels
+// Returns the available OTP delivery channels and the default.
+func (h *AuthHandler) OTPChannels(c *gin.Context) {
+	channels := h.otpSvc.AvailableChannels()
+	channelNames := make([]string, len(channels))
+	for i, ch := range channels {
+		channelNames[i] = string(ch)
+	}
+	SuccessResponse(c, http.StatusOK, gin.H{
+		"channels":        channelNames,
+		"default_channel": string(h.otpSvc.DefaultChannel()),
+		"otp_enabled":     h.otpSvc.IsEnabled(),
+	})
+}
+
+// POST /api/v1/auth/verify-otp
+// Verifies the OTP and returns a short-lived reset token.
+func (h *AuthHandler) VerifyOTP(c *gin.Context) {
+	var req struct {
+		Phone string `json:"phone" binding:"required"`
+		OTP   string `json:"otp" binding:"required,min=6,max=6"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		BadRequest(c, err.Error())
+		return
+	}
+
+	resetToken, err := h.otpSvc.VerifyOTP(c.Request.Context(), req.Phone, req.OTP)
+	if err != nil {
+		BadRequest(c, err.Error())
+		return
+	}
+
+	SuccessResponse(c, http.StatusOK, gin.H{
+		"reset_token": resetToken,
+		"message":     "OTP verified. Use the reset token to set a new password.",
+	})
+}
+
+// POST /api/v1/auth/reset-password
+// Resets the user's password using a verified reset token (from OTP flow).
+func (h *AuthHandler) ResetPasswordOTP(c *gin.Context) {
+	var req struct {
+		Phone       string `json:"phone" binding:"required"`
+		ResetToken  string `json:"reset_token" binding:"required"`
+		NewPassword string `json:"new_password" binding:"required,min=8"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		BadRequest(c, err.Error())
+		return
+	}
+
+	// 1. Validate reset token
+	if err := h.otpSvc.ResetPasswordWithToken(c.Request.Context(), req.Phone, req.ResetToken, req.NewPassword); err != nil {
+		BadRequest(c, err.Error())
+		return
+	}
+
+	// 2. Look up user and reset password
+	user, err := h.authSvc.GetUserByPhone(c.Request.Context(), req.Phone)
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+
+	// AdminResetPassword handles hashing internally
+	if err := h.authSvc.AdminResetPassword(c.Request.Context(), user.ID, req.NewPassword); err != nil {
+		MapServiceError(c, err)
+		return
+	}
+
+	SuccessResponse(c, http.StatusOK, gin.H{
+		"message": "Password reset successfully. You can now log in with your new password.",
+	})
 }
 
 // MapServiceError maps domain errors to HTTP responses. Exported for reuse by other handlers.
