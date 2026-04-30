@@ -292,9 +292,9 @@
 |---|------|--------|
 | 147 | **Notification list** — Title, body, channel, time, unread indicator | ✅ Done |
 | 148 | **Mark as read** — Click to call `PUT /notifications/:id/read` | ✅ Done |
-| 149 | **Notification preferences page** — `GET /notifications/preferences` + `PUT /notifications/preferences` | ❌ Not started |
-| 150 | Unread count badge in sidebar & topbar | ❌ Not started |
-| 151 | Filter by read/unread, channel | ❌ Not started |
+| 149 | **Notification preferences page** — `GET /notifications/preferences` + `PUT /notifications/preferences` | ✅ Done |
+| 150 | Unread count badge in sidebar & topbar | ✅ Done |
+| 151 | Filter by read/unread, channel | ✅ Done |
 
 ---
 
@@ -369,12 +369,12 @@
 | 10 | Payroll & Compliance | 10 | **10** | **0** |
 | 11 | Credit & Loans | 12 | **12** | **0** |
 | 12 | Insurance | 4 | **4** | **0** |
-| 13 | Notifications | 5 | 2 | 3 |
+| 13 | Notifications | 5 | **5** | **0** |
 | 14 | System Administration | 10 | 2 | 8 |
 | 15 | Documents | 6 | 0 | 6 |
 | 16 | UX Polish | 12 | 0 | 12 |
-| **TOTAL** | | **179** | **150** | **29** |
+| **TOTAL** | | **179** | **153** | **26** |
 
-> **Current progress: 84% complete** (150 / 179 tasks)
+> **Current progress: 85% complete** (153 / 179 tasks)
 >
 > **All backend API endpoints are covered in `ApiService`** (72 methods). The remaining work is building UI components that consume them.

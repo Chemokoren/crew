@@ -129,6 +129,10 @@ export const routes: Routes = [
         loadComponent: () => import('./features/notifications/notification-list/notification-list.component').then(m => m.NotificationListComponent),
       },
       {
+        path: 'notifications/preferences',
+        loadComponent: () => import('./features/notifications/notification-preferences/notification-preferences.component').then(m => m.NotificationPreferencesComponent),
+      },
+      {
         path: 'admin',
         canActivate: [roleGuard('SYSTEM_ADMIN')],
         loadComponent: () => import('./features/admin/admin-dashboard/admin-dashboard.component').then(m => m.AdminDashboardComponent),

@@ -1,7 +1,8 @@
-import { Component, inject, output } from '@angular/core';
+import { Component, inject, output, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { AuthService } from '../../../core/services/auth.service';
+import { NotificationStateService } from '../../../core/services/notification-state.service';
 
 @Component({
   selector: 'app-topbar',
@@ -18,7 +19,9 @@ import { AuthService } from '../../../core/services/auth.service';
       <div class="topbar-actions">
         <a routerLink="/notifications" class="topbar-btn" id="topbar-notifications">
           <span class="material-icons-round">notifications_none</span>
-          <span class="notification-dot"></span>
+          @if (notifState.unreadCount() > 0) {
+            <span class="notification-badge">{{ notifState.unreadCount() > 9 ? '9+' : notifState.unreadCount() }}</span>
+          }
         </a>
 
         <a routerLink="/profile" class="user-menu" id="topbar-profile-link">
@@ -105,15 +108,23 @@ import { AuthService } from '../../../core/services/auth.service';
       }
     }
 
-    .notification-dot {
+    .notification-badge {
       position: absolute;
-      top: 8px;
-      right: 8px;
-      width: 8px;
-      height: 8px;
+      top: 4px;
+      right: 4px;
+      min-width: 16px;
+      height: 16px;
+      padding: 0 4px;
       background: var(--color-accent);
-      border-radius: 50%;
+      border-radius: 8px;
+      font-size: 0.625rem;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       border: 2px solid var(--color-bg-topbar);
+      line-height: 1;
     }
 
     .user-menu {
@@ -177,9 +188,14 @@ import { AuthService } from '../../../core/services/auth.service';
     }
   `]
 })
-export class TopbarComponent {
+export class TopbarComponent implements OnInit {
   auth = inject(AuthService);
+  notifState = inject(NotificationStateService);
   menuToggle = output<void>();
+
+  ngOnInit(): void {
+    this.notifState.init();
+  }
 
   userInitials(): string {
     const user = this.auth.currentUser();

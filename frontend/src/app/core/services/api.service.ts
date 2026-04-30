@@ -7,8 +7,8 @@ import {
   CrewMember, Assignment, Wallet, WalletTransaction,
   SACCO, Vehicle, Route, PayrollRun, PayrollEntry,
   Earning, DailySummary, CreditScore, DetailedScoreResult, CreditScoreHistory,
-  LoanApplication, LoanTier, InsurancePolicy, Notification, AuditLog,
-  SystemStats, SACCOFloat, SACCOMembership, SACCOFloatTransaction,
+  LoanApplication, LoanTier, InsurancePolicy, Notification, NotificationPreference,
+  AuditLog, SystemStats, SACCOFloat, SACCOMembership, SACCOFloatTransaction,
   StatutoryRate
 } from '../models';
 
@@ -304,12 +304,12 @@ export class ApiService {
     return this.http.put(`${this.API}/notifications/${id}/read`, {});
   }
 
-  getNotificationPreferences(): Observable<ApiResponse<unknown>> {
-    return this.http.get<ApiResponse<unknown>>(`${this.API}/notifications/preferences`);
+  getNotificationPreferences(): Observable<ApiResponse<NotificationPreference>> {
+    return this.http.get<ApiResponse<NotificationPreference>>(`${this.API}/notifications/preferences`);
   }
 
-  updateNotificationPreferences(data: Record<string, unknown>): Observable<unknown> {
-    return this.http.put(`${this.API}/notifications/preferences`, data);
+  updateNotificationPreferences(data: Partial<NotificationPreference>): Observable<ApiResponse<NotificationPreference>> {
+    return this.http.put<ApiResponse<NotificationPreference>>(`${this.API}/notifications/preferences`, data);
   }
 
   // --- Admin ---

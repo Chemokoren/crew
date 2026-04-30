@@ -2,6 +2,7 @@ import { Component, inject, signal, model, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthService } from '../../../core/services/auth.service';
+import { NotificationStateService } from '../../../core/services/notification-state.service';
 
 interface NavItem {
   label: string;
@@ -52,6 +53,9 @@ interface NavItem {
             <span class="material-icons-round nav-icon">{{ item.icon }}</span>
             @if (!collapsed()) {
               <span class="nav-label">{{ item.label }}</span>
+              @if (item.label === 'Notifications' && notifState.unreadCount() > 0) {
+                <span class="nav-badge">{{ notifState.unreadCount() > 99 ? '99+' : notifState.unreadCount() }}</span>
+              }
             }
           </a>
         }
@@ -234,6 +238,22 @@ interface NavItem {
       flex-shrink: 0;
     }
 
+    .nav-badge {
+      margin-left: auto;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      border-radius: 9px;
+      background: var(--color-accent);
+      color: #fff;
+      font-size: 0.625rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+
     .sidebar-footer {
       padding: var(--space-sm);
       border-top: 1px solid var(--color-border);
@@ -321,6 +341,7 @@ interface NavItem {
 })
 export class SidebarComponent {
   auth = inject(AuthService);
+  notifState = inject(NotificationStateService);
 
   collapsed = signal(false);
   mobileOpen = model(false);

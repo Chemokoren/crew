@@ -312,6 +312,16 @@ export interface Notification {
   created_at: string;
 }
 
+export interface NotificationPreference {
+  id?: string;
+  user_id?: string;
+  sms_opt_in: boolean;
+  push_opt_in: boolean;
+  in_app_opt_in: boolean;
+  marketing_opt_in: boolean;
+  updated_at?: string;
+}
+
 export interface AuditLog {
   id: string;
   actor_id: string;
