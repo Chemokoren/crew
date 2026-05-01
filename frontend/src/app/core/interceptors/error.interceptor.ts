@@ -17,8 +17,12 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
 
       if (error.status === 0) {
         message = 'Unable to connect to server. Please check your connection.';
+      } else if (error.error?.error?.message) {
+        message = error.error.error.message;
       } else if (error.error?.message) {
         message = error.error.message;
+      } else if (error.status === 400) {
+        message = 'Invalid request. Please check your inputs.';
       } else if (error.status === 403) {
         message = 'You do not have permission to perform this action.';
       } else if (error.status === 404) {

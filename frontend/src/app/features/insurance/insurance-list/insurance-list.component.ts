@@ -6,10 +6,11 @@ import { AuthService } from '../../../core/services/auth.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { CurrencyKesPipe } from '../../../shared/pipes/currency-kes.pipe';
 import { InsurancePolicy, CrewMember } from '../../../core/models';
+import { AutocompleteComponent, AutocompleteOption } from '../../../shared/components/autocomplete/autocomplete.component';
 
 @Component({
   selector: 'app-insurance-list', standalone: true,
-  imports: [CommonModule, FormsModule, CurrencyKesPipe],
+  imports: [CommonModule, FormsModule, CurrencyKesPipe, AutocompleteComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="animate-fade-in">
@@ -25,10 +26,15 @@ import { InsurancePolicy, CrewMember } from '../../../core/models';
       <!-- Filters (Task 146) -->
       <div class="filters-bar">
         @if (isAdmin()) {
-          <select class="form-select filter-select" [(ngModel)]="filterCrewId" (ngModelChange)="applyFilters()" id="filter-crew">
-            <option value="">All Crew Members</option>
-            @for (c of crewMembers(); track c.id) { <option [value]="c.id">{{ c.first_name }} {{ c.last_name }}</option> }
-          </select>
+          <div style="position:relative; min-width: 220px; z-index: 50;">
+            <app-autocomplete
+              [(ngModel)]="filterCrewId"
+              (ngModelChange)="applyFilters()"
+              [options]="crewOptions()"
+              placeholder="All Crew Members"
+              inputId="filter-crew"
+            ></app-autocomplete>
+          </div>
         }
         <select class="form-select filter-select" [(ngModel)]="filterStatus" (ngModelChange)="applyFilters()" id="filter-status">
           <option value="">All Statuses</option>
@@ -93,25 +99,27 @@ import { InsurancePolicy, CrewMember } from '../../../core/models';
         <div class="modal-backdrop" (click)="showCreateModal.set(false)"><div class="modal-content" (click)="$event.stopPropagation()">
           <div class="modal-header"><h3>Create Insurance Policy</h3><button class="btn btn-ghost btn-icon" (click)="showCreateModal.set(false)"><span class="material-icons-round">close</span></button></div>
           <div class="modal-body">
-            <div class="form-group"><label class="form-label">Crew Member *</label>
-              <select class="form-select" [(ngModel)]="createForm.crew_member_id" required id="create-crew">
-                <option value="">— Select —</option>
-                @for (c of crewMembers(); track c.id) { <option [value]="c.id">{{ c.first_name }} {{ c.last_name }}</option> }
-              </select>
+            <div class="form-group" style="position:relative;"><label class="form-label">Crew Member *</label>
+              <app-autocomplete
+                [(ngModel)]="createForm.crew_member_id"
+                [options]="crewOptions()"
+                placeholder="Search crew members..."
+                inputId="create-crew"
+              ></app-autocomplete>
             </div>
             <div class="form-row">
               <div class="form-group"><label class="form-label">Provider *</label>
-                <input class="form-input" type="text" [(ngModel)]="createForm.provider" placeholder="e.g. Britam, NHIF" required />
-              </div>
-              <div class="form-group"><label class="form-label">Policy Type *</label>
-                <select class="form-select" [(ngModel)]="createForm.policy_type" required>
-                  <option value="">— Select —</option>
-                  <option value="HEALTH">Health</option>
-                  <option value="ACCIDENT">Accident</option>
-                  <option value="LIFE">Life</option>
-                  <option value="MOTOR">Motor</option>
-                  <option value="GROUP_LIFE">Group Life</option>
+                <select class="form-select" [(ngModel)]="createForm.provider" required>
+                  <option value="">— Select Provider —</option>
+                  @for (p of configuredProviders; track p) { <option [value]="p">{{ p }}</option> }
                 </select>
+              </div>
+              <div class="form-group" style="position:relative;"><label class="form-label">Policy Type *</label>
+                <app-autocomplete
+                  [(ngModel)]="createForm.policy_type"
+                  [options]="policyTypeOptions"
+                  placeholder="Search policy types..."
+                ></app-autocomplete>
               </div>
             </div>
             <div class="form-row">
@@ -172,6 +180,29 @@ export class InsuranceListComponent implements OnInit {
     crew_member_id: '', provider: '', policy_type: '',
     premium: 0, frequency: 'MONTHLY', start_date: '', end_date: '',
   };
+
+  configuredProviders = [
+    'Britam', 'NHIF', 'Jubilee Insurance', 'CIC Insurance', 
+    'APA Insurance', 'Sanlam', 'Madison', 'ICEA Lion', 'Pioneer Assurance'
+  ];
+
+  policyTypeOptions: AutocompleteOption[] = [
+    { value: 'HEALTH', label: 'Health', searchText: 'Health Medical' },
+    { value: 'ACCIDENT', label: 'Accident', searchText: 'Accident Personal' },
+    { value: 'LIFE', label: 'Life', searchText: 'Life Insurance' },
+    { value: 'MOTOR', label: 'Motor', searchText: 'Motor Vehicle Auto' },
+    { value: 'GROUP_LIFE', label: 'Group Life', searchText: 'Group Life' }
+  ];
+
+  crewOptions = computed<AutocompleteOption[]>(() => {
+    return this.crewMembers().map(c => ({
+      value: c.id,
+      label: `${c.first_name} ${c.last_name}`,
+      sublabel: `ID: ${c.crew_id || ''}`,
+      badge: c.role,
+      searchText: `${c.first_name} ${c.last_name} ${c.crew_id || ''}`
+    }));
+  });
 
   ngOnInit() {
     this.load();

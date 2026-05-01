@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, OnInit, signal, computed, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -8,10 +8,11 @@ import { ToastService } from '../../../core/services/toast.service';
 import { CurrencyKesPipe } from '../../../shared/pipes/currency-kes.pipe';
 import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
 import { LoanApplication, LoanTier, CrewMember, LoanCategory } from '../../../core/models';
+import { AutocompleteComponent, AutocompleteOption } from '../../../shared/components/autocomplete/autocomplete.component';
 
 @Component({
   selector: 'app-loan-list', standalone: true,
-  imports: [CommonModule, FormsModule, CurrencyKesPipe, RelativeTimePipe],
+  imports: [CommonModule, FormsModule, CurrencyKesPipe, RelativeTimePipe, AutocompleteComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="animate-fade-in">
@@ -70,23 +71,28 @@ import { LoanApplication, LoanTier, CrewMember, LoanCategory } from '../../../co
           <div class="modal-header"><h3>Apply for a Loan</h3><button class="btn btn-ghost btn-icon" (click)="showApplyModal.set(false)"><span class="material-icons-round">close</span></button></div>
           <div class="modal-body">
             @if (isAdmin()) {
-              <div class="form-group"><label class="form-label">Crew Member</label>
-                <select class="form-select" [(ngModel)]="applyForm.crew_member_id" id="select-crew-loan">
-                  <option value="">— Select —</option>
-                  @for (c of crewMembers(); track c.id) { <option [value]="c.id">{{ c.first_name }} {{ c.last_name }}</option> }
-                </select>
+              <div class="form-group" style="position:relative; z-index: 55;"><label class="form-label">Crew Member</label>
+                <app-autocomplete
+                  [(ngModel)]="applyForm.crew_member_id"
+                  (ngModelChange)="onCrewChange($event)"
+                  [options]="crewOptions()"
+                  placeholder="Search crew members..."
+                  inputId="select-crew-loan"
+                ></app-autocomplete>
               </div>
             }
-            <div class="form-group"><label class="form-label">Category</label>
-              <select class="form-select" [(ngModel)]="applyForm.category">
-                @for (cat of loanCategories; track cat) { <option [value]="cat">{{ cat }}</option> }
-              </select>
+            <div class="form-group" style="position:relative; z-index: 50;"><label class="form-label">Category</label>
+              <app-autocomplete
+                [(ngModel)]="applyForm.category"
+                [options]="categoryOptions"
+                placeholder="Search category..."
+              ></app-autocomplete>
             </div>
             <div class="form-group"><label class="form-label">Amount (KES)</label>
-              <input class="form-input" type="number" [(ngModel)]="applyForm.amount" min="100" placeholder="e.g. 5000" />
+              <input class="form-input" type="number" [(ngModel)]="applyForm.amount" min="100" [max]="applyTier()?.max_loan_kes || 50000" placeholder="e.g. 5000" />
             </div>
             <div class="form-group"><label class="form-label">Tenure (days)</label>
-              <input class="form-input" type="number" [(ngModel)]="applyForm.tenure_days" min="1" max="30" placeholder="e.g. 14" />
+              <input class="form-input" type="number" [(ngModel)]="applyForm.tenure_days" min="1" [max]="applyTier()?.max_tenure_days || 30" placeholder="e.g. 14" />
             </div>
             <div class="form-group"><label class="form-label">Purpose (optional)</label>
               <textarea class="form-textarea" [(ngModel)]="applyForm.purpose" rows="2" placeholder="What's the loan for?"></textarea>
@@ -152,6 +158,22 @@ export class LoanListComponent implements OnInit {
 
   readonly loanCategories: LoanCategory[] = ['PERSONAL', 'EMERGENCY', 'EDUCATION', 'BUSINESS', 'ASSET'];
 
+  categoryOptions: AutocompleteOption[] = this.loanCategories.map(cat => ({
+    value: cat,
+    label: cat.charAt(0) + cat.slice(1).toLowerCase(),
+    searchText: cat
+  }));
+
+  crewOptions = computed<AutocompleteOption[]>(() => {
+    return this.crewMembers().map(c => ({
+      value: c.id,
+      label: `${c.first_name} ${c.last_name}`,
+      sublabel: `ID: ${c.crew_id || ''}`,
+      badge: c.role,
+      searchText: `${c.first_name} ${c.last_name} ${c.crew_id || ''}`
+    }));
+  });
+
   applyForm = { crew_member_id: '', amount: 0, tenure_days: 14, category: 'PERSONAL' as LoanCategory, purpose: '' };
   approveForm = { approved_amount: 0, interest_rate: 8 };
 
@@ -182,13 +204,39 @@ export class LoanListComponent implements OnInit {
         next: r => this.applyTier.set(r.data),
         error: () => this.applyTier.set(null),
       });
+    } else {
+      this.applyTier.set(null);
     }
     this.showApplyModal.set(true);
+  }
+
+  onCrewChange(id: string): void {
+    if (!id) {
+      this.applyTier.set(null);
+      return;
+    }
+    this.api.getLoanTier(id).subscribe({
+      next: r => this.applyTier.set(r.data),
+      error: () => this.applyTier.set(null),
+    });
   }
 
   submitApplication(): void {
     const crewId = this.applyForm.crew_member_id || this.auth.currentUser()?.crew_member_id;
     if (!crewId || !this.applyForm.amount) return;
+    
+    const tier = this.applyTier();
+    if (tier) {
+      if (this.applyForm.amount > tier.max_loan_kes) {
+        this.toast.error(`Amount exceeds maximum limit of KES ${tier.max_loan_kes}`);
+        return;
+      }
+      if (this.applyForm.tenure_days > tier.max_tenure_days) {
+        this.toast.error(`Tenure exceeds maximum limit of ${tier.max_tenure_days} days`);
+        return;
+      }
+    }
+
     this.applying.set(true);
     this.api.applyForLoan({
       crew_member_id: crewId,

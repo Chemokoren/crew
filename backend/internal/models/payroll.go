@@ -27,7 +27,7 @@ type PayrollRun struct {
 	TotalDeductionsCents int64         `json:"total_deductions_cents" gorm:"type:bigint"`
 	TotalNetCents        int64         `json:"total_net_cents" gorm:"type:bigint"`
 	Currency             string        `json:"currency" gorm:"default:'KES';not null"`
-	ProcessedByID        uuid.UUID     `json:"processed_by_id" gorm:"type:uuid"`
+	ProcessedByID        *uuid.UUID    `json:"processed_by_id,omitempty" gorm:"type:uuid"`
 	ApprovedByID         *uuid.UUID    `json:"approved_by_id,omitempty" gorm:"type:uuid"`
 	SubmittedAt          *time.Time    `json:"submitted_at,omitempty"`
 	PerpayReference      string        `json:"perpay_reference,omitempty"`

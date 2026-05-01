@@ -44,7 +44,7 @@ type CreatePayrollRunInput struct {
 	SaccoID       uuid.UUID `json:"sacco_id" binding:"required"`
 	PeriodStart   string    `json:"period_start" binding:"required"`
 	PeriodEnd     string    `json:"period_end" binding:"required"`
-	ProcessedByID uuid.UUID `json:"processed_by_id"`
+	ProcessedByID *uuid.UUID `json:"processed_by_id"`
 }
 
 func (s *PayrollService) CreatePayrollRun(ctx context.Context, input CreatePayrollRunInput) (*models.PayrollRun, error) {

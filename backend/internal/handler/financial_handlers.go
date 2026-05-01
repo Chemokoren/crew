@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -176,6 +177,10 @@ func (h *LoanHandler) GetTier(c *gin.Context) {
 
 	tier, score, err := h.loanSvc.GetLoanTier(c.Request.Context(), crewID)
 	if err != nil {
+		if errors.Is(err, service.ErrLowCreditScore) {
+			SuccessResponse(c, http.StatusOK, nil)
+			return
+		}
 		MapServiceError(c, err)
 		return
 	}

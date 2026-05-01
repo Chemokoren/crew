@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, OnInit, signal, computed, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -6,9 +6,10 @@ import { ApiService } from '../../../core/services/api.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { CurrencyKesPipe } from '../../../shared/pipes/currency-kes.pipe';
 import { PayrollRun, SACCO } from '../../../core/models';
+import { AutocompleteComponent, AutocompleteOption } from '../../../shared/components/autocomplete/autocomplete.component';
 
 @Component({
-  selector: 'app-payroll-list', standalone: true, imports: [CommonModule, FormsModule, CurrencyKesPipe],
+  selector: 'app-payroll-list', standalone: true, imports: [CommonModule, FormsModule, CurrencyKesPipe, AutocompleteComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="animate-fade-in">
@@ -41,11 +42,13 @@ import { PayrollRun, SACCO } from '../../../core/models';
         <div class="modal-backdrop" (click)="showModal.set(false)"><div class="modal-content" (click)="$event.stopPropagation()">
           <div class="modal-header"><h3>Create Payroll Run</h3><button class="btn btn-ghost btn-icon" (click)="showModal.set(false)"><span class="material-icons-round">close</span></button></div>
           <div class="modal-body">
-            <div class="form-group"><label class="form-label">SACCO</label>
-              <select class="form-select" [(ngModel)]="form.sacco_id" id="select-sacco">
-                <option value="">— Select SACCO —</option>
-                @for (s of saccos(); track s.id) { <option [value]="s.id">{{ s.name }}</option> }
-              </select>
+            <div class="form-group" style="position:relative; z-index: 55;"><label class="form-label">SACCO</label>
+              <app-autocomplete
+                [(ngModel)]="form.sacco_id"
+                [options]="saccoOptions()"
+                placeholder="Search SACCO..."
+                inputId="select-sacco"
+              ></app-autocomplete>
             </div>
             <div class="form-group"><label class="form-label">Period Start</label><input class="form-input" type="date" [(ngModel)]="form.period_start" /></div>
             <div class="form-group"><label class="form-label">Period End</label><input class="form-input" type="date" [(ngModel)]="form.period_end" /></div>
@@ -63,6 +66,15 @@ export class PayrollListComponent implements OnInit {
   items = signal<PayrollRun[]>([]); loading = signal(true); showModal = signal(false); creating = signal(false);
   saccos = signal<SACCO[]>([]);
   form = { sacco_id: '', period_start: '', period_end: '' };
+
+  saccoOptions = computed<AutocompleteOption[]>(() => {
+    return this.saccos().map(s => ({
+      value: s.id,
+      label: s.name,
+      sublabel: `Reg: ${s.registration_number || 'N/A'}`,
+      searchText: `${s.name} ${s.registration_number || ''}`
+    }));
+  });
 
   ngOnInit() {
     this.load();

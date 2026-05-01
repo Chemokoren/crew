@@ -9,11 +9,12 @@ import {
   CreditScore, DetailedScoreResult, ScoreFactor,
   CreditScoreHistory, LoanTier, CrewMember
 } from '../../../core/models';
+import { AutocompleteComponent, AutocompleteOption } from '../../../shared/components/autocomplete/autocomplete.component';
 
 @Component({
   selector: 'app-credit-score',
   standalone: true,
-  imports: [CommonModule, FormsModule, RelativeTimePipe],
+  imports: [CommonModule, FormsModule, RelativeTimePipe, AutocompleteComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="animate-fade-in">
@@ -24,11 +25,14 @@ import {
         </div>
         <div class="page-actions">
           @if (isAdmin()) {
-            <div class="crew-selector">
-              <select class="form-select" [(ngModel)]="selectedCrewId" (ngModelChange)="onCrewChange()" id="select-crew-credit">
-                <option value="">— Select Crew Member —</option>
-                @for (c of crewMembers(); track c.id) { <option [value]="c.id">{{ c.first_name }} {{ c.last_name }}</option> }
-              </select>
+            <div class="crew-selector" style="position:relative; z-index: 50;">
+              <app-autocomplete
+                [(ngModel)]="selectedCrewId"
+                (ngModelChange)="onCrewChange()"
+                [options]="crewOptions()"
+                placeholder="Search Crew Member..."
+                inputId="select-crew-credit"
+              ></app-autocomplete>
             </div>
             <button class="btn btn-secondary" (click)="calculateScore()" [disabled]="calculating() || !selectedCrewId" id="btn-calculate-score">
               <span class="material-icons-round">refresh</span>
@@ -267,6 +271,16 @@ export class CreditScoreComponent implements OnInit {
   loading = signal(true);
   calculating = signal(false);
   selectedCrewId = '';
+
+  crewOptions = computed<AutocompleteOption[]>(() => {
+    return this.crewMembers().map(c => ({
+      value: c.id,
+      label: `${c.first_name} ${c.last_name}`,
+      sublabel: `ID: ${c.crew_id || ''}`,
+      badge: c.role,
+      searchText: `${c.first_name} ${c.last_name} ${c.crew_id || ''}`
+    }));
+  });
 
   // Chart dimensions
   readonly chartWidth = 600;

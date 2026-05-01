@@ -260,7 +260,9 @@ export class ApiService {
   }
 
   getLoanTier(crewMemberId: string): Observable<ApiResponse<LoanTier>> {
-    return this.http.get<ApiResponse<LoanTier>>(`${this.API}/loans/tier/${crewMemberId}`);
+    return this.http.get<ApiResponse<LoanTier>>(`${this.API}/loans/tier/${crewMemberId}`, {
+      headers: { 'X-Skip-Error-Toast': 'true' }
+    });
   }
 
   applyForLoan(data: { crew_member_id: string; amount_cents: number; tenure_days: number; category?: string; purpose?: string }): Observable<ApiResponse<LoanApplication>> {
