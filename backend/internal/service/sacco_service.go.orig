@@ -1,7 +1,6 @@
 package service
 
 import (
-	"time"
 	"context"
 	"fmt"
 	"log/slog"
@@ -118,10 +117,9 @@ func (s *SACCOService) ListSACCOs(ctx context.Context, page, perPage int, search
 // --- Membership ---
 
 type AddMemberInput struct {
-	CrewMemberID uuid.UUID        `json:"crew_member_id" binding:"required"`
-	SaccoID      uuid.UUID        `json:"sacco_id"` // Set by handler from URL
+	CrewMemberID uuid.UUID       `json:"crew_member_id" binding:"required"`
+	SaccoID      uuid.UUID       `json:"sacco_id"` // Set by handler from URL
 	Role         models.SACCORole `json:"role_in_sacco"`
-	JoinedAt     string           `json:"joined_at"`
 }
 
 func (s *SACCOService) AddMember(ctx context.Context, input AddMemberInput) (*models.CrewSACCOMembership, error) {
@@ -143,16 +141,6 @@ func (s *SACCOService) AddMember(ctx context.Context, input AddMemberInput) (*mo
 		IsActive:     true,
 	}
 
-	if input.JoinedAt != "" {
-		if t, err := time.Parse(time.RFC3339, input.JoinedAt); err == nil {
-			m.JoinedAt = t
-		} else {
-			m.JoinedAt = time.Now()
-		}
-	} else {
-		m.JoinedAt = time.Now()
-	}
-
 	if err := s.membershipRepo.Create(ctx, m); err != nil {
 		return nil, fmt.Errorf("add member: %w", err)
 	}
@@ -162,32 +150,6 @@ func (s *SACCOService) AddMember(ctx context.Context, input AddMemberInput) (*mo
 		slog.String("sacco_id", input.SaccoID.String()),
 	)
 	return m, nil
-}
-
-type UpdateMemberInput struct {
-	Role     models.SACCORole `json:"role_in_sacco" binding:"required"`
-	JoinedAt string           `json:"joined_at"`
-}
-
-func (s *SACCOService) UpdateMember(ctx context.Context, membershipID uuid.UUID, input UpdateMemberInput) (*models.CrewSACCOMembership, error) {
-	membership, err := s.membershipRepo.GetByID(ctx, membershipID)
-	if err != nil {
-		return nil, fmt.Errorf("membership not found: %w", err)
-	}
-
-	membership.RoleInSacco = input.Role
-	membership.UpdatedAt = time.Now()
-	
-	if input.JoinedAt != "" {
-		if t, err := time.Parse(time.RFC3339, input.JoinedAt); err == nil {
-			membership.JoinedAt = t
-		}
-	}
-
-	if err := s.membershipRepo.Update(ctx, membership); err != nil {
-		return nil, fmt.Errorf("failed to update membership: %w", err)
-	}
-	return membership, nil
 }
 
 func (s *SACCOService) RemoveMember(ctx context.Context, membershipID uuid.UUID) error {

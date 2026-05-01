@@ -1,17 +1,19 @@
-import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, OnInit, signal, computed, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ApiService } from '../../../core/services/api.service';
 import { ToastService } from '../../../core/services/toast.service';
+import { ConfirmDialogService } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { CurrencyKesPipe } from '../../../shared/pipes/currency-kes.pipe';
 import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
 import { SACCO, SACCOFloat, SACCOMembership, SACCOFloatTransaction, CrewMember, PaginationMeta } from '../../../core/models';
+import { AutocompleteComponent, AutocompleteOption } from '../../../shared/components/autocomplete/autocomplete.component';
 
 @Component({
   selector: 'app-sacco-detail',
   standalone: true,
-  imports: [CommonModule, FormsModule, CurrencyKesPipe, RelativeTimePipe],
+  imports: [CommonModule, FormsModule, CurrencyKesPipe, RelativeTimePipe, AutocompleteComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="animate-fade-in">
@@ -78,13 +80,17 @@ import { SACCO, SACCOFloat, SACCOMembership, SACCOFloatTransaction, CrewMember, 
             @if (members().length === 0) {
               <div class="empty-state" style="padding:var(--space-lg);"><span class="material-icons-round empty-icon">group_off</span><div class="empty-title">No members yet</div></div>
             } @else {
-              <div class="data-table-wrapper"><table class="data-table"><thead><tr><th>Crew Member ID</th><th>Role</th><th>Joined</th><th>Actions</th></tr></thead>
+              <div class="data-table-wrapper"><table class="data-table"><thead><tr><th>Member Name</th><th>Position</th><th>SACCO Role</th><th>Joined</th><th>Actions</th></tr></thead>
                 <tbody>@for (m of members(); track m.id) {
                   <tr>
-                    <td><code class="text-accent">{{ m.crew_member_id | slice:0:8 }}...</code></td>
-                    <td><span class="badge badge-info">{{ m.role }}</span></td>
+                    <td style="font-weight:500; color:var(--color-text-primary);">{{ getCrewDetails(m.crew_member_id).name }}</td>
+                    <td><span class="badge badge-neutral">{{ getCrewDetails(m.crew_member_id).position }}</span></td>
+                    <td><span class="badge" style="background: var(--gradient-accent); color: var(--color-text-inverse); font-weight: 600;">{{ m.role_in_sacco }}</span></td>
                     <td>{{ m.joined_at | relativeTime }}</td>
-                    <td><button class="btn btn-ghost btn-sm" style="color:var(--color-danger);" (click)="removeMember(m)" id="remove-member-{{m.id}}"><span class="material-icons-round" style="font-size:16px;">person_remove</span></button></td>
+                    <td>
+                      <button class="btn btn-ghost btn-sm" style="color:var(--color-accent);" (click)="openEditMemberModal(m)" id="edit-member-{{m.id}}"><span class="material-icons-round" style="font-size:16px;">edit</span></button>
+                      <button class="btn btn-ghost btn-sm" style="color:var(--color-danger);" (click)="removeMember(m)" id="remove-member-{{m.id}}"><span class="material-icons-round" style="font-size:16px;">person_remove</span></button>
+                    </td>
                   </tr>
                 }</tbody>
               </table></div>
@@ -162,20 +168,38 @@ import { SACCO, SACCOFloat, SACCOMembership, SACCOFloatTransaction, CrewMember, 
         <div class="modal-backdrop" (click)="closeModal()"><div class="modal-content" (click)="$event.stopPropagation()">
           <div class="modal-header"><h3>Add Member</h3><button class="btn-ghost" (click)="closeModal()"><span class="material-icons-round">close</span></button></div>
           <div class="modal-body">
-            <label class="form-label">Crew Member</label>
-            <select class="form-select" [(ngModel)]="memberCrewId" id="modal-member-crew">
-              <option value="">— Select —</option>
-              @for (c of crewList(); track c.id) { <option [value]="c.id">{{ c.first_name }} {{ c.last_name }} ({{ c.crew_id }})</option> }
-            </select>
-            <label class="form-label" style="margin-top:var(--space-sm);">Role in SACCO</label>
-            <select class="form-select" [(ngModel)]="memberRole" id="modal-member-role">
-              <option value="MEMBER">Member</option>
-              <option value="CHAIRMAN">Chairman</option>
-              <option value="TREASURER">Treasurer</option>
-              <option value="SECRETARY">Secretary</option>
-            </select>
+            <div style="position:relative; z-index: 55;">
+              <label class="form-label">Crew Member</label>
+              <app-autocomplete [(ngModel)]="memberCrewId" [options]="crewOptions()" placeholder="Search Crew..."></app-autocomplete>
+            </div>
+            <div style="position:relative; z-index: 54; margin-top:var(--space-sm);">
+              <label class="form-label">Role in SACCO</label>
+              <app-autocomplete [(ngModel)]="memberRole" [options]="roleOptions()" placeholder="Search Role..."></app-autocomplete>
+            </div>
+            <div style="margin-top:var(--space-sm);">
+              <label class="form-label">Joined At</label>
+              <input type="datetime-local" class="form-input" [(ngModel)]="memberJoinedAt" id="modal-member-joined">
+            </div>
           </div>
           <div class="modal-footer"><button class="btn btn-ghost" (click)="closeModal()">Cancel</button><button class="btn btn-primary" (click)="submitAddMember()" [disabled]="submitting()" id="btn-submit-member">{{ submitting()?'Adding...':'Add Member' }}</button></div>
+        </div></div>
+      }
+
+      <!-- Edit Member Modal -->
+      @if (showModal() === 'editMember') {
+        <div class="modal-backdrop" (click)="closeModal()"><div class="modal-content" (click)="$event.stopPropagation()">
+          <div class="modal-header"><h3>Edit Role</h3><button class="btn-ghost" (click)="closeModal()"><span class="material-icons-round">close</span></button></div>
+          <div class="modal-body">
+            <div style="position:relative; z-index: 54; margin-top:var(--space-sm);">
+              <label class="form-label">Role in SACCO</label>
+              <app-autocomplete [(ngModel)]="editMemberRole" [options]="roleOptions()" placeholder="Search Role..."></app-autocomplete>
+            </div>
+            <div style="margin-top:var(--space-sm);">
+              <label class="form-label">Joined At</label>
+              <input type="datetime-local" class="form-input" [(ngModel)]="editMemberJoinedAt" id="modal-edit-member-joined">
+            </div>
+          </div>
+          <div class="modal-footer"><button class="btn btn-ghost" (click)="closeModal()">Cancel</button><button class="btn btn-primary" (click)="submitEditMember()" [disabled]="submitting()" id="btn-submit-edit-member">{{ submitting()?'Saving...':'Save Changes' }}</button></div>
         </div></div>
       }
 
@@ -217,6 +241,7 @@ export class SaccoDetailComponent implements OnInit {
   private toast = inject(ToastService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
+  private confirmService = inject(ConfirmDialogService);
 
   sacco = signal<SACCO | null>(null);
   saccoFloat = signal<SACCOFloat | null>(null);
@@ -239,6 +264,21 @@ export class SaccoDetailComponent implements OnInit {
   // Member form
   memberCrewId = '';
   memberRole = 'MEMBER';
+  memberJoinedAt = '';
+  editMembershipId = '';
+  editMemberRole = 'MEMBER';
+  editMemberJoinedAt = '';
+
+  crewOptions = computed<AutocompleteOption[]>(() => this.crewList().map(c => ({
+    value: c.id, label: `${c.first_name} ${c.last_name}`, sublabel: `ID: ${c.crew_id}`, searchText: `${c.first_name} ${c.last_name} ${c.crew_id}`
+  })));
+
+  roleOptions = signal<AutocompleteOption[]>([
+    { value: 'MEMBER', label: 'Member', searchText: 'Member MEMBER' },
+    { value: 'CHAIRMAN', label: 'Chairman', searchText: 'Chairman CHAIRMAN' },
+    { value: 'TREASURER', label: 'Treasurer', searchText: 'Treasurer TREASURER' },
+    { value: 'SECRETARY', label: 'Secretary', searchText: 'Secretary SECRETARY' }
+  ]);
 
   // Float form
   floatAmount = 0;
@@ -292,7 +332,18 @@ export class SaccoDetailComponent implements OnInit {
   }
 
   // --- Modals ---
-  openModal(type: string): void { this.floatAmount = 0; this.floatReference = ''; this.memberCrewId = ''; this.memberRole = 'MEMBER'; this.showModal.set(type); }
+  openModal(type: string): void {
+    this.floatAmount = 0;
+    this.floatReference = '';
+    this.memberCrewId = '';
+    this.memberRole = 'MEMBER';
+    
+    // Set default JoinedAt to current local time in YYYY-MM-DDTHH:mm format
+    const now = new Date();
+    this.memberJoinedAt = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    
+    this.showModal.set(type);
+  }
   closeModal(): void { this.showModal.set(null); }
 
   submitEdit(): void {
@@ -306,17 +357,63 @@ export class SaccoDetailComponent implements OnInit {
   submitAddMember(): void {
     if (!this.memberCrewId) { this.toast.error('Select a crew member'); return; }
     this.submitting.set(true);
-    this.api.addSACCOMember(this.saccoId, { crew_member_id: this.memberCrewId, role: this.memberRole }).subscribe({
+    
+    const payload = { 
+      crew_member_id: this.memberCrewId, 
+      role: this.memberRole,
+      joined_at: this.memberJoinedAt ? new Date(this.memberJoinedAt).toISOString() : undefined
+    };
+    
+    this.api.addSACCOMember(this.saccoId, payload).subscribe({
       next: () => { this.toast.success('Member added'); this.closeModal(); this.submitting.set(false); this.loadMembers(); },
       error: () => this.submitting.set(false),
     });
   }
 
-  removeMember(m: SACCOMembership): void {
-    if (!confirm('Remove this member from the SACCO?')) return;
-    this.api.removeSACCOMember(this.saccoId, m.id).subscribe({
-      next: () => { this.toast.success('Member removed'); this.loadMembers(); },
+  openEditMemberModal(m: SACCOMembership): void {
+    this.editMembershipId = m.id;
+    this.editMemberRole = m.role_in_sacco || 'MEMBER';
+    
+    if (m.joined_at) {
+      const d = new Date(m.joined_at);
+      this.editMemberJoinedAt = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    } else {
+      const now = new Date();
+      this.editMemberJoinedAt = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    }
+    
+    this.showModal.set('editMember');
+  }
+
+  submitEditMember(): void {
+    if (!this.editMemberRole) { this.toast.error('Select a role'); return; }
+    this.submitting.set(true);
+    
+    const payload = { 
+      role_in_sacco: this.editMemberRole,
+      joined_at: this.editMemberJoinedAt ? new Date(this.editMemberJoinedAt).toISOString() : undefined
+    };
+    
+    this.api.updateSACCOMember(this.saccoId, this.editMembershipId, payload).subscribe({
+      next: () => { this.toast.success('Role updated'); this.closeModal(); this.submitting.set(false); this.loadMembers(); },
+      error: () => this.submitting.set(false),
     });
+  }
+
+  removeMember(m: SACCOMembership): void {
+    this.confirmService.danger('Remove Member', 'Remove this member from the SACCO?').subscribe(res => {
+      if (res.confirmed) {
+        this.api.removeSACCOMember(this.saccoId, m.id).subscribe({
+          next: () => { this.toast.success('Member removed'); this.loadMembers(); },
+        });
+      }
+    });
+  }
+
+  getCrewDetails(crewId: string): { name: string, position: string } {
+    const crew = this.crewList().find(c => c.id === crewId);
+    if (!crew) return { name: 'Unknown Member', position: '—' };
+    return { name: `${crew.first_name} ${crew.last_name}`, position: crew.role || '—' };
   }
 
   submitCreditFloat(): void {

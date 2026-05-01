@@ -139,10 +139,9 @@ export type VehicleType = 'MATATU' | 'BODA' | 'TUK_TUK';
 export interface Route {
   id: string;
   name: string;
-  code: string;
-  origin: string;
-  destination: string;
-  distance_km?: number;
+  start_point: string;
+  end_point: string;
+  estimated_distance_km: number | null;
   is_active: boolean;
   created_at: string;
 }
@@ -390,7 +389,7 @@ export interface SACCOMembership {
   id: string;
   sacco_id: string;
   crew_member_id: string;
-  role: string;
+  role_in_sacco: string;
   joined_at: string;
 }
 

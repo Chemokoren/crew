@@ -1,13 +1,15 @@
-import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, OnInit, signal, computed, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { ApiService } from '../../../core/services/api.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { Vehicle, SACCO } from '../../../core/models';
+import { AutocompleteComponent, AutocompleteOption } from '../../../shared/components/autocomplete/autocomplete.component';
+import { ConfirmDialogService } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 
 @Component({
-  selector: 'app-vehicle-list', standalone: true, imports: [CommonModule, FormsModule],
+  selector: 'app-vehicle-list', standalone: true, imports: [CommonModule, FormsModule, AutocompleteComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="animate-fade-in">
@@ -51,13 +53,12 @@ import { Vehicle, SACCO } from '../../../core/models';
           <div class="modal-header"><h3>Add Vehicle</h3><button class="btn btn-ghost btn-icon" (click)="showModal.set(false)"><span class="material-icons-round">close</span></button></div>
           <div class="modal-body">
             <div class="form-group"><label class="form-label">Registration Number</label><input class="form-input" [(ngModel)]="form.registration_no" placeholder="KAA 123A" /></div>
-            <div class="form-group"><label class="form-label">SACCO</label>
-              <select class="form-select" [(ngModel)]="form.sacco_id">
-                <option value="">— Select SACCO —</option>
-                @for (s of saccos(); track s.id) { <option [value]="s.id">{{ s.name }}</option> }
-              </select>
+            <div class="form-group" style="position:relative; z-index: 55;"><label class="form-label">SACCO</label>
+              <app-autocomplete [(ngModel)]="form.sacco_id" [options]="saccoOptions()" placeholder="Search SACCO..."></app-autocomplete>
             </div>
-            <div class="form-group"><label class="form-label">Type</label><select class="form-select" [(ngModel)]="form.vehicle_type"><option value="MATATU">Matatu</option><option value="BODA">Boda Boda</option><option value="TUK_TUK">Tuk Tuk</option></select></div>
+            <div class="form-group" style="position:relative; z-index: 54;"><label class="form-label">Type</label>
+              <app-autocomplete [(ngModel)]="form.vehicle_type" [options]="typeOptions()" placeholder="Search Type..."></app-autocomplete>
+            </div>
             <div class="form-group"><label class="form-label">Capacity</label><input class="form-input" type="number" [(ngModel)]="form.capacity" placeholder="14" /></div>
           </div>
           <div class="modal-footer"><button class="btn btn-secondary" (click)="showModal.set(false)">Cancel</button><button class="btn btn-primary" (click)="create()" [disabled]="creating()">{{creating()?'Creating...':'Add Vehicle'}}</button></div>
@@ -67,10 +68,18 @@ import { Vehicle, SACCO } from '../../../core/models';
 })
 export class VehicleListComponent implements OnInit {
   private api = inject(ApiService); private toast = inject(ToastService); private router = inject(Router);
+  private confirmService = inject(ConfirmDialogService);
   items = signal<Vehicle[]>([]); filtered = signal<Vehicle[]>([]); saccos = signal<SACCO[]>([]);
   loading = signal(true); showModal = signal(false); creating = signal(false);
   filterSacco = ''; filterType = '';
   form = { registration_no: '', sacco_id: '', vehicle_type: 'MATATU', capacity: 14 };
+
+  saccoOptions = computed<AutocompleteOption[]>(() => this.saccos().map(s => ({ value: s.id, label: s.name, sublabel: `Reg: ${s.registration_number||'N/A'}`, searchText: `${s.name} ${s.registration_number||''}` })));
+  typeOptions = signal<AutocompleteOption[]>([
+    { value: 'MATATU', label: 'Matatu', searchText: 'Matatu MATATU' },
+    { value: 'BODA', label: 'Boda Boda', searchText: 'Boda Boda BODA' },
+    { value: 'TUK_TUK', label: 'Tuk Tuk', searchText: 'Tuk Tuk TUK_TUK' }
+  ]);
 
   ngOnInit() {
     this.api.getSACCOs({ per_page: '200' }).subscribe({ next: r => this.saccos.set(r.data) });
@@ -94,6 +103,12 @@ export class VehicleListComponent implements OnInit {
   }
 
   create() { this.creating.set(true); this.api.createVehicle(this.form as any).subscribe({ next: () => { this.toast.success('Vehicle added'); this.showModal.set(false); this.creating.set(false); this.load(); }, error: () => this.creating.set(false) }); }
-  deleteVehicle(v: Vehicle) { if (confirm(`Delete ${v.registration_no}?`)) { this.api.deleteVehicle(v.id).subscribe({ next: () => { this.toast.success('Vehicle deleted'); this.load(); } }); } }
+  deleteVehicle(v: Vehicle) { 
+    this.confirmService.danger('Delete Vehicle', `Are you sure you want to delete ${v.registration_no}?`).subscribe(res => {
+      if (res.confirmed) {
+        this.api.deleteVehicle(v.id).subscribe({ next: () => { this.toast.success('Vehicle deleted'); this.load(); } });
+      }
+    });
+  }
   viewVehicle(v: Vehicle) { this.router.navigate(['/vehicles', v.id]); }
 }

@@ -116,6 +116,25 @@ func (h *SACCOHandler) AddMember(c *gin.Context) {
 	SuccessResponse(c, http.StatusCreated, m)
 }
 
+func (h *SACCOHandler) UpdateMember(c *gin.Context) {
+	membershipID, err := uuid.Parse(c.Param("membership_id"))
+	if err != nil {
+		BadRequest(c, "Invalid membership ID")
+		return
+	}
+	var req service.UpdateMemberInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		BadRequest(c, err.Error())
+		return
+	}
+	m, err := h.saccoSvc.UpdateMember(c.Request.Context(), membershipID, req)
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, m)
+}
+
 func (h *SACCOHandler) RemoveMember(c *gin.Context) {
 	membershipID, err := uuid.Parse(c.Param("membership_id"))
 	if err != nil {

@@ -616,6 +616,7 @@ func main() {
 			saccos.DELETE("/:id", saccoHandler.Delete)
 			saccos.GET("/:id/members", saccoHandler.ListMembers)
 			saccos.POST("/:id/members", saccoHandler.AddMember)
+			saccos.PUT("/:id/members/:membership_id", saccoHandler.UpdateMember)
 			saccos.DELETE("/:id/members/:membership_id", saccoHandler.RemoveMember)
 			saccos.GET("/:id/float", saccoHandler.GetFloat)
 			saccos.POST("/:id/float/credit", saccoHandler.CreditFloat)

@@ -63,7 +63,7 @@ import { Vehicle, SACCO, Route as AppRoute } from '../../../core/models';
             <label class="form-label" style="margin-top:var(--space-sm);">Route</label>
             <select class="form-select" [(ngModel)]="editForm.route_id" id="edit-route">
               <option value="">— No route —</option>
-              @for (r of routes(); track r.id) { <option [value]="r.id">{{ r.name }} ({{ r.code }})</option> }
+              @for (r of routes(); track r.id) { <option [value]="r.id">{{ r.name }} ({{ r.start_point }} → {{ r.end_point }})</option> }
             </select>
           </div>
           <div class="modal-footer"><button class="btn btn-ghost" (click)="showEdit.set(false)">Cancel</button><button class="btn btn-primary" (click)="submitEdit()" [disabled]="submitting()" id="btn-submit-edit">{{ submitting()?'Saving...':'Save Changes' }}</button></div>

@@ -127,8 +127,12 @@ export class ApiService {
     return this.http.get<ApiListResponse<SACCOMembership>>(`${this.API}/saccos/${saccoId}/members`, { params: this.buildParams(params) });
   }
 
-  addSACCOMember(saccoId: string, data: { crew_member_id: string; role: string }): Observable<unknown> {
+  addSACCOMember(saccoId: string, data: { crew_member_id: string; role: string; joined_at?: string }): Observable<unknown> {
     return this.http.post(`${this.API}/saccos/${saccoId}/members`, data);
+  }
+
+  updateSACCOMember(saccoId: string, membershipId: string, data: { role_in_sacco: string; joined_at?: string }): Observable<unknown> {
+    return this.http.put(`${this.API}/saccos/${saccoId}/members/${membershipId}`, data);
   }
 
   removeSACCOMember(saccoId: string, membershipId: string): Observable<unknown> {

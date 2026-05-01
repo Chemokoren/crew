@@ -19,8 +19,7 @@ import { environment } from '../../../../environments/environment';
         <div class="auth-card glass-card">
           <div class="auth-header">
             <div class="auth-logo">
-              <span class="logo-icon">⚡</span>
-              <h1 class="auth-title">AMY<span class="accent">MIS</span></h1>
+              <img src="logo.png" alt="AMY MIS Logo" class="dynamic-logo">
             </div>
             <p class="auth-subtitle">Workforce Financial Operating System</p>
           </div>

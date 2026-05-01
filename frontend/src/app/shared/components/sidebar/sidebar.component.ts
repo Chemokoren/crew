@@ -25,10 +25,7 @@ interface NavItem {
     <aside class="sidebar" [class.collapsed]="collapsed()" [class.mobile-open]="mobileOpen()">
       <div class="sidebar-brand">
         <div class="brand-logo">
-          <span class="logo-icon">⚡</span>
-          @if (!collapsed()) {
-            <span class="logo-text">AMY<span class="logo-accent">MIS</span></span>
-          }
+          <img src="logo.png" alt="AMY MIS Logo" class="dynamic-logo">
         </div>
         <button class="collapse-btn desktop-only" (click)="toggle()" id="sidebar-toggle">
           <span class="material-icons-round">{{ collapsed() ? 'chevron_right' : 'chevron_left' }}</span>

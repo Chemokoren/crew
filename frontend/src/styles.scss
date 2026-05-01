@@ -92,6 +92,15 @@
 }
 
 /* --- Light Theme --- */
+.dynamic-logo {
+  max-width: 100%;
+  max-height: 44px;
+  object-fit: contain;
+  /* Invert black to white, rotate hues to keep colors intact, boost brightness */
+  filter: invert(1) hue-rotate(180deg) brightness(1.2);
+  mix-blend-mode: screen;
+}
+
 [data-theme="light"] {
   --color-bg-primary: #f5f7fa;
   --color-bg-secondary: #ffffff;
@@ -948,6 +957,10 @@ th[appSortable] {
 
 /* Light mode scrollbar */
 [data-theme="light"] {
+  .dynamic-logo {
+    filter: none;
+    mix-blend-mode: multiply;
+  }
   ::-webkit-scrollbar-thumb {
     background: rgba(0, 0, 0, 0.12);
 

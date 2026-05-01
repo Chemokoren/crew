@@ -18,7 +18,7 @@ import { Route as AppRoute, Vehicle } from '../../../core/models';
         <div>
           <button class="btn btn-ghost btn-sm" (click)="goBack()" style="margin-bottom:var(--space-xs);"><span class="material-icons-round" style="font-size:16px;">arrow_back</span> Back to Routes</button>
           <h1 class="page-title">{{ appRoute()?.name || 'Route Details' }}</h1>
-          <p class="page-subtitle"><code class="text-accent">{{ appRoute()?.code }}</code> — {{ appRoute()?.origin }} → {{ appRoute()?.destination }}</p>
+          <p class="page-subtitle">{{ appRoute()?.start_point }} → {{ appRoute()?.end_point }}</p>
         </div>
         <div class="page-actions">
           <button class="btn btn-secondary" (click)="openEdit()" id="btn-edit-route"><span class="material-icons-round">edit</span> Edit</button>
@@ -30,9 +30,9 @@ import { Route as AppRoute, Vehicle } from '../../../core/models';
       } @else if (appRoute(); as r) {
         <!-- Summary cards -->
         <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
-          <div class="stat-card"><div class="stat-icon" style="background:rgba(0,210,255,0.12);color:var(--color-accent);"><span class="material-icons-round">route</span></div><div class="stat-value" style="font-size:0.95rem;">{{ r.origin }}</div><div class="stat-label">Origin</div></div>
-          <div class="stat-card"><div class="stat-icon" style="background:var(--color-success-light);color:var(--color-success);"><span class="material-icons-round">place</span></div><div class="stat-value" style="font-size:0.95rem;">{{ r.destination }}</div><div class="stat-label">Destination</div></div>
-          <div class="stat-card"><div class="stat-icon" style="background:rgba(168,85,247,0.12);color:#a855f7;"><span class="material-icons-round">straighten</span></div><div class="stat-value">{{ r.distance_km ? r.distance_km + ' km' : '—' }}</div><div class="stat-label">Distance</div></div>
+          <div class="stat-card"><div class="stat-icon" style="background:rgba(0,210,255,0.12);color:var(--color-accent);"><span class="material-icons-round">route</span></div><div class="stat-value" style="font-size:0.95rem;">{{ r.start_point }}</div><div class="stat-label">Origin</div></div>
+          <div class="stat-card"><div class="stat-icon" style="background:var(--color-success-light);color:var(--color-success);"><span class="material-icons-round">place</span></div><div class="stat-value" style="font-size:0.95rem;">{{ r.end_point }}</div><div class="stat-label">Destination</div></div>
+          <div class="stat-card"><div class="stat-icon" style="background:rgba(168,85,247,0.12);color:#a855f7;"><span class="material-icons-round">straighten</span></div><div class="stat-value">{{ r.estimated_distance_km ? r.estimated_distance_km + ' km' : '—' }}</div><div class="stat-label">Distance</div></div>
           <div class="stat-card"><div class="stat-icon" style="background:rgba(255,184,0,0.12);color:#ffb800;"><span class="material-icons-round">directions_bus</span></div><div class="stat-value">{{ assignedVehicles().length }}</div><div class="stat-label">Vehicles</div></div>
         </div>
 
@@ -41,10 +41,9 @@ import { Route as AppRoute, Vehicle } from '../../../core/models';
           <h3 style="font-size:1rem;font-weight:600;margin-bottom:var(--space-md);">Route Information</h3>
           <div class="detail-grid">
             <div class="detail-row"><span class="detail-label">Name</span><span class="detail-value" style="font-weight:600;">{{ r.name }}</span></div>
-            <div class="detail-row"><span class="detail-label">Code</span><span class="detail-value"><code class="text-accent">{{ r.code }}</code></span></div>
-            <div class="detail-row"><span class="detail-label">Origin</span><span class="detail-value">{{ r.origin }}</span></div>
-            <div class="detail-row"><span class="detail-label">Destination</span><span class="detail-value">{{ r.destination }}</span></div>
-            <div class="detail-row"><span class="detail-label">Distance</span><span class="detail-value">{{ r.distance_km ? r.distance_km + ' km' : 'Not set' }}</span></div>
+            <div class="detail-row"><span class="detail-label">Origin</span><span class="detail-value">{{ r.start_point }}</span></div>
+            <div class="detail-row"><span class="detail-label">Destination</span><span class="detail-value">{{ r.end_point }}</span></div>
+            <div class="detail-row"><span class="detail-label">Distance</span><span class="detail-value">{{ r.estimated_distance_km ? r.estimated_distance_km + ' km' : 'Not set' }}</span></div>
             <div class="detail-row"><span class="detail-label">Status</span><span class="detail-value"><span class="badge" [ngClass]="r.is_active?'badge-success':'badge-danger'">{{ r.is_active?'Active':'Inactive' }}</span></span></div>
             <div class="detail-row"><span class="detail-label">Created</span><span class="detail-value">{{ r.created_at | relativeTime }}</span></div>
           </div>
@@ -76,10 +75,9 @@ import { Route as AppRoute, Vehicle } from '../../../core/models';
           <div class="modal-header"><h3>Edit Route</h3><button class="btn-ghost" (click)="showEdit.set(false)"><span class="material-icons-round">close</span></button></div>
           <div class="modal-body">
             <label class="form-label">Name</label><input class="form-input" [(ngModel)]="editForm.name" id="edit-name">
-            <label class="form-label" style="margin-top:var(--space-sm);">Code</label><input class="form-input" [(ngModel)]="editForm.code" id="edit-code">
-            <label class="form-label" style="margin-top:var(--space-sm);">Origin</label><input class="form-input" [(ngModel)]="editForm.origin" id="edit-origin">
-            <label class="form-label" style="margin-top:var(--space-sm);">Destination</label><input class="form-input" [(ngModel)]="editForm.destination" id="edit-dest">
-            <label class="form-label" style="margin-top:var(--space-sm);">Distance (km)</label><input class="form-input" type="number" [(ngModel)]="editForm.distance_km" id="edit-distance">
+            <label class="form-label" style="margin-top:var(--space-sm);">Origin</label><input class="form-input" [(ngModel)]="editForm.start_point" id="edit-origin">
+            <label class="form-label" style="margin-top:var(--space-sm);">Destination</label><input class="form-input" [(ngModel)]="editForm.end_point" id="edit-dest">
+            <label class="form-label" style="margin-top:var(--space-sm);">Distance (km)</label><input class="form-input" type="number" [(ngModel)]="editForm.estimated_distance_km" id="edit-distance">
           </div>
           <div class="modal-footer"><button class="btn btn-ghost" (click)="showEdit.set(false)">Cancel</button><button class="btn btn-primary" (click)="submitEdit()" [disabled]="submitting()" id="btn-submit-edit">{{ submitting()?'Saving...':'Save Changes' }}</button></div>
         </div></div>
@@ -107,7 +105,7 @@ export class RouteDetailComponent implements OnInit {
   submitting = signal(false);
   routeId = '';
 
-  editForm = { name: '', code: '', origin: '', destination: '', distance_km: 0 };
+  editForm = { name: '', start_point: '', end_point: '', estimated_distance_km: 0 };
 
   ngOnInit(): void {
     this.routeId = this.route.snapshot.paramMap.get('id') || '';
@@ -123,9 +121,9 @@ export class RouteDetailComponent implements OnInit {
       next: (r) => {
         this.appRoute.set(r.data);
         this.editForm = {
-          name: r.data.name, code: r.data.code,
-          origin: r.data.origin, destination: r.data.destination,
-          distance_km: r.data.distance_km || 0,
+          name: r.data.name,
+          start_point: r.data.start_point, end_point: r.data.end_point,
+          estimated_distance_km: r.data.estimated_distance_km || 0,
         };
         this.loading.set(false);
       },
