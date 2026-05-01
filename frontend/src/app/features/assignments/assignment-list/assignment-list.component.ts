@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, OnInit, signal, computed, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -6,12 +6,13 @@ import { ApiService } from '../../../core/services/api.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { ConfirmDialogService } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { TooltipDirective } from '../../../shared/directives/tooltip.directive';
+import { AutocompleteComponent, AutocompleteOption } from '../../../shared/components/autocomplete/autocomplete.component';
 import { Assignment, PaginationMeta, CrewMember, Vehicle, SACCO } from '../../../core/models';
 
 @Component({
   selector: 'app-assignment-list',
   standalone: true,
-  imports: [CommonModule, FormsModule, TooltipDirective],
+  imports: [CommonModule, FormsModule, TooltipDirective, AutocompleteComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="animate-fade-in">
@@ -135,47 +136,74 @@ import { Assignment, PaginationMeta, CrewMember, Vehicle, SACCO } from '../../..
         }
       }
 
-      <!-- Create Modal with Dropdown Selectors -->
+      <!-- Create Modal with Autocomplete Selectors -->
       @if (showCreateModal()) {
         <div class="modal-backdrop" (click)="showCreateModal.set(false)">
-          <div class="modal-content" (click)="$event.stopPropagation()">
+          <div class="modal-content modal-content-lg" (click)="$event.stopPropagation()">
             <div class="modal-header"><h3>Create Assignment</h3><button class="btn btn-ghost btn-icon" (click)="showCreateModal.set(false)"><span class="material-icons-round">close</span></button></div>
             <div class="modal-body">
-              <!-- Crew Member Dropdown -->
+              <!-- Crew Member Autocomplete -->
               <div class="form-group">
                 <label class="form-label">Crew Member</label>
-                <select class="form-select" [(ngModel)]="newAssignment.crew_member_id" id="create-crew-select">
-                  <option value="">Select a crew member...</option>
-                  @for (c of crewMembers(); track c.id) {
-                    <option [value]="c.id">{{ c.full_name }} — {{ c.crew_id }} ({{ c.role }})</option>
-                  }
-                </select>
+                <app-autocomplete
+                  [options]="crewMemberOptions()"
+                  placeholder="Search by name, ID, role..."
+                  inputId="create-crew-select"
+                  [(ngModel)]="newAssignment.crew_member_id"
+                ></app-autocomplete>
               </div>
 
-              <!-- Vehicle Dropdown -->
+              <!-- Vehicle Autocomplete -->
               <div class="form-group">
                 <label class="form-label">Vehicle</label>
-                <select class="form-select" [(ngModel)]="newAssignment.vehicle_id" id="create-vehicle-select">
-                  <option value="">Select a vehicle...</option>
-                  @for (v of vehicles(); track v.id) {
-                    <option [value]="v.id">{{ v.registration_no }} — {{ v.vehicle_type }} (Cap: {{ v.capacity }})</option>
-                  }
-                </select>
+                <app-autocomplete
+                  [options]="vehicleOptions()"
+                  placeholder="Search by registration, type..."
+                  inputId="create-vehicle-select"
+                  [(ngModel)]="newAssignment.vehicle_id"
+                ></app-autocomplete>
               </div>
 
-              <!-- SACCO Dropdown -->
+              <!-- SACCO Autocomplete -->
               <div class="form-group">
                 <label class="form-label">SACCO</label>
-                <select class="form-select" [(ngModel)]="newAssignment.sacco_id" id="create-sacco-select">
-                  <option value="">Select a SACCO...</option>
-                  @for (s of saccos(); track s.id) {
-                    <option [value]="s.id">{{ s.name }}</option>
-                  }
-                </select>
+                <app-autocomplete
+                  [options]="saccoOptions()"
+                  placeholder="Search by SACCO name..."
+                  inputId="create-sacco-select"
+                  [(ngModel)]="newAssignment.sacco_id"
+                ></app-autocomplete>
               </div>
 
-              <div class="form-group"><label class="form-label">Shift Date</label><input class="form-input" type="date" [(ngModel)]="newAssignment.shift_date" /></div>
-              <div class="form-group"><label class="form-label">Shift Start</label><input class="form-input" type="datetime-local" [(ngModel)]="newAssignment.shift_start" /></div>
+              <!-- Shift Date — Date picker -->
+              <div class="form-group">
+                <label class="form-label">
+                  <span class="material-icons-round form-label-icon">calendar_today</span>
+                  Shift Date
+                </label>
+                <input
+                  class="form-input"
+                  type="date"
+                  [(ngModel)]="newAssignment.shift_date"
+                  id="create-shift-date"
+                />
+              </div>
+
+              <!-- Shift Start — DateTime picker -->
+              <div class="form-group">
+                <label class="form-label">
+                  <span class="material-icons-round form-label-icon">schedule</span>
+                  Shift Start
+                </label>
+                <input
+                  class="form-input"
+                  type="datetime-local"
+                  [(ngModel)]="newAssignment.shift_start"
+                  id="create-shift-start"
+                  step="60"
+                />
+              </div>
+
               <div class="form-group"><label class="form-label">Earning Model</label>
                 <select class="form-select" [(ngModel)]="newAssignment.earning_model">
                   <option value="FIXED">Fixed</option><option value="COMMISSION">Commission</option><option value="HYBRID">Hybrid</option>
@@ -236,6 +264,40 @@ import { Assignment, PaginationMeta, CrewMember, Vehicle, SACCO } from '../../..
     }
     .pagination-actions { display: flex; gap: 4px; }
 
+    /* Make modal wider for autocomplete fields */
+    .modal-content-lg {
+      max-width: 580px;
+    }
+
+    /* Form label with icon */
+    .form-label-icon {
+      font-size: 14px;
+      vertical-align: middle;
+      margin-right: 4px;
+      color: var(--color-accent);
+    }
+
+    /* Enhanced date/datetime inputs */
+    input[type="date"],
+    input[type="datetime-local"] {
+      color-scheme: dark;
+      cursor: pointer;
+    }
+
+    input[type="date"]::-webkit-calendar-picker-indicator,
+    input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+      filter: invert(0.7) sepia(1) saturate(5) hue-rotate(175deg);
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 4px;
+      transition: background var(--transition-fast);
+    }
+
+    input[type="date"]::-webkit-calendar-picker-indicator:hover,
+    input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
+      background: rgba(0, 210, 255, 0.12);
+    }
+
     @media (max-width: 768px) {
       .filters-bar .form-select,
       .filters-bar .form-input {
@@ -266,6 +328,37 @@ export class AssignmentListComponent implements OnInit {
   crewMembers = signal<CrewMember[]>([]);
   vehicles = signal<Vehicle[]>([]);
   saccos = signal<SACCO[]>([]);
+
+  // Computed autocomplete options
+  crewMemberOptions = computed<AutocompleteOption[]>(() =>
+    this.crewMembers().map(c => ({
+      value: c.id,
+      label: c.full_name,
+      sublabel: `${c.crew_id} · ${c.role}`,
+      badge: c.role,
+      searchText: [c.full_name, c.first_name, c.last_name, c.crew_id, c.role, c.kyc_status].join(' '),
+    }))
+  );
+
+  vehicleOptions = computed<AutocompleteOption[]>(() =>
+    this.vehicles().map(v => ({
+      value: v.id,
+      label: v.registration_no,
+      sublabel: `${v.vehicle_type} · Capacity: ${v.capacity}`,
+      badge: v.vehicle_type,
+      searchText: [v.registration_no, v.vehicle_type, `capacity ${v.capacity}`].join(' '),
+    }))
+  );
+
+  saccoOptions = computed<AutocompleteOption[]>(() =>
+    this.saccos().map(s => ({
+      value: s.id,
+      label: s.name,
+      sublabel: `${s.registration_number} · ${s.county}`,
+      badge: s.county,
+      searchText: [s.name, s.registration_number, s.county, s.sub_county || '', s.contact_phone, s.contact_email || ''].join(' '),
+    }))
+  );
 
   // Create modal
   showCreateModal = signal(false);
