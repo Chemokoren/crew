@@ -6,10 +6,11 @@ import { AuthService } from '../../../core/services/auth.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
 import { Document, DocumentType, CrewMember } from '../../../core/models';
+import { AutocompleteComponent, AutocompleteOption } from '../../../shared/components/autocomplete/autocomplete.component';
 
 @Component({
   selector: 'app-document-list', standalone: true,
-  imports: [CommonModule, FormsModule, RelativeTimePipe],
+  imports: [CommonModule, FormsModule, RelativeTimePipe, AutocompleteComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="animate-fade-in">
@@ -82,10 +83,11 @@ import { Document, DocumentType, CrewMember } from '../../../core/models';
               </select>
             </div>
             <div class="form-group"><label class="form-label">Crew Member (optional)</label>
-              <select class="form-select" [(ngModel)]="uploadForm.crew_member_id">
-                <option value="">— None —</option>
-                @for (c of crewMembers(); track c.id) { <option [value]="c.id">{{ c.first_name }} {{ c.last_name }}</option> }
-              </select>
+              <app-autocomplete
+                [(ngModel)]="uploadForm.crew_member_id"
+                [options]="crewOptions()"
+                placeholder="Search crew members..."
+              ></app-autocomplete>
             </div>
             <div class="form-group"><label class="form-label">File *</label>
               <div class="drop-zone" [class.has-file]="selectedFile" (click)="fileInput.click()" (dragover)="$event.preventDefault()" (drop)="onDrop($event)">
@@ -141,6 +143,16 @@ export class DocumentListComponent implements OnInit {
   selectedFile: File | null = null;
 
   uploadForm = { document_type: 'OTHER' as DocumentType, crew_member_id: '' };
+
+  crewOptions = computed<AutocompleteOption[]>(() => {
+    return this.crewMembers().map(c => ({
+      value: c.id,
+      label: `${c.first_name} ${c.last_name}`,
+      sublabel: `ID: ${c.crew_id || ''}`,
+      badge: c.role,
+      searchText: `${c.first_name} ${c.last_name} ${c.crew_id || ''}`
+    }));
+  });
 
   readonly docTypes = [
     { value: 'KYC_ID_FRONT', label: 'KYC ID Front' },

@@ -28,7 +28,7 @@ export class NotificationStateService {
 
   /** Manual refresh — call after marking a notification as read */
   refresh(): void {
-    if (!this.auth.isAuthenticated()) return;
+    if (!this.auth.isAuthenticated() || this.auth.isTokenExpired()) return;
     this.api.getNotifications({ per_page: '50' }).subscribe({
       next: r => this.notifications.set(r.data),
       error: () => {},

@@ -347,7 +347,9 @@ export class ApiService {
   }
 
   createNotificationTemplate(data: Partial<NotificationTemplate>): Observable<ApiResponse<NotificationTemplate>> {
-    return this.http.post<ApiResponse<NotificationTemplate>>(`${this.API}/admin/notifications/templates`, data);
+    const payload = { ...data };
+    if (!payload.id) delete payload.id;
+    return this.http.post<ApiResponse<NotificationTemplate>>(`${this.API}/admin/notifications/templates`, payload);
   }
 
   updateNotificationTemplate(data: Partial<NotificationTemplate>): Observable<ApiResponse<NotificationTemplate>> {

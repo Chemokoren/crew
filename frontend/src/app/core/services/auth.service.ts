@@ -40,6 +40,18 @@ export class AuthService {
     return localStorage.getItem('amy_refresh_token');
   }
 
+  isTokenExpired(): boolean {
+    const token = this.accessToken;
+    if (!token) return true;
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const expiry = payload.exp * 1000;
+      return Date.now() > expiry - 5000; // 5 second buffer
+    } catch {
+      return true;
+    }
+  }
+
   login(phone: string, password: string): Observable<ApiResponse<AuthResponse>> {
     return this.http.post<ApiResponse<AuthResponse>>(`${this.API}/auth/login`, { phone, password }).pipe(
       tap(res => this.handleAuthSuccess(res.data)),
