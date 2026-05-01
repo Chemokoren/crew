@@ -7,6 +7,7 @@ import { of } from 'rxjs';
 import { environment } from '../../../../environments/environment';
 import { ApiService } from '../../../core/services/api.service';
 import { ToastService } from '../../../core/services/toast.service';
+import { ConfirmDialogService } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { CurrencyKesPipe } from '../../../shared/pipes/currency-kes.pipe';
 import { CrewMember, Wallet } from '../../../core/models';
 
@@ -57,7 +58,7 @@ import { CrewMember, Wallet } from '../../../core/models';
           <div class="glass-card detail-card">
             <h3 class="card-title">KYC Verification</h3>
             @if (c.kyc_status === 'PENDING') {
-              <p class="text-muted" style="margin-bottom: 16px;">Verify this crew member's national ID via IPRS</p>
+              <p class="text-muted" style="margin-bottom: 16px;">Verify this crew member's national ID via IPRS. You'll need the ID serial number printed on the back of the card.</p>
               <button class="btn btn-primary" (click)="verifyKYC()" [disabled]="verifying()" id="btn-verify-kyc">
                 @if (verifying()) { Verifying... } @else { <span class="material-icons-round">verified_user</span> Verify National ID }
               </button>
@@ -162,6 +163,7 @@ export class CrewDetailComponent implements OnInit {
   private http = inject(HttpClient);
   private route = inject(ActivatedRoute);
   private toast = inject(ToastService);
+  private dialog = inject(ConfirmDialogService);
   private readonly API = environment.apiUrl;
   private readonly silentHeaders = { 'X-Skip-Error-Toast': 'true' };
 
@@ -196,21 +198,36 @@ export class CrewDetailComponent implements OnInit {
   verifyKYC(): void {
     const c = this.crew();
     if (!c) return;
-    this.verifying.set(true);
-    this.api.verifyNationalID(c.id, '').subscribe({
-      next: (res) => { this.crew.set(res.data); this.toast.success('KYC verification initiated'); this.verifying.set(false); },
-      error: () => this.verifying.set(false),
+
+    this.dialog.prompt(
+      'Verify National ID',
+      'Enter the ID card serial number (printed on the back of the national ID card) to verify via IPRS.',
+      { confirmText: 'Verify', promptLabel: 'Serial Number', promptPlaceholder: 'e.g. 12345678' }
+    ).subscribe(result => {
+      if (!result.confirmed || !result.value?.trim()) {
+        if (result.confirmed) this.toast.warning('Serial number is required for verification');
+        return;
+      }
+      this.verifying.set(true);
+      this.api.verifyNationalID(c.id, result.value.trim()).subscribe({
+        next: (res) => { this.crew.set(res.data); this.toast.success('KYC verification initiated'); this.verifying.set(false); },
+        error: () => this.verifying.set(false),
+      });
     });
   }
 
   deactivate(): void {
     const c = this.crew();
     if (!c) return;
-    if (confirm('Are you sure you want to deactivate this crew member?')) {
+    this.dialog.danger(
+      'Deactivate Crew Member',
+      `Are you sure you want to deactivate ${c.full_name}? They will no longer be available for assignments.`
+    ).subscribe(result => {
+      if (!result.confirmed) return;
       this.api.deactivateCrewMember(c.id).subscribe({
-        next: () => { this.toast.success('Crew member deactivated'); this.crew.update(c => c ? { ...c, is_active: false } : null); },
+        next: () => { this.toast.success('Crew member deactivated'); this.crew.update(cr => cr ? { ...cr, is_active: false } : null); },
       });
-    }
+    });
   }
 
   kycBadge(status: string): string {
