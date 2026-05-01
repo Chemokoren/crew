@@ -171,7 +171,17 @@ info "Downloading Go dependencies..."
 go mod download 2>&1 | tail -5
 log "Dependencies ready"
 
-# --- 7. Start the backend ---
+# --- 7. Setup log directory ---
+LOG_DIR="${LOG_DIR:-/var/log/crew}"
+mkdir -p "$LOG_DIR" 2>/dev/null || {
+    LOG_DIR="$SCRIPT_DIR/logs"
+    mkdir -p "$LOG_DIR"
+    warn "Cannot write to /var/log/crew — using $LOG_DIR instead"
+}
+export LOG_DIR
+log "Log directory: $LOG_DIR"
+
+# --- 8. Start the backend ---
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║          Starting AMY MIS Backend             ║${NC}"
@@ -181,6 +191,10 @@ info "Backend API:    http://localhost:${PORT:-8080}"
 info "Swagger docs:   http://localhost:${PORT:-8080}/swagger/index.html"
 info "Health check:   http://localhost:${PORT:-8080}/health"
 info "Metrics:        http://localhost:${PORT:-8080}/metrics"
+echo ""
+info "📋 Log files:"
+info "  All logs:    tail -f $LOG_DIR/server.log"
+info "  Errors only: tail -f $LOG_DIR/error.log"
 echo ""
 info "Press Ctrl+C to stop the backend server"
 echo ""

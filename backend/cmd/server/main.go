@@ -25,10 +25,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -65,15 +67,61 @@ import (
 )
 
 func main() {
-	// --- 1. Setup structured logging ---
+	// --- 1. Setup structured logging (stdout + file) ---
+	logDir := os.Getenv("LOG_DIR")
+	if logDir == "" {
+		logDir = "/var/log/crew"
+	}
+
+	// Open log files (create dir if needed)
+	var allWriter io.Writer = os.Stdout
+	var errorWriter io.Writer
+	var logFiles []*os.File
+
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "WARN: cannot create log dir %s: %v — logging to stdout only\n", logDir, err)
+	} else {
+		serverLog, err1 := os.OpenFile(filepath.Join(logDir, "server.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		errLog, err2 := os.OpenFile(filepath.Join(logDir, "error.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err1 != nil || err2 != nil {
+			fmt.Fprintf(os.Stderr, "WARN: cannot open log files: %v / %v — logging to stdout only\n", err1, err2)
+		} else {
+			logFiles = append(logFiles, serverLog, errLog)
+			allWriter = io.MultiWriter(os.Stdout, serverLog)
+			errorWriter = errLog
+		}
+	}
+
+	// Ensure log files are flushed on exit
+	defer func() {
+		for _, f := range logFiles {
+			_ = f.Sync()
+			_ = f.Close()
+		}
+	}()
+
 	var logHandler slog.Handler
-	logHandler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+	logHandler = slog.NewJSONHandler(allWriter, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	})
 	logger := slog.New(logHandler)
 	slog.SetDefault(logger)
 
-	slog.Info("starting AMY MIS server...")
+	// Error-only handler for error.log
+	if errorWriter != nil {
+		errHandler := slog.NewJSONHandler(errorWriter, &slog.HandlerOptions{
+			Level: slog.LevelWarn,
+		})
+		logHandler = &multiHandler{handlers: []slog.Handler{logHandler, errHandler}}
+		logger = slog.New(logHandler)
+		slog.SetDefault(logger)
+	}
+
+	slog.Info("starting AMY MIS server...",
+		slog.String("log_dir", logDir),
+		slog.String("server_log", filepath.Join(logDir, "server.log")),
+		slog.String("error_log", filepath.Join(logDir, "error.log")),
+	)
 
 	// --- 2. Load configuration ---
 	cfg, err := config.Load()
@@ -84,9 +132,17 @@ func main() {
 
 	if cfg.IsDevelopment() {
 		slog.Info("running in development mode")
-		logHandler = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		devHandler := slog.NewTextHandler(allWriter, &slog.HandlerOptions{
 			Level: slog.LevelDebug,
 		})
+		if errorWriter != nil {
+			errHandler := slog.NewJSONHandler(errorWriter, &slog.HandlerOptions{
+				Level: slog.LevelWarn,
+			})
+			logHandler = &multiHandler{handlers: []slog.Handler{devHandler, errHandler}}
+		} else {
+			logHandler = devHandler
+		}
 		logger = slog.New(logHandler)
 		slog.SetDefault(logger)
 	}
@@ -775,4 +831,47 @@ func buildLoanPolicy(cfg *config.Config) *models.LoanPolicyConfig {
 	)
 
 	return policy
+}
+
+// multiHandler fans a single log record out to multiple slog.Handler
+// instances. This lets us write all logs to stdout+server.log AND
+// additionally write WARN+ to error.log.
+type multiHandler struct {
+	handlers []slog.Handler
+}
+
+func (h *multiHandler) Enabled(_ context.Context, level slog.Level) bool {
+	for _, handler := range h.handlers {
+		if handler.Enabled(context.Background(), level) {
+			return true
+		}
+	}
+	return false
+}
+
+func (h *multiHandler) Handle(ctx context.Context, r slog.Record) error {
+	for _, handler := range h.handlers {
+		if handler.Enabled(ctx, r.Level) {
+			if err := handler.Handle(ctx, r); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (h *multiHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	handlers := make([]slog.Handler, len(h.handlers))
+	for i, handler := range h.handlers {
+		handlers[i] = handler.WithAttrs(attrs)
+	}
+	return &multiHandler{handlers: handlers}
+}
+
+func (h *multiHandler) WithGroup(name string) slog.Handler {
+	handlers := make([]slog.Handler, len(h.handlers))
+	for i, handler := range h.handlers {
+		handlers[i] = handler.WithGroup(name)
+	}
+	return &multiHandler{handlers: handlers}
 }
