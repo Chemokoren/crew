@@ -962,6 +962,74 @@ th[appSortable] {
   .toast-info { background: #e0e7ff; color: #312e81; border-left-color: var(--color-info); }
 }
 
+/* --- Tooltip Directive Styles --- */
+.app-tooltip {
+  position: absolute;
+  z-index: 10000;
+  max-width: 280px;
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--color-text-primary);
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 150ms ease, transform 150ms ease;
+  white-space: nowrap;
+}
+
+.app-tooltip--visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.app-tooltip--bottom {
+  transform: translateY(-4px);
+  &.app-tooltip--visible { transform: translateY(0); }
+}
+.app-tooltip--left {
+  transform: translateX(4px);
+  &.app-tooltip--visible { transform: translateX(0); }
+}
+.app-tooltip--right {
+  transform: translateX(-4px);
+  &.app-tooltip--visible { transform: translateX(0); }
+}
+
+/* Arrow indicators */
+.app-tooltip--top::after,
+.app-tooltip--bottom::before,
+.app-tooltip--left::after,
+.app-tooltip--right::before {
+  content: '';
+  position: absolute;
+  width: 0;
+  height: 0;
+  border: 5px solid transparent;
+}
+
+.app-tooltip--top::after {
+  bottom: -10px; left: 50%; transform: translateX(-50%);
+  border-top-color: var(--color-bg-tertiary);
+}
+.app-tooltip--bottom::before {
+  top: -10px; left: 50%; transform: translateX(-50%);
+  border-bottom-color: var(--color-bg-tertiary);
+}
+.app-tooltip--left::after {
+  right: -10px; top: 50%; transform: translateY(-50%);
+  border-left-color: var(--color-bg-tertiary);
+}
+.app-tooltip--right::before {
+  left: -10px; top: 50%; transform: translateY(-50%);
+  border-right-color: var(--color-bg-tertiary);
+}
+
 /* Reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

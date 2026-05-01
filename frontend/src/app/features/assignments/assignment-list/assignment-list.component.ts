@@ -4,12 +4,14 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { ApiService } from '../../../core/services/api.service';
 import { ToastService } from '../../../core/services/toast.service';
+import { ConfirmDialogService } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
+import { TooltipDirective } from '../../../shared/directives/tooltip.directive';
 import { Assignment, PaginationMeta, CrewMember, Vehicle, SACCO } from '../../../core/models';
 
 @Component({
   selector: 'app-assignment-list',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, TooltipDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="animate-fade-in">
@@ -19,7 +21,8 @@ import { Assignment, PaginationMeta, CrewMember, Vehicle, SACCO } from '../../..
           <p class="page-subtitle">Track crew shifts, vehicles, and earnings</p>
         </div>
         <div class="page-actions">
-          <button class="btn btn-primary" (click)="openCreateModal()" id="btn-create-assignment">
+          <button class="btn btn-primary" (click)="openCreateModal()" id="btn-create-assignment"
+                  appTooltip="Create a new shift assignment for a crew member">
             <span class="material-icons-round">add</span> New Assignment
           </button>
         </div>
@@ -53,7 +56,8 @@ import { Assignment, PaginationMeta, CrewMember, Vehicle, SACCO } from '../../..
         </select>
 
         @if (hasActiveFilters()) {
-          <button class="btn btn-ghost btn-sm" (click)="clearFilters()" id="btn-clear-filters" style="white-space:nowrap;">
+          <button class="btn btn-ghost btn-sm" (click)="clearFilters()" id="btn-clear-filters" style="white-space:nowrap;"
+                  appTooltip="Remove all active filters">
             <span class="material-icons-round" style="font-size:16px;">filter_alt_off</span> Clear
           </button>
         }
@@ -95,12 +99,19 @@ import { Assignment, PaginationMeta, CrewMember, Vehicle, SACCO } from '../../..
                   <td><span class="badge badge-accent">{{ a.earning_model }}</span></td>
                   <td>
                     <div style="display:flex;gap:4px;" (click)="$event.stopPropagation()">
-                      <button class="btn btn-sm btn-ghost" (click)="viewDetail(a)" title="View details" id="view-{{a.id}}">
+                      <button class="btn btn-sm btn-ghost" (click)="viewDetail(a)" id="view-{{a.id}}"
+                              appTooltip="View full assignment details" tooltipPosition="left">
                         <span class="material-icons-round" style="font-size:16px;">visibility</span>
                       </button>
                       @if (a.status === 'ACTIVE' || a.status === 'SCHEDULED') {
-                        <button class="btn btn-sm btn-primary" (click)="completeAssignment(a)" id="complete-{{a.id}}">Complete</button>
-                        <button class="btn btn-sm btn-danger" (click)="cancelAssignment(a)" id="cancel-{{a.id}}">Cancel</button>
+                        <button class="btn btn-sm btn-primary" (click)="completeAssignment(a)" id="complete-{{a.id}}"
+                                appTooltip="Record revenue and mark assignment as completed" tooltipPosition="top">
+                          Complete
+                        </button>
+                        <button class="btn btn-sm btn-danger" (click)="cancelAssignment(a)" id="cancel-{{a.id}}"
+                                appTooltip="Cancel this assignment with a reason" tooltipPosition="top">
+                          Cancel
+                        </button>
                       }
                     </div>
                   </td>
@@ -115,8 +126,10 @@ import { Assignment, PaginationMeta, CrewMember, Vehicle, SACCO } from '../../..
           <div class="pagination-bar">
             <span class="pagination-info">Page {{ meta()!.page }} of {{ meta()!.total_pages }} ({{ meta()!.total }} total)</span>
             <div class="pagination-actions">
-              <button class="btn btn-sm btn-ghost" [disabled]="meta()!.page <= 1" (click)="goToPage(meta()!.page - 1)">← Prev</button>
-              <button class="btn btn-sm btn-ghost" [disabled]="meta()!.page >= meta()!.total_pages" (click)="goToPage(meta()!.page + 1)">Next →</button>
+              <button class="btn btn-sm btn-ghost" [disabled]="meta()!.page <= 1" (click)="goToPage(meta()!.page - 1)"
+                      appTooltip="Go to previous page">← Prev</button>
+              <button class="btn btn-sm btn-ghost" [disabled]="meta()!.page >= meta()!.total_pages" (click)="goToPage(meta()!.page + 1)"
+                      appTooltip="Go to next page">Next →</button>
             </div>
           </div>
         }
@@ -236,6 +249,7 @@ export class AssignmentListComponent implements OnInit {
   private api = inject(ApiService);
   private toast = inject(ToastService);
   private router = inject(Router);
+  private dialog = inject(ConfirmDialogService);
 
   items = signal<Assignment[]>([]);
   meta = signal<PaginationMeta | null>(null);
@@ -347,21 +361,50 @@ export class AssignmentListComponent implements OnInit {
   }
 
   completeAssignment(a: Assignment): void {
-    const revenue = prompt('Enter total revenue collected (KES):');
-    if (revenue) {
-      this.api.completeAssignment(a.id, Math.round(parseFloat(revenue) * 100)).subscribe({
+    this.dialog.prompt(
+      'Complete Assignment',
+      `Record the total revenue collected for this shift by ${a.crew_member_name || 'this crew member'}.`,
+      {
+        confirmText: 'Complete & Credit',
+        promptLabel: 'Total Revenue Collected',
+        promptPlaceholder: '0.00',
+        promptType: 'number',
+        promptPrefix: 'KES',
+        icon: 'payments',
+      }
+    ).subscribe(result => {
+      if (!result.confirmed) return;
+      const amount = parseFloat(result.value || '');
+      if (isNaN(amount) || amount <= 0) {
+        this.toast.warning('Please enter a valid revenue amount');
+        return;
+      }
+      this.api.completeAssignment(a.id, Math.round(amount * 100)).subscribe({
         next: () => { this.toast.success('Assignment completed & earnings credited'); this.load(); },
       });
-    }
+    });
   }
 
   cancelAssignment(a: Assignment): void {
-    const reason = prompt('Reason for cancellation:');
-    if (reason) {
-      this.api.cancelAssignment(a.id, reason).subscribe({
+    this.dialog.prompt(
+      'Cancel Assignment',
+      `Provide a reason for cancelling this assignment for ${a.crew_member_name || 'this crew member'}.`,
+      {
+        confirmText: 'Cancel Assignment',
+        variant: 'danger',
+        promptLabel: 'Cancellation Reason',
+        promptPlaceholder: 'e.g. Vehicle breakdown, crew unavailable',
+        icon: 'event_busy',
+      }
+    ).subscribe(result => {
+      if (!result.confirmed || !result.value?.trim()) {
+        if (result.confirmed) this.toast.warning('A cancellation reason is required');
+        return;
+      }
+      this.api.cancelAssignment(a.id, result.value.trim()).subscribe({
         next: () => { this.toast.success('Assignment cancelled'); this.load(); },
       });
-    }
+    });
   }
 
   statusBadge(status: string): string {
