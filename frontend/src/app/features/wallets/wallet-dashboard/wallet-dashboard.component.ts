@@ -6,12 +6,13 @@ import { AuthService } from '../../../core/services/auth.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { CurrencyKesPipe } from '../../../shared/pipes/currency-kes.pipe';
 import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
+import { AutocompleteComponent, AutocompleteOption } from '../../../shared/components/autocomplete/autocomplete.component';
 import { Wallet, WalletTransaction, PaginationMeta, CrewMember } from '../../../core/models';
 
 @Component({
   selector: 'app-wallet-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule, CurrencyKesPipe, RelativeTimePipe],
+  imports: [CommonModule, FormsModule, CurrencyKesPipe, RelativeTimePipe, AutocompleteComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="animate-fade-in">
@@ -42,15 +43,10 @@ import { Wallet, WalletTransaction, PaginationMeta, CrewMember } from '../../../
 
       <!-- Admin: Crew member lookup -->
       @if (isAdmin()) {
-        <div class="glass-card" style="margin-bottom:var(--space-lg);padding:var(--space-md);">
+        <div class="glass-card" style="margin-bottom:var(--space-lg);padding:var(--space-md); position: relative; z-index: 54;">
           <div class="lookup-row">
             <span class="material-icons-round" style="color:var(--color-accent);">person_search</span>
-            <select class="form-select" [(ngModel)]="selectedCrewId" (ngModelChange)="onCrewSelected($event)" id="select-crew-lookup" style="flex:1;">
-              <option value="">— Select crew member to view wallet —</option>
-              @for (c of crewMembers(); track c.id) {
-                <option [value]="c.id">{{ c.first_name }} {{ c.last_name }} ({{ c.crew_id }})</option>
-              }
-            </select>
+            <app-autocomplete [(ngModel)]="selectedCrewId" (ngModelChange)="onCrewSelected($event)" [options]="crewOptions()" placeholder="— Search crew member to view wallet —" id="select-crew-lookup" style="flex:1;"></app-autocomplete>
           </div>
         </div>
       }
@@ -154,11 +150,10 @@ import { Wallet, WalletTransaction, PaginationMeta, CrewMember } from '../../../
           <div class="modal-content" (click)="$event.stopPropagation()" style="max-width:480px;">
             <div class="modal-header"><h3>Credit Wallet</h3><button class="btn-ghost" (click)="closeModal()"><span class="material-icons-round">close</span></button></div>
             <div class="modal-body">
-              <label class="form-label">Crew Member</label>
-              <select class="form-select" [(ngModel)]="modalCrewId" id="modal-credit-crew">
-                <option value="">— Select —</option>
-                @for (c of crewMembers(); track c.id) { <option [value]="c.id">{{ c.first_name }} {{ c.last_name }}</option> }
-              </select>
+              <div style="position:relative; z-index: 54;">
+                <label class="form-label">Crew Member</label>
+                <app-autocomplete [(ngModel)]="modalCrewId" [options]="crewOptions()" placeholder="— Search Crew Member —"></app-autocomplete>
+              </div>
               <label class="form-label" style="margin-top:var(--space-sm);">Amount (KES)</label>
               <input type="number" class="form-input" [(ngModel)]="modalAmount" min="1" step="1" placeholder="e.g. 500" id="modal-credit-amount">
               <label class="form-label" style="margin-top:var(--space-sm);">Category</label>
@@ -187,11 +182,10 @@ import { Wallet, WalletTransaction, PaginationMeta, CrewMember } from '../../../
           <div class="modal-content" (click)="$event.stopPropagation()" style="max-width:480px;">
             <div class="modal-header"><h3>Debit Wallet</h3><button class="btn-ghost" (click)="closeModal()"><span class="material-icons-round">close</span></button></div>
             <div class="modal-body">
-              <label class="form-label">Crew Member</label>
-              <select class="form-select" [(ngModel)]="modalCrewId" id="modal-debit-crew">
-                <option value="">— Select —</option>
-                @for (c of crewMembers(); track c.id) { <option [value]="c.id">{{ c.first_name }} {{ c.last_name }}</option> }
-              </select>
+              <div style="position:relative; z-index: 54;">
+                <label class="form-label">Crew Member</label>
+                <app-autocomplete [(ngModel)]="modalCrewId" [options]="crewOptions()" placeholder="— Search Crew Member —"></app-autocomplete>
+              </div>
               <label class="form-label" style="margin-top:var(--space-sm);">Amount (KES)</label>
               <input type="number" class="form-input" [(ngModel)]="modalAmount" min="1" step="1" placeholder="e.g. 200" id="modal-debit-amount">
               <label class="form-label" style="margin-top:var(--space-sm);">Category</label>
@@ -285,6 +279,13 @@ export class WalletDashboardComponent implements OnInit {
   txMeta = signal<PaginationMeta | null>(null);
   loadingTxs = signal(true);
   crewMembers = signal<CrewMember[]>([]);
+  crewOptions = computed<AutocompleteOption[]>(() => this.crewMembers().map(c => ({
+    value: c.id,
+    label: `${c.first_name} ${c.last_name}`,
+    sublabel: `ID: ${c.crew_id}`,
+    searchText: `${c.first_name} ${c.last_name} ${c.crew_id}`
+  })));
+
   showModal = signal<'credit' | 'debit' | 'payout' | null>(null);
   submitting = signal(false);
 
