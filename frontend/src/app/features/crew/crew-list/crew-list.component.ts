@@ -1,15 +1,16 @@
-import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, OnInit, signal, computed, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink, Router } from '@angular/router';
 import { ApiService } from '../../../core/services/api.service';
 import { ToastService } from '../../../core/services/toast.service';
+import { AutocompleteComponent, AutocompleteOption } from '../../../shared/components/autocomplete/autocomplete.component';
 import { CrewMember, PaginationMeta, SACCO } from '../../../core/models';
 
 @Component({
   selector: 'app-crew-list',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink, AutocompleteComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="animate-fade-in">
@@ -43,26 +44,16 @@ import { CrewMember, PaginationMeta, SACCO } from '../../../core/models';
             </button>
           }
         </div>
-        <select class="form-select" [(ngModel)]="roleFilter" (ngModelChange)="loadCrew()" id="crew-role-filter">
-          <option value="">All Roles</option>
-          <option value="DRIVER">Driver</option>
-          <option value="CONDUCTOR">Conductor</option>
-          <option value="RIDER">Rider</option>
-          <option value="OTHER">Other</option>
-        </select>
-        <select class="form-select" [(ngModel)]="kycFilter" (ngModelChange)="loadCrew()" id="crew-kyc-filter">
-          <option value="">All KYC</option>
-          <option value="PENDING">Pending</option>
-          <option value="VERIFIED">Verified</option>
-          <option value="REJECTED">Rejected</option>
-        </select>
+        <div style="position: relative; z-index: 55; flex: 1; min-width: 140px; max-width: 180px;">
+          <app-autocomplete [(ngModel)]="roleFilter" (ngModelChange)="loadCrew()" [options]="roleOptions" placeholder="— All Roles —" id="crew-role-filter"></app-autocomplete>
+        </div>
+        <div style="position: relative; z-index: 54; flex: 1; min-width: 140px; max-width: 180px;">
+          <app-autocomplete [(ngModel)]="kycFilter" (ngModelChange)="loadCrew()" [options]="kycOptions" placeholder="— All KYC —" id="crew-kyc-filter"></app-autocomplete>
+        </div>
         <!-- #71: Filter by SACCO -->
-        <select class="form-select" [(ngModel)]="saccoFilter" (ngModelChange)="loadCrew()" id="crew-sacco-filter">
-          <option value="">All SACCOs</option>
-          @for (s of saccos(); track s.id) {
-            <option [value]="s.id">{{ s.name }}</option>
-          }
-        </select>
+        <div style="position: relative; z-index: 53; flex: 1; min-width: 180px; max-width: 240px;">
+          <app-autocomplete [(ngModel)]="saccoFilter" (ngModelChange)="loadCrew()" [options]="saccoOptions()" placeholder="— All SACCOs —" id="crew-sacco-filter"></app-autocomplete>
+        </div>
       </div>
 
       @if (loading()) {
@@ -326,6 +317,24 @@ export class CrewListComponent implements OnInit {
 
   // #71: SACCO filter
   saccos = signal<SACCO[]>([]);
+  saccoOptions = computed<AutocompleteOption[]>(() => this.saccos().map(s => ({
+    value: s.id,
+    label: s.name,
+    searchText: s.name
+  })));
+
+  roleOptions: AutocompleteOption[] = [
+    { value: 'DRIVER', label: 'Driver', searchText: 'driver' },
+    { value: 'CONDUCTOR', label: 'Conductor', searchText: 'conductor' },
+    { value: 'RIDER', label: 'Rider', searchText: 'rider' },
+    { value: 'OTHER', label: 'Other', searchText: 'other' },
+  ];
+
+  kycOptions: AutocompleteOption[] = [
+    { value: 'PENDING', label: 'Pending', searchText: 'pending' },
+    { value: 'VERIFIED', label: 'Verified', searchText: 'verified' },
+    { value: 'REJECTED', label: 'Rejected', searchText: 'rejected' },
+  ];
 
   ngOnInit(): void {
     this.loadCrew();

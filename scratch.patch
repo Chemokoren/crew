@@ -1,0 +1,28 @@
+--- backend/internal/service/sacco_service.go
++++ backend/internal/service/sacco_service.go
+@@ -137,6 +137,25 @@
+ 	return existing, nil
+ }
+ 
++type UpdateMemberInput struct {
++	Role models.SACCORole `json:"role_in_sacco" binding:"required"`
++}
++
++func (s *SACCOService) UpdateMember(ctx context.Context, membershipID uuid.UUID, input UpdateMemberInput) (*models.CrewSACCOMembership, error) {
++	membership, err := s.membershipRepo.GetByID(ctx, membershipID)
++	if err != nil {
++		return nil, fmt.Errorf("membership not found: %w", err)
++	}
++
++	membership.RoleInSacco = input.Role
++	membership.UpdatedAt = time.Now()
++
++	if err := s.membershipRepo.Update(ctx, membership); err != nil {
++		return nil, fmt.Errorf("failed to update membership: %w", err)
++	}
++	return membership, nil
++}
++
+ func (s *SACCOService) RemoveMember(ctx context.Context, membershipID uuid.UUID) error {
+ 	membership, err := s.membershipRepo.GetByID(ctx, membershipID)
+ 	if err != nil {

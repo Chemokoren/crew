@@ -94,8 +94,18 @@ func (r *CrewRepo) List(ctx context.Context, filter repository.CrewFilter, page,
 		query = query.Where("is_active = ?", *filter.IsActive)
 	}
 	if filter.Search != "" {
-		search := "%" + filter.Search + "%"
-		query = query.Where("(first_name ILIKE ? OR last_name ILIKE ? OR crew_id ILIKE ?)", search, search, search)
+		q := "%" + filter.Search + "%"
+		query = query.Where(`
+			first_name ILIKE ? OR 
+			last_name ILIKE ? OR 
+			crew_id ILIKE ? OR 
+			national_id ILIKE ? OR
+			role::text ILIKE ? OR
+			id IN (
+				SELECT crew_member_id FROM crew_sacco_memberships 
+				JOIN saccos ON saccos.id = crew_sacco_memberships.sacco_id 
+				WHERE saccos.name ILIKE ?
+			)`, q, q, q, q, q, q)
 	}
 
 	query.Count(&total)

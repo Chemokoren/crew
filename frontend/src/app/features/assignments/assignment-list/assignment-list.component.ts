@@ -41,20 +41,14 @@ import { Assignment, PaginationMeta, CrewMember, Vehicle, SACCO } from '../../..
         <input class="form-input" type="date" [(ngModel)]="dateFilter" (ngModelChange)="load()" style="max-width:180px;" id="assignment-date-filter" />
 
         <!-- Filter by Crew Member -->
-        <select class="form-select" [(ngModel)]="crewMemberFilter" (ngModelChange)="load()" id="assignment-crew-filter">
-          <option value="">All Crew Members</option>
-          @for (c of crewMembers(); track c.id) {
-            <option [value]="c.id">{{ c.full_name }} ({{ c.crew_id }})</option>
-          }
-        </select>
+        <div style="position: relative; z-index: 54; flex: 1; min-width: 200px; max-width: 260px;">
+          <app-autocomplete [(ngModel)]="crewMemberFilter" (ngModelChange)="load()" [options]="crewMemberOptions()" placeholder="— All Crew Members —" id="assignment-crew-filter"></app-autocomplete>
+        </div>
 
         <!-- Filter by SACCO -->
-        <select class="form-select" [(ngModel)]="saccoFilter" (ngModelChange)="load()" id="assignment-sacco-filter">
-          <option value="">All SACCOs</option>
-          @for (s of saccos(); track s.id) {
-            <option [value]="s.id">{{ s.name }}</option>
-          }
-        </select>
+        <div style="position: relative; z-index: 53; flex: 1; min-width: 200px; max-width: 260px;">
+          <app-autocomplete [(ngModel)]="saccoFilter" (ngModelChange)="load()" [options]="saccoOptions()" placeholder="— All SACCOs —" id="assignment-sacco-filter"></app-autocomplete>
+        </div>
 
         @if (hasActiveFilters()) {
           <button class="btn btn-ghost btn-sm" (click)="clearFilters()" id="btn-clear-filters" style="white-space:nowrap;"

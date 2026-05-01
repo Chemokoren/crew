@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { CurrencyKesPipe } from '../../shared/pipes/currency-kes.pipe';
+import { AutocompleteComponent, AutocompleteOption } from '../../shared/components/autocomplete/autocomplete.component';
 import { Earning, CrewMember, DailySummary } from '../../core/models';
 
 type AggPeriod = 'daily' | 'weekly' | 'monthly';
@@ -17,7 +18,7 @@ interface ChartBar {
 @Component({
   selector: 'app-earnings',
   standalone: true,
-  imports: [CommonModule, FormsModule, CurrencyKesPipe],
+  imports: [CommonModule, FormsModule, CurrencyKesPipe, AutocompleteComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="animate-fade-in">
@@ -28,12 +29,9 @@ interface ChartBar {
       <!-- Admin Filters -->
       <div class="filters-bar" style="flex-wrap:wrap;">
         @if (isAdmin()) {
-          <select class="form-select" [(ngModel)]="selectedCrewMemberId" (ngModelChange)="onCrewMemberChange()" id="filter-crew" style="max-width:260px;">
-            <option value="">— Select Crew Member —</option>
-            @for (cm of crewMembers(); track cm.id) {
-              <option [value]="cm.id">{{ cm.first_name }} {{ cm.last_name }} ({{ cm.crew_id }})</option>
-            }
-          </select>
+          <div style="position: relative; z-index: 54; flex: 1; min-width: 220px; max-width: 260px;">
+            <app-autocomplete [(ngModel)]="selectedCrewMemberId" (ngModelChange)="onCrewMemberChange()" [options]="crewOptions()" placeholder="— Search Crew Member —" id="filter-crew"></app-autocomplete>
+          </div>
         }
         <input class="form-input" placeholder="Assignment ID" [(ngModel)]="filterAssignmentId" (ngModelChange)="loadEarnings()" id="filter-assignment" style="max-width:220px;" />
         <input class="form-input" type="date" [(ngModel)]="dateFrom" (ngModelChange)="loadEarnings()" id="filter-from" style="max-width:170px;" />
@@ -136,6 +134,12 @@ export class EarningsComponent implements OnInit {
   chartData = signal<ChartBar[]>([]);
   chartLoading = signal(false);
   crewMembers = signal<CrewMember[]>([]);
+  crewOptions = computed<AutocompleteOption[]>(() => this.crewMembers().map(c => ({
+    value: c.id,
+    label: `${c.first_name} ${c.last_name}`,
+    sublabel: `ID: ${c.crew_id}`,
+    searchText: `${c.first_name} ${c.last_name} ${c.crew_id}`
+  })));
 
   // Filters
   selectedCrewMemberId = '';
