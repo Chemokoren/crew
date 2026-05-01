@@ -573,14 +573,19 @@ func main() {
 
 		// Assignments
 		assignments := secured.Group("/assignments")
-		assignments.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin))
 		{
-			assignments.POST("", assignmentHandler.Create)
-			assignments.GET("", assignmentHandler.List)
-			assignments.GET("/:id", assignmentHandler.GetByID)
-			assignments.POST("/:id/complete", assignmentHandler.Complete)
-			assignments.POST("/:id/cancel", assignmentHandler.Cancel)
-			assignments.POST("/:id/reassign", assignmentHandler.Reassign)
+			// Read-only access for CREW, full access for SACCO_ADMIN and SYSTEM_ADMIN
+			assignments.GET("", middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin, types.RoleCrewUser), assignmentHandler.List)
+			assignments.GET("/:id", middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin, types.RoleCrewUser), assignmentHandler.GetByID)
+
+			adminAssignments := assignments.Group("")
+			adminAssignments.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin))
+			{
+				adminAssignments.POST("", assignmentHandler.Create)
+				adminAssignments.POST("/:id/complete", assignmentHandler.Complete)
+				adminAssignments.POST("/:id/cancel", assignmentHandler.Cancel)
+				adminAssignments.POST("/:id/reassign", assignmentHandler.Reassign)
+			}
 		}
 
 		// Wallets (system admin only for direct credit/debit; crew can view own)

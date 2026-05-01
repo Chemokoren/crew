@@ -1,6 +1,7 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { ApiService } from './api.service';
 import { Notification } from '../models';
+import { AuthService } from './auth.service';
 
 /**
  * Shared state service for notification unread count.
@@ -10,6 +11,7 @@ import { Notification } from '../models';
 @Injectable({ providedIn: 'root' })
 export class NotificationStateService {
   private api = inject(ApiService);
+  private auth = inject(AuthService);
   private notifications = signal<Notification[]>([]);
   private intervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -26,6 +28,7 @@ export class NotificationStateService {
 
   /** Manual refresh — call after marking a notification as read */
   refresh(): void {
+    if (!this.auth.isAuthenticated()) return;
     this.api.getNotifications({ per_page: '50' }).subscribe({
       next: r => this.notifications.set(r.data),
       error: () => {},

@@ -1,13 +1,16 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/kibsoft/amy-mis/internal/models"
 	"github.com/kibsoft/amy-mis/internal/repository"
+	"github.com/kibsoft/amy-mis/pkg/errs"
 )
 
 type EarningHandler struct {
@@ -73,8 +76,21 @@ func (h *EarningHandler) SummaryDashboard(c *gin.Context) {
 
 	summary, err := h.earningRepo.GetDailySummary(c.Request.Context(), id, date)
 	if err != nil {
-		MapServiceError(c, err)
-		return
+		if errors.Is(err, errs.ErrNotFound) {
+			// Return a zeroed summary instead of 404
+			summary = &models.DailyEarningsSummary{
+				CrewMemberID:         id,
+				Date:                 date,
+				TotalEarnedCents:     0,
+				TotalDeductionsCents: 0,
+				NetAmountCents:       0,
+				AssignmentCount:      0,
+				IsProcessed:          false,
+			}
+		} else {
+			MapServiceError(c, err)
+			return
+		}
 	}
 
 	SuccessResponse(c, http.StatusOK, summary)
