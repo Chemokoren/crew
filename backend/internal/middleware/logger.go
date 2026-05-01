@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"bytes"
+	"encoding/json"
 	"log/slog"
 	"runtime/debug"
 	"time"
@@ -25,11 +27,16 @@ func RequestID() gin.HandlerFunc {
 }
 
 // Logger logs each HTTP request with structured fields.
+// For 4xx/5xx responses, captures and logs the error message from the response body.
 func Logger(logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		path := c.Request.URL.Path
 		query := c.Request.URL.RawQuery
+
+		// Wrap the response writer to capture the body for error responses
+		blw := &bodyLogWriter{body: bytes.NewBufferString(""), ResponseWriter: c.Writer}
+		c.Writer = blw
 
 		c.Next()
 
@@ -53,8 +60,15 @@ func Logger(logger *slog.Logger) gin.HandlerFunc {
 			attrs = append(attrs, slog.String("request_id", requestID.(string)))
 		}
 
+		// For error responses, extract the error message from the response body
+		if status >= 400 {
+			if errMsg := extractErrorMessage(blw.body.Bytes()); errMsg != "" {
+				attrs = append(attrs, slog.String("error", errMsg))
+			}
+		}
+
 		if len(c.Errors) > 0 {
-			attrs = append(attrs, slog.String("errors", c.Errors.String()))
+			attrs = append(attrs, slog.String("gin_errors", c.Errors.String()))
 		}
 
 		msg := "HTTP Request"
@@ -67,6 +81,41 @@ func Logger(logger *slog.Logger) gin.HandlerFunc {
 
 		logger.LogAttrs(c.Request.Context(), level, msg, attrs...)
 	}
+}
+
+// bodyLogWriter wraps gin.ResponseWriter to capture response body
+type bodyLogWriter struct {
+	gin.ResponseWriter
+	body *bytes.Buffer
+}
+
+func (w *bodyLogWriter) Write(b []byte) (int, error) {
+	w.body.Write(b) // capture a copy
+	return w.ResponseWriter.Write(b)
+}
+
+// extractErrorMessage tries to pull "error.message" from a JSON error response body.
+func extractErrorMessage(body []byte) string {
+	if len(body) == 0 || body[0] != '{' {
+		return ""
+	}
+	var resp struct {
+		Error struct {
+			Message string `json:"message"`
+			Code    string `json:"code"`
+		} `json:"error"`
+		Message string `json:"message"` // fallback: some endpoints use top-level message
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return ""
+	}
+	if resp.Error.Message != "" {
+		if resp.Error.Code != "" {
+			return resp.Error.Code + ": " + resp.Error.Message
+		}
+		return resp.Error.Message
+	}
+	return resp.Message
 }
 
 // Recovery recovers from panics and returns a 500 error.

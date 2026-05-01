@@ -2,7 +2,9 @@ package handler
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/kibsoft/amy-mis/internal/handler/dto"
@@ -339,8 +341,19 @@ func MapServiceError(c *gin.Context, err error) {
 		errors.Is(err, service.ErrInvalidCategory),
 		errors.Is(err, service.ErrInvalidStatus):
 		BadRequest(c, err.Error())
+	// Identity provider / external service errors → 503 Service Unavailable
+	case strings.Contains(err.Error(), "identity provider not configured"),
+		strings.Contains(err.Error(), "iprs verify"),
+		strings.Contains(err.Error(), "iprs verification failed"):
+		ErrorResponse(c, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", err.Error())
 	default:
-		InternalError(c, "An unexpected error occurred")
+		// Log the actual error for debugging — this is what shows up in error.log
+		slog.Error("unhandled service error",
+			slog.String("error", err.Error()),
+			slog.String("path", c.Request.URL.Path),
+			slog.String("method", c.Request.Method),
+		)
+		InternalError(c, err.Error())
 	}
 }
 
