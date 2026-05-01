@@ -19,7 +19,9 @@ import { environment } from '../../../../environments/environment';
         <div class="auth-card glass-card">
           <div class="auth-header">
             <div class="auth-logo">
-              <img src="logo.png" alt="AMY MIS Logo" class="dynamic-logo">
+              <div class="logo-circle">
+                <img src="/logo.png" alt="AMY MIS Logo" class="dynamic-logo">
+              </div>
             </div>
             <p class="auth-subtitle">Workforce Financial Operating System</p>
           </div>
@@ -328,18 +330,25 @@ import { environment } from '../../../../environments/environment';
       margin-bottom: var(--space-sm);
     }
 
-    .logo-icon {
-      font-size: 28px;
-      width: 44px;
-      height: 44px;
+    .logo-circle {
+      width: 96px;
+      height: 96px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.05);
+      border: 2px solid rgba(255, 255, 255, 0.1);
       display: flex;
       align-items: center;
       justify-content: center;
-      background: var(--gradient-accent);
-      border-radius: var(--radius-md);
+      overflow: hidden;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+    .dynamic-logo {
+      width: 70%;
+      height: auto;
+      object-fit: contain;
     }
 
-    .auth-title { font-family: var(--font-heading); font-size: 1.75rem; font-weight: 800; }
+    .auth-title { font-family: var(--font-heading); font-size: 1.75rem; font-weight: 800; margin-bottom: 4px; }
     .accent { background: var(--gradient-accent); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
     .auth-subtitle { color: var(--color-text-muted); font-size: 0.875rem; }
     .auth-form { display: flex; flex-direction: column; gap: var(--space-md); }
