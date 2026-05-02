@@ -81,8 +81,8 @@ func (r *CrewRepo) List(ctx context.Context, filter repository.CrewFilter, page,
 
 	query := r.getDB(ctx).Model(&models.CrewMember{})
 
-	if filter.SaccoID != nil {
-		query = query.Where("id IN (SELECT crew_member_id FROM crew_sacco_memberships WHERE sacco_id = ? AND is_active = true)", *filter.SaccoID)
+	if filter.OrganizationID != nil {
+		query = query.Where("id IN (SELECT crew_member_id FROM crew_sacco_memberships WHERE sacco_id = ? AND is_active = true)", *filter.OrganizationID)
 	}
 	if filter.Role != "" {
 		query = query.Where("role = ?", filter.Role)
@@ -106,6 +106,12 @@ func (r *CrewRepo) List(ctx context.Context, filter repository.CrewFilter, page,
 				JOIN saccos ON saccos.id = crew_sacco_memberships.sacco_id 
 				WHERE saccos.name ILIKE ?
 			)`, q, q, q, q, q, q)
+	}
+	if filter.JobTypeID != nil {
+		query = query.Where("job_type_id = ?", *filter.JobTypeID)
+	}
+	if filter.JobTypeCode != "" {
+		query = query.Where("job_type_id IN (SELECT id FROM tenant_job_types WHERE code = ? AND is_active = true)", filter.JobTypeCode)
 	}
 
 	query.Count(&total)

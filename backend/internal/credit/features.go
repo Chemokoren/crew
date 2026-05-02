@@ -23,6 +23,7 @@ type FeatureComputer struct {
 	userRepo       repository.UserRepository
 	snapshotRepo   repository.WalletSnapshotRepository
 	negativeRepo   repository.NegativeEventRepository
+	membershipRepo repository.MembershipRepository
 	logger         *slog.Logger
 }
 
@@ -37,6 +38,7 @@ func NewFeatureComputer(
 	userRepo repository.UserRepository,
 	snapshotRepo repository.WalletSnapshotRepository,
 	negativeRepo repository.NegativeEventRepository,
+	membershipRepo repository.MembershipRepository,
 	logger *slog.Logger,
 ) *FeatureComputer {
 	return &FeatureComputer{
@@ -49,6 +51,7 @@ func NewFeatureComputer(
 		userRepo:       userRepo,
 		snapshotRepo:   snapshotRepo,
 		negativeRepo:   negativeRepo,
+		membershipRepo: membershipRepo,
 		logger:         logger,
 	}
 }
@@ -120,6 +123,7 @@ func (fc *FeatureComputer) computeWorkHistory(
 	total30 := completed30 + cancelled30
 	if total30 > 0 {
 		fv.CancellationRate = float64(cancelled30) / float64(total30)
+		fv.CompletionRate = float64(completed30) / float64(total30)
 	}
 
 	if !lastShiftDate.IsZero() {
@@ -394,10 +398,94 @@ func (fc *FeatureComputer) computeTenure(ctx context.Context, fv *FeatureVector,
 	assignments, _, err := fc.assignmentRepo.List(ctx, repository.AssignmentFilter{
 		CrewMemberID: &crewMemberID,
 		DateFrom:     &veryOld,
-	}, 1, 1)
+	}, 1, 10000)
 	if err == nil && len(assignments) > 0 {
 		fv.FirstShiftAgeDays = int(now.Sub(assignments[0].ShiftDate).Hours() / 24)
+
+		// Work type diversity: count distinct work types
+		workTypes := make(map[string]int)
+		for _, a := range assignments {
+			if a.WorkType != "" {
+				workTypes[string(a.WorkType)]++
+			}
+		}
+		fv.WorkTypeDiversity = len(workTypes)
+		// Find primary (most frequent) work type
+		var maxCount int
+		for wt, count := range workTypes {
+			if count > maxCount {
+				maxCount = count
+				fv.PrimaryWorkType = wt
+			}
+		}
+
+		// Hours consistency: coefficient of variation (lower = more consistent)
+		fc.computeHoursConsistency(assignments, fv)
 	}
+
+	// Cross-org tenure: count unique orgs and total tenure months
+	if fc.membershipRepo != nil {
+		memberships, err := fc.membershipRepo.ListByCrewMember(ctx, crewMemberID)
+		if err == nil {
+			fv.OrgCount = len(memberships)
+			var totalMonths int
+			for _, m := range memberships {
+				end := now
+				if m.LeftAt != nil {
+					end = *m.LeftAt
+				}
+				months := int(end.Sub(m.JoinedAt).Hours() / (24 * 30))
+				if months < 0 {
+					months = 0
+				}
+				totalMonths += months
+			}
+			fv.CrossOrgTenureMonths = totalMonths
+		}
+	}
+}
+
+// computeHoursConsistency calculates the coefficient of variation of daily hours worked.
+// A lower value means more consistent work patterns (valued for credit scoring).
+func (fc *FeatureComputer) computeHoursConsistency(assignments []models.Assignment, fv *FeatureVector) {
+	dailyHours := make(map[string]float64)
+	for _, a := range assignments {
+		if a.Status == models.AssignmentCompleted && a.HoursWorked != nil {
+			day := a.ShiftDate.Format("2006-01-02")
+			dailyHours[day] += *a.HoursWorked
+		}
+	}
+
+	if len(dailyHours) < 3 {
+		fv.HoursConsistency30d = 0.5 // Not enough data
+		return
+	}
+
+	// Calculate mean
+	var sum float64
+	for _, h := range dailyHours {
+		sum += h
+	}
+	mean := sum / float64(len(dailyHours))
+
+	if mean == 0 {
+		fv.HoursConsistency30d = 0.5
+		return
+	}
+
+	// Calculate std deviation
+	var variance float64
+	for _, h := range dailyHours {
+		diff := h - mean
+		variance += diff * diff
+	}
+	variance /= float64(len(dailyHours))
+	stdDev := math.Sqrt(variance)
+
+	// Coefficient of variation: 0 = perfectly consistent, 1+ = highly variable
+	// Invert so higher = better consistency: 1.0 - min(cv, 1.0)
+	cv := stdDev / mean
+	fv.HoursConsistency30d = 1.0 - math.Min(cv, 1.0)
 }
 
 func (fc *FeatureComputer) computeNegativeEvents(ctx context.Context, fv *FeatureVector, crewMemberID uuid.UUID) {

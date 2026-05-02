@@ -22,7 +22,7 @@ export interface User {
   email?: string;
   system_role: SystemRole;
   crew_member_id?: string;
-  sacco_id?: string;
+  organization_id?: string;
   is_active: boolean;
   last_login_at?: string;
   created_at: string;
@@ -57,14 +57,58 @@ export interface CrewMember {
 export type CrewRole = 'DRIVER' | 'CONDUCTOR' | 'RIDER' | 'OTHER';
 export type KYCStatus = 'PENDING' | 'VERIFIED' | 'REJECTED';
 
+// --- Multi-Industry Types (Phase F2) ---
+export type IndustryType = 'TRANSPORT' | 'CONSTRUCTION' | 'HEALTH' | 'LOGISTICS' | 'AGRICULTURE' | 'HOSPITALITY' | 'GENERAL' | 'CUSTOM';
+export type WorkType = 'SHIFT' | 'DAILY' | 'HOURLY' | 'PER_TRIP' | 'PROJECT' | 'VISIT' | 'CONTRACT' | 'TASK';
+export type PayFrequency = 'DAILY' | 'WEEKLY' | 'BI_WEEKLY' | 'MONTHLY';
+export type PeriodStatus = 'OPEN' | 'CLOSED' | 'PROCESSING';
+export type JobTypeCategory = 'PRIMARY' | 'FACILITATOR' | 'SUPPORT' | 'SUPERVISOR';
+
+export interface TenantJobType {
+  id: string;
+  organization_id: string;
+  code: string;
+  display_name: string;
+  category: JobTypeCategory;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PaySchedule {
+  id: string;
+  organization_id: string;
+  name: string;
+  frequency: PayFrequency;
+  pay_day?: number;
+  cutoff_hour: number;
+  is_default: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PayPeriod {
+  id: string;
+  pay_schedule_id: string;
+  period_start: string;
+  period_end: string;
+  status: PeriodStatus;
+  closed_at?: string;
+  created_at: string;
+  worker_count?: number;
+  total_amount_cents?: number;
+}
+
 export interface Assignment {
   id: string;
   crew_member_id: string;
   crew_member_name: string;
-  vehicle_id: string;
-  vehicle_registration_no: string;
-  sacco_id: string;
-  sacco_name: string;
+  vehicle_id?: string;
+  vehicle_registration_no?: string;
+  organization_id: string;
+  organization_name: string;
   route_id?: string;
   route_name?: string;
   shift_date: string;
@@ -79,6 +123,15 @@ export interface Assignment {
   notes?: string;
   created_by_id: string;
   created_at: string;
+  // Generalized fields (Phase C)
+  work_type: WorkType;
+  work_site?: string;
+  project_ref?: string;
+  hours_worked?: number;
+  hourly_rate_cents?: number;
+  supervisor_id?: string;
+  check_in_at?: string;
+  check_out_at?: string;
 }
 
 export type AssignmentStatus = 'SCHEDULED' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
@@ -110,7 +163,9 @@ export interface WalletTransaction {
   created_at: string;
 }
 
-export interface SACCO {
+export type OrganizationType = 'SACCO' | 'CONSTRUCTION_FIRM' | 'LOGISTICS_COMPANY' | 'HEALTH_NGO' | 'AGRICULTURE_COOP' | 'HOSPITALITY_GROUP' | 'GENERAL';
+
+export interface Organization {
   id: string;
   name: string;
   registration_number: string;
@@ -121,11 +176,57 @@ export interface SACCO {
   currency: string;
   is_active: boolean;
   created_at: string;
+  // D1: Organization type + industry
+  organization_type?: OrganizationType;
+  industry_type?: IndustryType;
+  default_language?: string;
+  tenant_config?: TenantConfig;
+}
+
+export interface TenantConfig {
+  credit_scoring_weights?: Record<string, number>;
+  statutory_exemptions?: string[];
+  ui_labels?: Record<string, string>;
+  features?: Record<string, boolean>;
+}
+
+// AD-13: Bootstrap result from industry template seeding
+export interface BootstrapResult {
+  industry_set: boolean;
+  job_types_seeded: string[];
+  job_types_skipped: boolean;
+  schedules_seeded: string[];
+  schedules_skipped: boolean;
+  config_seeded: boolean;
+}
+
+// AD-9: Industry template configuration
+export interface IndustryTemplate {
+  industry_type: IndustryType;
+  organization_type: OrganizationType;
+  display_label: string;
+  assignment_types: string[];
+  earning_models: string[];
+  payment_frequencies: string[];
+  statutory_bodies: string[];
+  default_job_types: { code: string; display_name: string; category: JobTypeCategory }[];
+  ui_labels: Record<string, string>;
+}
+
+// AD-12: Role-based permission matrix
+export interface IndustryPermission {
+  role_category: JobTypeCategory;
+  can_create_assignments: boolean;
+  can_approve_earnings: boolean;
+  can_manage_payroll: boolean;
+  can_view_financial_profiles: boolean;
+  can_manage_crew: boolean;
+  can_manage_settings: boolean;
 }
 
 export interface Vehicle {
   id: string;
-  sacco_id: string;
+  organization_id: string;
   registration_no: string;
   vehicle_type: VehicleType;
   route_id?: string;
@@ -148,7 +249,7 @@ export interface Route {
 
 export interface PayrollRun {
   id: string;
-  sacco_id: string;
+  organization_id: string;
   period_start: string;
   period_end: string;
   status: PayrollStatus;
@@ -159,6 +260,9 @@ export interface PayrollRun {
   approved_by?: string;
   approved_at?: string;
   created_at: string;
+  // Phase D additions
+  pay_schedule_id?: string;
+  pay_period_id?: string;
 }
 
 export type PayrollStatus = 'DRAFT' | 'PROCESSED' | 'APPROVED' | 'SUBMITTED' | 'COMPLETED' | 'FAILED';
@@ -199,6 +303,10 @@ export interface Earning {
   is_verified: boolean;
   earned_at: string;
   created_at: string;
+  // F12: Multi-industry grouping
+  work_type?: WorkType;
+  work_site?: string;
+  project_ref?: string;
 }
 
 export interface DailySummary {
@@ -337,7 +445,7 @@ export interface AdminUser {
   email?: string;
   system_role: string;
   crew_member_id?: string;
-  sacco_id?: string;
+  organization_id?: string;
   is_active: boolean;
   last_login_at?: string;
   created_at: string;
@@ -358,7 +466,7 @@ export type DocumentType = 'KYC_ID_FRONT' | 'KYC_ID_BACK' | 'KYC_SELFIE' | 'SACC
 export interface Document {
   id: string;
   crew_member_id?: string;
-  sacco_id?: string;
+  organization_id?: string;
   vehicle_id?: string;
   document_type: DocumentType;
   file_name: string;
@@ -380,17 +488,20 @@ export interface SystemStats {
 
 export interface SACCOFloat {
   id: string;
-  sacco_id: string;
+  organization_id: string;
   balance_cents: number;
   currency: string;
 }
 
 export interface SACCOMembership {
   id: string;
-  sacco_id: string;
+  organization_id: string;
   crew_member_id: string;
   role_in_sacco: string;
   joined_at: string;
+  left_at?: string;
+  is_active: boolean;
+  pay_schedule_id?: string;
 }
 
 export interface SACCOFloatTransaction {
@@ -403,3 +514,60 @@ export interface SACCOFloatTransaction {
   idempotency_key: string;
   created_at: string;
 }
+
+// --- Financial Profile (Phase E) ---
+
+export interface OrgProfile {
+  org_id: string;
+  org_name: string;
+  industry: IndustryType;
+  role: string;
+  joined_at: string;
+  tenure_months: number;
+  is_active: boolean;
+  earnings_30d_cents: number;
+  assignment_count_30d: number;
+}
+
+export interface LoanProduct {
+  category: string;
+  label: string;
+  description?: string;
+  max_amount_kes?: number;
+}
+
+export interface InsuranceProduct {
+  type: string;
+  label: string;
+  description: string;
+  provider?: string;
+}
+
+export interface FinancialProfile {
+  crew_member_id: string;
+  full_name: string;
+  national_id: string;
+  kyc_status: string;
+  primary_work_type?: string;
+  computed_at: string;
+  composite_score: number;
+  score_grade: string;
+  org_count: number;
+  cross_org_tenure_months: number;
+  org_profiles: OrgProfile[];
+  total_earnings_30d_cents: number;
+  total_earnings_90d_cents: number;
+  avg_daily_earnings_cents: number;
+  earning_trend: string;
+  wallet_balance_cents: number;
+  savings_rate: number;
+  total_loans_completed: number;
+  total_loans_defaulted: number;
+  on_time_repayment_rate: number;
+  active_insurance_policies: number;
+  available_loan_products?: LoanProduct[];
+  available_insurance?: InsuranceProduct[];
+  factors?: ScoreFactor[];
+  suggestions?: string[];
+}
+

@@ -41,7 +41,7 @@ func NewPayrollService(
 }
 
 type CreatePayrollRunInput struct {
-	SaccoID       uuid.UUID `json:"sacco_id" binding:"required"`
+	OrganizationID       uuid.UUID `json:"sacco_id" binding:"required"`
 	PeriodStart   string    `json:"period_start" binding:"required"`
 	PeriodEnd     string    `json:"period_end" binding:"required"`
 	ProcessedByID *uuid.UUID `json:"processed_by_id"`
@@ -58,7 +58,7 @@ func (s *PayrollService) CreatePayrollRun(ctx context.Context, input CreatePayro
 	}
 
 	run := &models.PayrollRun{
-		SaccoID:       input.SaccoID,
+		OrganizationID:       input.OrganizationID,
 		PeriodStart:   start,
 		PeriodEnd:     end,
 		Status:        models.PayrollDraft,
@@ -76,8 +76,8 @@ func (s *PayrollService) GetPayrollRun(ctx context.Context, id uuid.UUID) (*mode
 	return s.payrollRepo.GetByID(ctx, id)
 }
 
-func (s *PayrollService) ListPayrollRuns(ctx context.Context, saccoID *uuid.UUID, page, perPage int) ([]models.PayrollRun, int64, error) {
-	return s.payrollRepo.List(ctx, saccoID, page, perPage)
+func (s *PayrollService) ListPayrollRuns(ctx context.Context, orgID *uuid.UUID, page, perPage int) ([]models.PayrollRun, int64, error) {
+	return s.payrollRepo.List(ctx, orgID, page, perPage)
 }
 
 func (s *PayrollService) GetPayrollEntries(ctx context.Context, runID uuid.UUID) ([]models.PayrollEntry, error) {

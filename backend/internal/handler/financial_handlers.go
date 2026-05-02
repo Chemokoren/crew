@@ -491,3 +491,46 @@ func (h *InsuranceHandler) List(c *gin.Context) {
 	}
 	ListResponse(c, policies, buildMeta(page, perPage, total))
 }
+
+// --- Financial Profile Handler (E4) ---
+
+// FinancialProfileHandler exposes the cross-org financial identity API.
+type FinancialProfileHandler struct {
+	profileSvc *service.FinancialProfileService
+}
+
+// NewFinancialProfileHandler creates a new FinancialProfileHandler.
+func NewFinancialProfileHandler(svc *service.FinancialProfileService) *FinancialProfileHandler {
+	return &FinancialProfileHandler{profileSvc: svc}
+}
+
+// GetProfile godoc
+// @Summary Get unified financial profile for a crew member
+// @Description Returns cross-org financial identity: composite credit score, earnings summary,
+//
+//	wallet health, loan history, insurance, and industry-specific product recommendations.
+//	Designed for lender/insurer integration.
+//
+// @Tags FinancialProfile
+// @Produce json
+// @Param crew_member_id path string true "Crew Member ID"
+// @Success 200 {object} service.FinancialProfile
+// @Router /api/v1/financial-profile/{crew_member_id} [get]
+func (h *FinancialProfileHandler) GetProfile(c *gin.Context) {
+	crewID, err := uuid.Parse(c.Param("crew_member_id"))
+	if err != nil {
+		BadRequest(c, "Invalid crew member ID")
+		return
+	}
+
+	if denied := enforceWalletAccess(c, crewID); denied {
+		return
+	}
+
+	profile, err := h.profileSvc.GetProfile(c.Request.Context(), crewID)
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, profile)
+}

@@ -60,7 +60,7 @@ func TestPayrollService(t *testing.T) {
 	t.Run("Create Payroll Run", func(t *testing.T) {
 		ctx := context.Background()
 		run, err := svc.CreatePayrollRun(ctx, service.CreatePayrollRunInput{
-			SaccoID:     uuid.New(),
+			OrganizationID:     uuid.New(),
 			PeriodStart: "2026-04-01",
 			PeriodEnd:   "2026-04-30",
 		})
@@ -74,7 +74,7 @@ func TestPayrollService(t *testing.T) {
 
 	t.Run("Process Payroll Run", func(t *testing.T) {
 		ctx := context.Background()
-		saccoID := uuid.New()
+		orgID := uuid.New()
 
 		// 1. Setup Earnings
 		crewID1 := uuid.New()
@@ -86,7 +86,7 @@ func TestPayrollService(t *testing.T) {
 
 		// 2. Create Run
 		run, err := svc.CreatePayrollRun(ctx, service.CreatePayrollRunInput{
-			SaccoID:     saccoID,
+			OrganizationID:     orgID,
 			PeriodStart: "2026-04-01",
 			PeriodEnd:   "2026-04-30",
 		})

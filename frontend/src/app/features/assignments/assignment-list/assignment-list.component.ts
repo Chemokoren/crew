@@ -7,7 +7,7 @@ import { ToastService } from '../../../core/services/toast.service';
 import { ConfirmDialogService } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { TooltipDirective } from '../../../shared/directives/tooltip.directive';
 import { AutocompleteComponent, AutocompleteOption } from '../../../shared/components/autocomplete/autocomplete.component';
-import { Assignment, PaginationMeta, CrewMember, Vehicle, SACCO } from '../../../core/models';
+import { Assignment, PaginationMeta, CrewMember, Vehicle, Organization, IndustryType, WorkType } from '../../../core/models';
 
 @Component({
   selector: 'app-assignment-list',
@@ -45,9 +45,9 @@ import { Assignment, PaginationMeta, CrewMember, Vehicle, SACCO } from '../../..
           <app-autocomplete [(ngModel)]="crewMemberFilter" (ngModelChange)="load()" [options]="crewMemberOptions()" placeholder="— All Crew Members —" id="assignment-crew-filter"></app-autocomplete>
         </div>
 
-        <!-- Filter by SACCO -->
+        <!-- Filter by Organization -->
         <div style="position: relative; z-index: 53; flex: 1; min-width: 200px; max-width: 260px;">
-          <app-autocomplete [(ngModel)]="saccoFilter" (ngModelChange)="load()" [options]="saccoOptions()" placeholder="— All SACCOs —" id="assignment-sacco-filter"></app-autocomplete>
+          <app-autocomplete [(ngModel)]="saccoFilter" (ngModelChange)="load()" [options]="saccoOptions()" placeholder="— All Organizations —" id="assignment-sacco-filter"></app-autocomplete>
         </div>
 
         @if (hasActiveFilters()) {
@@ -76,7 +76,7 @@ import { Assignment, PaginationMeta, CrewMember, Vehicle, SACCO } from '../../..
         <div class="data-table-wrapper">
           <table class="data-table">
             <thead><tr>
-              <th>Crew Member</th><th>Vehicle</th><th>SACCO</th><th>Route</th><th>Shift Date</th><th>Status</th><th>Earning Model</th><th>Actions</th>
+              <th>Crew Member</th><th>Vehicle</th><th>Organization</th><th>Route</th><th>Shift Date</th><th>Status</th><th>Earning Model</th><th>Actions</th>
             </tr></thead>
             <tbody>
               @for (a of items(); track a.id) {
@@ -87,7 +87,7 @@ import { Assignment, PaginationMeta, CrewMember, Vehicle, SACCO } from '../../..
                   <td>
                     <span class="badge badge-accent" style="font-family:var(--font-mono, monospace);font-size:0.75rem;">{{ a.vehicle_registration_no || '—' }}</span>
                   </td>
-                  <td style="color:var(--color-text-secondary);font-size:0.8125rem;">{{ a.sacco_name || '—' }}</td>
+                  <td style="color:var(--color-text-secondary);font-size:0.8125rem;">{{ a.organization_name || '—' }}</td>
                   <td style="color:var(--color-text-muted);font-size:0.8125rem;">{{ a.route_name || '—' }}</td>
                   <td style="color:var(--color-text-primary);font-weight:500;">{{ a.shift_date | date:'mediumDate' }}</td>
                   <td><span class="badge" [ngClass]="statusBadge(a.status)">{{ a.status }}</span></td>
@@ -147,56 +147,84 @@ import { Assignment, PaginationMeta, CrewMember, Vehicle, SACCO } from '../../..
                 ></app-autocomplete>
               </div>
 
-              <!-- Vehicle Autocomplete -->
+              <!-- Organization Autocomplete -->
               <div class="form-group">
-                <label class="form-label">Vehicle</label>
-                <app-autocomplete
-                  [options]="vehicleOptions()"
-                  placeholder="Search by registration, type..."
-                  inputId="create-vehicle-select"
-                  [(ngModel)]="newAssignment.vehicle_id"
-                ></app-autocomplete>
-              </div>
-
-              <!-- SACCO Autocomplete -->
-              <div class="form-group">
-                <label class="form-label">SACCO</label>
+                <label class="form-label">Organization (Organization)</label>
                 <app-autocomplete
                   [options]="saccoOptions()"
-                  placeholder="Search by SACCO name..."
+                  placeholder="Search by Organization name..."
                   inputId="create-sacco-select"
-                  [(ngModel)]="newAssignment.sacco_id"
+                  [(ngModel)]="newAssignment.organization_id"
                 ></app-autocomplete>
               </div>
 
-              <!-- Shift Date — Date picker -->
+              <!-- Shift Date -->
               <div class="form-group">
                 <label class="form-label">
                   <span class="material-icons-round form-label-icon">calendar_today</span>
                   Shift Date
                 </label>
-                <input
-                  class="form-input"
-                  type="date"
-                  [(ngModel)]="newAssignment.shift_date"
-                  id="create-shift-date"
-                />
+                <input class="form-input" type="date" [(ngModel)]="newAssignment.shift_date" id="create-shift-date" />
               </div>
 
-              <!-- Shift Start — DateTime picker -->
+              <!-- Shift Start -->
               <div class="form-group">
                 <label class="form-label">
                   <span class="material-icons-round form-label-icon">schedule</span>
                   Shift Start
                 </label>
-                <input
-                  class="form-input"
-                  type="datetime-local"
-                  [(ngModel)]="newAssignment.shift_start"
-                  id="create-shift-start"
-                  step="60"
-                />
+                <input class="form-input" type="datetime-local" [(ngModel)]="newAssignment.shift_start" id="create-shift-start" step="60" />
               </div>
+
+              <!-- Work Type (Phase F4) -->
+              <div class="form-group">
+                <label class="form-label">
+                  <span class="material-icons-round form-label-icon">work</span>
+                  Work Type
+                </label>
+                <select class="form-select" [(ngModel)]="newAssignment.work_type" id="create-work-type">
+                  <option value="SHIFT">Shift</option><option value="DAILY">Daily</option>
+                  <option value="HOURLY">Hourly</option><option value="PER_TRIP">Per Trip</option>
+                  <option value="PROJECT">Project</option><option value="VISIT">Visit</option>
+                  <option value="CONTRACT">Contract</option><option value="TASK">Task</option>
+                </select>
+              </div>
+
+              <!-- Vehicle (only for TRANSPORT or unset) -->
+              @if (selectedIndustry() === 'TRANSPORT' || !selectedIndustry()) {
+                <div class="form-group">
+                  <label class="form-label">Vehicle</label>
+                  <app-autocomplete
+                    [options]="vehicleOptions()"
+                    placeholder="Search by registration, type..."
+                    inputId="create-vehicle-select"
+                    [(ngModel)]="newAssignment.vehicle_id"
+                  ></app-autocomplete>
+                </div>
+              }
+
+              <!-- Work Site (for CONSTRUCTION/LOGISTICS/AGRICULTURE) -->
+              @if (selectedIndustry() === 'CONSTRUCTION' || selectedIndustry() === 'LOGISTICS' || selectedIndustry() === 'AGRICULTURE') {
+                <div class="form-group">
+                  <label class="form-label">
+                    <span class="material-icons-round form-label-icon">location_on</span>
+                    Work Site / Location
+                  </label>
+                  <input class="form-input" [(ngModel)]="newAssignment.work_site" placeholder="e.g. Kilimani Road Project, Farm Block A" id="create-work-site" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Project Reference</label>
+                  <input class="form-input" [(ngModel)]="newAssignment.project_ref" placeholder="e.g. PRJ-2026-001" id="create-project-ref" />
+                </div>
+              }
+
+              <!-- Hourly Rate (for HOURLY work type) -->
+              @if (newAssignment.work_type === 'HOURLY') {
+                <div class="form-group">
+                  <label class="form-label">Hourly Rate (KES)</label>
+                  <input class="form-input" type="number" [(ngModel)]="hourlyRate" placeholder="250" id="create-hourly-rate" />
+                </div>
+              }
 
               <div class="form-group"><label class="form-label">Earning Model</label>
                 <select class="form-select" [(ngModel)]="newAssignment.earning_model">
@@ -321,7 +349,7 @@ export class AssignmentListComponent implements OnInit {
   // Dropdown data fetched from API
   crewMembers = signal<CrewMember[]>([]);
   vehicles = signal<Vehicle[]>([]);
-  saccos = signal<SACCO[]>([]);
+  saccos = signal<Organization[]>([]);
 
   // Computed autocomplete options
   crewMemberOptions = computed<AutocompleteOption[]>(() =>
@@ -357,9 +385,18 @@ export class AssignmentListComponent implements OnInit {
   // Create modal
   showCreateModal = signal(false);
   creating = signal(false);
-  newAssignment = { crew_member_id: '', vehicle_id: '', sacco_id: '', shift_date: '', shift_start: '', earning_model: 'FIXED', notes: '' };
+  newAssignment = { crew_member_id: '', vehicle_id: '', organization_id: '', shift_date: '', shift_start: '', earning_model: 'FIXED', work_type: 'SHIFT', work_site: '', project_ref: '', notes: '' };
   fixedAmount = 0;
   commissionRate = 0;
+  hourlyRate = 0;
+
+  // Industry detection from selected Organization (Phase F4)
+  selectedIndustry = computed<IndustryType | ''>(() => {
+    const saccoId = this.newAssignment.organization_id;
+    if (!saccoId) return '';
+    const sacco = this.saccos().find(s => s.id === saccoId);
+    return sacco?.industry_type || '';
+  });
 
   ngOnInit(): void {
     this.loadDropdownData();
@@ -377,8 +414,8 @@ export class AssignmentListComponent implements OnInit {
       next: (res) => this.vehicles.set(res.data),
     });
 
-    // Fetch SACCOs
-    this.api.getSACCOs({ per_page: '200' }).subscribe({
+    // Fetch Organizations
+    this.api.getOrganizations({ per_page: '200' }).subscribe({
       next: (res) => this.saccos.set(res.data),
     });
   }
@@ -392,7 +429,7 @@ export class AssignmentListComponent implements OnInit {
     if (this.statusFilter) params['status'] = this.statusFilter;
     if (this.dateFilter) params['shift_date'] = this.dateFilter;
     if (this.crewMemberFilter) params['crew_member_id'] = this.crewMemberFilter;
-    if (this.saccoFilter) params['sacco_id'] = this.saccoFilter;
+    if (this.saccoFilter) params['organization_id'] = this.saccoFilter;
 
     this.api.getAssignments(params).subscribe({
       next: (res) => { this.items.set(res.data); this.meta.set(res.meta); this.loading.set(false); },
@@ -423,24 +460,36 @@ export class AssignmentListComponent implements OnInit {
   }
 
   openCreateModal(): void {
-    this.newAssignment = { crew_member_id: '', vehicle_id: '', sacco_id: '', shift_date: '', shift_start: '', earning_model: 'FIXED', notes: '' };
+    this.newAssignment = { crew_member_id: '', vehicle_id: '', organization_id: '', shift_date: '', shift_start: '', earning_model: 'FIXED', work_type: 'SHIFT', work_site: '', project_ref: '', notes: '' };
     this.fixedAmount = 0;
     this.commissionRate = 0;
+    this.hourlyRate = 0;
     this.showCreateModal.set(true);
   }
 
   canCreate(): boolean {
-    return !!(this.newAssignment.crew_member_id && this.newAssignment.vehicle_id && this.newAssignment.sacco_id && this.newAssignment.shift_date && this.newAssignment.shift_start);
+    const a = this.newAssignment;
+    const baseValid = !!(a.crew_member_id && a.organization_id && a.shift_date && a.shift_start);
+    const ind = this.selectedIndustry();
+    if (ind === 'TRANSPORT' || !ind) {
+      return baseValid && !!a.vehicle_id;
+    }
+    return baseValid;
   }
 
   createAssignment(): void {
     this.creating.set(true);
+    const a = this.newAssignment;
     const data: Record<string, unknown> = {
-      ...this.newAssignment,
-      shift_start: this.newAssignment.shift_start ? new Date(this.newAssignment.shift_start).toISOString() : '',
+      ...a,
+      shift_start: a.shift_start ? new Date(a.shift_start).toISOString() : '',
       fixed_amount_cents: Math.round(this.fixedAmount * 100),
       commission_rate: this.commissionRate / 100,
+      hourly_rate_cents: this.hourlyRate > 0 ? Math.round(this.hourlyRate * 100) : undefined,
     };
+    if (!data['vehicle_id']) delete data['vehicle_id'];
+    if (!data['work_site']) delete data['work_site'];
+    if (!data['project_ref']) delete data['project_ref'];
     this.api.createAssignment(data).subscribe({
       next: () => { this.toast.success('Assignment created'); this.showCreateModal.set(false); this.creating.set(false); this.load(); },
       error: () => this.creating.set(false),

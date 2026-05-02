@@ -17,12 +17,12 @@ func TestVehicleService_CreateVehicle(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	svc := service.NewVehicleService(repo, logger)
 
-	saccoID := uuid.New()
+	orgID := uuid.New()
 	input := service.CreateVehicleInput{
 		RegistrationNo: "KAA 123A",
 		Capacity:       14,
 		VehicleType:    models.VehicleType("MATATU"),
-		SaccoID:        saccoID,
+		OrganizationID:        orgID,
 	}
 
 	vehicle, err := svc.CreateVehicle(context.Background(), input)
@@ -43,10 +43,10 @@ func TestVehicleService_UpdateVehicle(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	svc := service.NewVehicleService(repo, logger)
 
-	saccoID := uuid.New()
+	orgID := uuid.New()
 	vehicle, _ := svc.CreateVehicle(context.Background(), service.CreateVehicleInput{
 		RegistrationNo: "KAA 123A",
-		SaccoID:        saccoID,
+		OrganizationID:        orgID,
 	})
 
 	newStatus := false
@@ -67,11 +67,11 @@ func TestVehicleService_ListVehicles(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	svc := service.NewVehicleService(repo, logger)
 
-	saccoID := uuid.New()
-	svc.CreateVehicle(context.Background(), service.CreateVehicleInput{RegistrationNo: "V1", SaccoID: saccoID})
-	svc.CreateVehicle(context.Background(), service.CreateVehicleInput{RegistrationNo: "V2", SaccoID: saccoID})
+	orgID := uuid.New()
+	svc.CreateVehicle(context.Background(), service.CreateVehicleInput{RegistrationNo: "V1", OrganizationID: orgID})
+	svc.CreateVehicle(context.Background(), service.CreateVehicleInput{RegistrationNo: "V2", OrganizationID: orgID})
 
-	vehicles, total, err := svc.ListVehicles(context.Background(), &saccoID, 1, 10)
+	vehicles, total, err := svc.ListVehicles(context.Background(), &orgID, 1, 10)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -88,10 +88,10 @@ func TestVehicleService_GetVehicle(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	svc := service.NewVehicleService(repo, logger)
 
-	saccoID := uuid.New()
+	orgID := uuid.New()
 	vehicle, _ := svc.CreateVehicle(context.Background(), service.CreateVehicleInput{
 		RegistrationNo: "KAZ 123Z",
-		SaccoID:        saccoID,
+		OrganizationID:        orgID,
 	})
 
 	fetched, err := svc.GetVehicle(context.Background(), vehicle.ID)
@@ -108,10 +108,10 @@ func TestVehicleService_DeleteVehicle(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	svc := service.NewVehicleService(repo, logger)
 
-	saccoID := uuid.New()
+	orgID := uuid.New()
 	vehicle, _ := svc.CreateVehicle(context.Background(), service.CreateVehicleInput{
 		RegistrationNo: "KAB 123B",
-		SaccoID:        saccoID,
+		OrganizationID:        orgID,
 	})
 
 	err := svc.DeleteVehicle(context.Background(), vehicle.ID)

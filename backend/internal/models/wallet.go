@@ -10,7 +10,7 @@ import (
 // Uses optimistic locking via Version field to prevent overdraw races.
 type Wallet struct {
 	ID                 uuid.UUID  `json:"id" gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
-	CrewMemberID       uuid.UUID  `json:"crew_member_id" gorm:"type:uuid;uniqueIndex;not null"`
+	CrewMemberID       uuid.UUID  `json:"crew_member_id" gorm:"column:sacco_id;type:uuid;uniqueIndex;not null"`
 	BalanceCents       int64      `json:"balance_cents" gorm:"type:bigint;default:0"`
 	TotalCreditedCents int64      `json:"total_credited_cents" gorm:"type:bigint;default:0"`
 	TotalDebitedCents  int64      `json:"total_debited_cents" gorm:"type:bigint;default:0"`
@@ -58,7 +58,7 @@ const (
 // WalletTransaction is an immutable ledger entry.
 type WalletTransaction struct {
 	ID                uuid.UUID           `json:"id" gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
-	WalletID          uuid.UUID           `json:"wallet_id" gorm:"type:uuid;not null;index"`
+	WalletID          uuid.UUID           `json:"wallet_id" gorm:"column:sacco_id;type:uuid;not null;index"`
 	IdempotencyKey    string              `json:"idempotency_key,omitempty" gorm:"uniqueIndex"`
 	TransactionType   TransactionType     `json:"transaction_type" gorm:"not null"`
 	Category          TransactionCategory `json:"category" gorm:"not null"`
@@ -76,10 +76,10 @@ func (WalletTransaction) TableName() string { return "wallet_transactions" }
 
 // --- SACCO Float ---
 
-// SACCOFloat tracks a SACCO's available funds for crew payouts.
-type SACCOFloat struct {
+// OrganizationFloat tracks a SACCO's available funds for crew payouts.
+type OrganizationFloat struct {
 	ID           uuid.UUID  `json:"id" gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
-	SaccoID      uuid.UUID  `json:"sacco_id" gorm:"type:uuid;uniqueIndex;not null"`
+	OrganizationID      uuid.UUID  `json:"organization_id" gorm:"column:sacco_id;type:uuid;uniqueIndex;not null"`
 	BalanceCents int64      `json:"balance_cents" gorm:"type:bigint;default:0"`
 	Currency     string     `json:"currency" gorm:"default:'KES';not null"`
 	Version      int        `json:"-" gorm:"not null;default:0"`
@@ -87,15 +87,15 @@ type SACCOFloat struct {
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
 
-	Sacco SACCO `json:"-" gorm:"foreignKey:SaccoID"`
+	Organization Organization `json:"-" gorm:"foreignKey:OrganizationID"`
 }
 
-func (SACCOFloat) TableName() string { return "sacco_floats" }
+func (OrganizationFloat) TableName() string { return "sacco_floats" }
 
-// SACCOFloatTransaction records SACCO float funding and payout events.
-type SACCOFloatTransaction struct {
+// OrganizationFloatTransaction records SACCO float funding and payout events.
+type OrganizationFloatTransaction struct {
 	ID                uuid.UUID         `json:"id" gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
-	SACCOFloatID      uuid.UUID         `json:"sacco_float_id" gorm:"type:uuid;not null;index"`
+	OrganizationFloatID      uuid.UUID         `json:"sacco_float_id" gorm:"column:sacco_id;type:uuid;not null;index"`
 	IdempotencyKey    string            `json:"idempotency_key,omitempty" gorm:"uniqueIndex"`
 	TransactionType   string            `json:"transaction_type" gorm:"not null"`
 	AmountCents       int64             `json:"amount_cents" gorm:"type:bigint;not null"`
@@ -107,4 +107,4 @@ type SACCOFloatTransaction struct {
 	UpdatedAt         time.Time         `json:"updated_at"`
 }
 
-func (SACCOFloatTransaction) TableName() string { return "sacco_float_transactions" }
+func (OrganizationFloatTransaction) TableName() string { return "sacco_float_transactions" }

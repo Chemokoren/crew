@@ -48,13 +48,13 @@ func (r *PayrollRepo) Update(ctx context.Context, run *models.PayrollRun) error 
 	return nil
 }
 
-func (r *PayrollRepo) List(ctx context.Context, saccoID *uuid.UUID, page, perPage int) ([]models.PayrollRun, int64, error) {
+func (r *PayrollRepo) List(ctx context.Context, orgID *uuid.UUID, page, perPage int) ([]models.PayrollRun, int64, error) {
 	var runs []models.PayrollRun
 	var total int64
 
 	query := r.db.WithContext(ctx).Model(&models.PayrollRun{})
-	if saccoID != nil {
-		query = query.Where("sacco_id = ?", *saccoID)
+	if orgID != nil {
+		query = query.Where("sacco_id = ?", *orgID)
 	}
 
 	query.Count(&total)
@@ -84,4 +84,52 @@ func (r *PayrollRepo) GetEntries(ctx context.Context, runID uuid.UUID) ([]models
 		return nil, fmt.Errorf("get payroll entries: %w", err)
 	}
 	return entries, nil
+}
+
+// --- Pay Period CRUD ---
+
+func (r *PayrollRepo) CreatePayPeriod(ctx context.Context, period *models.PayPeriod) error {
+	if err := r.db.WithContext(ctx).Create(period).Error; err != nil {
+		return fmt.Errorf("create pay period: %w", err)
+	}
+	return nil
+}
+
+func (r *PayrollRepo) GetPayPeriodByID(ctx context.Context, id uuid.UUID) (*models.PayPeriod, error) {
+	var period models.PayPeriod
+	if err := r.db.WithContext(ctx).
+		Preload("PaySchedule").
+		Where("id = ?", id).First(&period).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errs.ErrNotFound
+		}
+		return nil, fmt.Errorf("get pay period: %w", err)
+	}
+	return &period, nil
+}
+
+func (r *PayrollRepo) UpdatePayPeriod(ctx context.Context, period *models.PayPeriod) error {
+	if err := r.db.WithContext(ctx).Save(period).Error; err != nil {
+		return fmt.Errorf("update pay period: %w", err)
+	}
+	return nil
+}
+
+func (r *PayrollRepo) ListPayPeriods(ctx context.Context, scheduleID uuid.UUID, page, perPage int) ([]models.PayPeriod, int64, error) {
+	var periods []models.PayPeriod
+	var total int64
+
+	query := r.db.WithContext(ctx).Model(&models.PayPeriod{}).Where("pay_schedule_id = ?", scheduleID)
+	query.Count(&total)
+
+	offset := (page - 1) * perPage
+	if err := query.
+		Preload("PaySchedule").
+		Offset(offset).Limit(perPage).
+		Order("period_start DESC").
+		Find(&periods).Error; err != nil {
+		return nil, 0, fmt.Errorf("list pay periods: %w", err)
+	}
+
+	return periods, total, nil
 }

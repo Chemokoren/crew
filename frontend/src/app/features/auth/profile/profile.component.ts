@@ -89,12 +89,12 @@ import { User } from '../../../core/models';
                 </div>
               }
 
-              @if (user()!.sacco_id) {
+              @if (user()!.organization_id) {
                 <div class="detail-row">
                   <span class="detail-label">
-                    <span class="material-icons-round detail-icon">business</span> SACCO ID
+                    <span class="material-icons-round detail-icon">business</span> Organization ID
                   </span>
-                  <code class="detail-value text-accent">{{ user()!.sacco_id! | slice:0:8 }}…</code>
+                  <code class="detail-value text-accent">{{ user()!.organization_id! | slice:0:8 }}…</code>
                 </div>
               }
 

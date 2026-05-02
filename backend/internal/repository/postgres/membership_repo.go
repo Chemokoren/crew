@@ -29,7 +29,7 @@ func (r *MembershipRepo) Create(ctx context.Context, m *models.CrewSACCOMembersh
 
 func (r *MembershipRepo) GetByID(ctx context.Context, id uuid.UUID) (*models.CrewSACCOMembership, error) {
 	var m models.CrewSACCOMembership
-	if err := r.db.WithContext(ctx).Preload("CrewMember").Preload("Sacco").Where("id = ?", id).First(&m).Error; err != nil {
+	if err := r.db.WithContext(ctx).Preload("CrewMember").Preload("Organization").Where("id = ?", id).First(&m).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errs.ErrNotFound
 		}
@@ -45,11 +45,11 @@ func (r *MembershipRepo) Update(ctx context.Context, m *models.CrewSACCOMembersh
 	return nil
 }
 
-func (r *MembershipRepo) ListBySACCO(ctx context.Context, saccoID uuid.UUID, page, perPage int) ([]models.CrewSACCOMembership, int64, error) {
+func (r *MembershipRepo) ListByOrganization(ctx context.Context, orgID uuid.UUID, page, perPage int) ([]models.CrewSACCOMembership, int64, error) {
 	var members []models.CrewSACCOMembership
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&models.CrewSACCOMembership{}).Where("sacco_id = ? AND is_active = true", saccoID)
+	query := r.db.WithContext(ctx).Model(&models.CrewSACCOMembership{}).Where("sacco_id = ? AND is_active = true", orgID)
 	query.Count(&total)
 
 	offset := (page - 1) * perPage
@@ -61,15 +61,15 @@ func (r *MembershipRepo) ListBySACCO(ctx context.Context, saccoID uuid.UUID, pag
 
 func (r *MembershipRepo) ListByCrewMember(ctx context.Context, crewMemberID uuid.UUID) ([]models.CrewSACCOMembership, error) {
 	var members []models.CrewSACCOMembership
-	if err := r.db.WithContext(ctx).Preload("Sacco").Where("crew_member_id = ? AND is_active = true", crewMemberID).Find(&members).Error; err != nil {
+	if err := r.db.WithContext(ctx).Preload("Organization").Where("crew_member_id = ? AND is_active = true", crewMemberID).Find(&members).Error; err != nil {
 		return nil, fmt.Errorf("list memberships by crew: %w", err)
 	}
 	return members, nil
 }
 
-func (r *MembershipRepo) GetActive(ctx context.Context, crewMemberID, saccoID uuid.UUID) (*models.CrewSACCOMembership, error) {
+func (r *MembershipRepo) GetActive(ctx context.Context, crewMemberID, orgID uuid.UUID) (*models.CrewSACCOMembership, error) {
 	var m models.CrewSACCOMembership
-	if err := r.db.WithContext(ctx).Where("crew_member_id = ? AND sacco_id = ? AND is_active = true", crewMemberID, saccoID).First(&m).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("crew_member_id = ? AND sacco_id = ? AND is_active = true", crewMemberID, orgID).First(&m).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errs.ErrNotFound
 		}

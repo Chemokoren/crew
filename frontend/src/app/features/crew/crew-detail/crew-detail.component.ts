@@ -121,6 +121,16 @@ import { CrewMember, Wallet } from '../../../core/models';
               </div>
               <span class="material-icons-round link-arrow">chevron_right</span>
             </a>
+            <a [routerLink]="['/crew', c.id, 'financial-profile']" class="link-card glass-card" id="link-financial-profile">
+              <div class="link-icon" style="background:rgba(99,102,241,0.12);color:#6366f1;">
+                <span class="material-icons-round">account_balance</span>
+              </div>
+              <div class="link-content">
+                <span class="link-title">Financial Profile</span>
+                <span class="link-hint">Cross-org identity & scoring</span>
+              </div>
+              <span class="material-icons-round link-arrow">chevron_right</span>
+            </a>
           </div>
         </div>
       } @else {
@@ -144,7 +154,7 @@ import { CrewMember, Wallet } from '../../../core/models';
     /* #70: Quick links */
     .links-section { margin-top: var(--space-xl); }
     .section-title { display: flex; align-items: center; gap: var(--space-sm); font-family: var(--font-heading); font-size: 1.125rem; font-weight: 600; color: var(--color-text-secondary); margin-bottom: var(--space-md); }
-    .links-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-md); }
+    .links-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-md); }
     .link-card {
       display: flex; align-items: center; gap: var(--space-md); padding: var(--space-lg) !important;
       text-decoration: none; cursor: pointer; transition: border-color 200ms;

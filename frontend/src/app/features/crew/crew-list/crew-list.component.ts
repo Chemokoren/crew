@@ -5,7 +5,7 @@ import { RouterLink, Router } from '@angular/router';
 import { ApiService } from '../../../core/services/api.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { AutocompleteComponent, AutocompleteOption } from '../../../shared/components/autocomplete/autocomplete.component';
-import { CrewMember, PaginationMeta, SACCO } from '../../../core/models';
+import { CrewMember, PaginationMeta, Organization, TenantJobType } from '../../../core/models';
 
 @Component({
   selector: 'app-crew-list',
@@ -50,9 +50,9 @@ import { CrewMember, PaginationMeta, SACCO } from '../../../core/models';
         <div style="position: relative; z-index: 54; flex: 1; min-width: 140px; max-width: 180px;">
           <app-autocomplete [(ngModel)]="kycFilter" (ngModelChange)="loadCrew()" [options]="kycOptions" placeholder="— All KYC —" id="crew-kyc-filter"></app-autocomplete>
         </div>
-        <!-- #71: Filter by SACCO -->
+        <!-- #71: Filter by Organization -->
         <div style="position: relative; z-index: 53; flex: 1; min-width: 180px; max-width: 240px;">
-          <app-autocomplete [(ngModel)]="saccoFilter" (ngModelChange)="loadCrew()" [options]="saccoOptions()" placeholder="— All SACCOs —" id="crew-sacco-filter"></app-autocomplete>
+          <app-autocomplete [(ngModel)]="saccoFilter" (ngModelChange)="loadCrew()" [options]="saccoOptions()" placeholder="— All Organizations —" id="crew-sacco-filter"></app-autocomplete>
         </div>
       </div>
 
@@ -152,12 +152,11 @@ import { CrewMember, PaginationMeta, SACCO } from '../../../core/models';
                 <input class="form-input" [(ngModel)]="newCrew.last_name" name="lastName" required placeholder="Doe" />
               </div>
               <div class="form-group">
-                <label class="form-label">Role</label>
+                <label class="form-label">Role / Job Type</label>
                 <select class="form-select" [(ngModel)]="newCrew.role" name="role" required>
-                  <option value="DRIVER">Driver</option>
-                  <option value="CONDUCTOR">Conductor</option>
-                  <option value="RIDER">Rider</option>
-                  <option value="OTHER">Other</option>
+                  @for (jt of dynamicRoleOptions(); track jt.value) {
+                    <option [value]="jt.value">{{ jt.label }}</option>
+                  }
                 </select>
               </div>
             </form>
@@ -315,8 +314,8 @@ export class CrewListComponent implements OnInit {
   bulkTextInput = '';
   bulkFileName = '';
 
-  // #71: SACCO filter
-  saccos = signal<SACCO[]>([]);
+  // #71: Organization filter
+  saccos = signal<Organization[]>([]);
   saccoOptions = computed<AutocompleteOption[]>(() => this.saccos().map(s => ({
     value: s.id,
     label: s.name,
@@ -338,7 +337,8 @@ export class CrewListComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadCrew();
-    this.loadSACCOs();
+    this.loadOrganizations();
+    this.loadJobTypes();
   }
 
   loadCrew(): void {
@@ -347,7 +347,7 @@ export class CrewListComponent implements OnInit {
     if (this.searchQuery) params['search'] = this.searchQuery;
     if (this.roleFilter) params['role'] = this.roleFilter;
     if (this.kycFilter) params['kyc_status'] = this.kycFilter;
-    if (this.saccoFilter) params['sacco_id'] = this.saccoFilter;
+    if (this.saccoFilter) params['organization_id'] = this.saccoFilter;
 
     this.api.getCrewMembers(params).subscribe({
       next: (res) => {
@@ -359,9 +359,39 @@ export class CrewListComponent implements OnInit {
     });
   }
 
-  loadSACCOs(): void {
-    this.api.getSACCOs({ per_page: '100' }).subscribe({
-      next: (res) => this.saccos.set(res.data ?? []),
+  loadOrganizations(): void {
+    this.api.getOrganizations({ per_page: '100' }).subscribe({
+      next: (res) => {
+        this.saccos.set(res.data ?? []);
+        // Load job types from first Organization (F8: Dynamic registration)
+        if (res.data?.length) this.loadJobTypes(res.data[0].id);
+      },
+    });
+  }
+
+  // F8: Dynamic job type loading
+  tenantJobTypes = signal<TenantJobType[]>([]);
+  dynamicRoleOptions = computed<AutocompleteOption[]>(() => {
+    const custom = this.tenantJobTypes();
+    if (custom.length > 0) {
+      return custom.map(jt => ({ value: jt.code, label: jt.display_name, searchText: `${jt.display_name} ${jt.code} ${jt.category}` }));
+    }
+    return this.roleOptions;
+  });
+
+  private loadJobTypes(saccoId?: string): void {
+    if (!saccoId) {
+      this.api.getOrganizations({ per_page: '1' }).subscribe({
+        next: r => { if (r.data?.length) this.fetchJobTypes(r.data[0].id); },
+      });
+      return;
+    }
+    this.fetchJobTypes(saccoId);
+  }
+
+  private fetchJobTypes(saccoId: string): void {
+    this.api.getJobTypes(saccoId).subscribe({
+      next: r => this.tenantJobTypes.set(r.data || []),
     });
   }
 

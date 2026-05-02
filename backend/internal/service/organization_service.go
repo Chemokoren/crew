@@ -11,23 +11,23 @@ import (
 	"github.com/kibsoft/amy-mis/internal/repository"
 )
 
-// SACCOService handles SACCO business logic.
-type SACCOService struct {
-	saccoRepo      repository.SACCORepository
+// OrganizationService handles SACCO business logic.
+type OrganizationService struct {
+	saccoRepo      repository.OrganizationRepository
 	membershipRepo repository.MembershipRepository
-	floatRepo      repository.SACCOFloatRepository
+	floatRepo      repository.OrganizationFloatRepository
 	auditSvc       *AuditService
 	logger         *slog.Logger
 }
 
-func NewSACCOService(
-	saccoRepo repository.SACCORepository,
+func NewOrganizationService(
+	saccoRepo repository.OrganizationRepository,
 	membershipRepo repository.MembershipRepository,
-	floatRepo repository.SACCOFloatRepository,
+	floatRepo repository.OrganizationFloatRepository,
 	auditSvc *AuditService,
 	logger *slog.Logger,
-) *SACCOService {
-	return &SACCOService{
+) *OrganizationService {
+	return &OrganizationService{
 		saccoRepo:      saccoRepo,
 		membershipRepo: membershipRepo,
 		floatRepo:      floatRepo,
@@ -47,7 +47,7 @@ type CreateSACCOInput struct {
 	ContactEmail       string `json:"contact_email"`
 }
 
-func (s *SACCOService) CreateSACCO(ctx context.Context, input CreateSACCOInput) (*models.SACCO, error) {
+func (s *OrganizationService) CreateSACCO(ctx context.Context, input CreateSACCOInput) (*models.SACCO, error) {
 	sacco := &models.SACCO{
 		Name:               input.Name,
 		RegistrationNumber: input.RegistrationNumber,
@@ -67,19 +67,22 @@ func (s *SACCOService) CreateSACCO(ctx context.Context, input CreateSACCOInput) 
 	return sacco, nil
 }
 
-func (s *SACCOService) GetSACCO(ctx context.Context, id uuid.UUID) (*models.SACCO, error) {
+func (s *OrganizationService) GetSACCO(ctx context.Context, id uuid.UUID) (*models.SACCO, error) {
 	return s.saccoRepo.GetByID(ctx, id)
 }
 
 type UpdateSACCOInput struct {
-	Name         *string `json:"name"`
-	County       *string `json:"county"`
-	SubCounty    *string `json:"sub_county"`
-	ContactPhone *string `json:"contact_phone"`
-	ContactEmail *string `json:"contact_email"`
+	Name            *string              `json:"name"`
+	County          *string              `json:"county"`
+	SubCounty       *string              `json:"sub_county"`
+	ContactPhone    *string              `json:"contact_phone"`
+	ContactEmail    *string              `json:"contact_email"`
+	IndustryType    *models.IndustryType `json:"industry_type"`
+	DefaultLanguage *string              `json:"default_language"`
+	DisplayName     *string              `json:"display_name"`
 }
 
-func (s *SACCOService) UpdateSACCO(ctx context.Context, id uuid.UUID, input UpdateSACCOInput) (*models.SACCO, error) {
+func (s *OrganizationService) UpdateSACCO(ctx context.Context, id uuid.UUID, input UpdateSACCOInput) (*models.SACCO, error) {
 	sacco, err := s.saccoRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -100,6 +103,27 @@ func (s *SACCOService) UpdateSACCO(ctx context.Context, id uuid.UUID, input Upda
 	if input.ContactEmail != nil {
 		sacco.ContactEmail = *input.ContactEmail
 	}
+	if input.IndustryType != nil {
+		sacco.IndustryType = *input.IndustryType
+		// Auto-set org type from industry template
+		tmpl := models.GetIndustryTemplate(*input.IndustryType)
+		sacco.OrganizationType = tmpl.OrgType
+		// Set UI labels in tenant config
+		if tmpl.UILabels != nil {
+			cfg, _ := sacco.GetTenantConfig()
+			if cfg == nil {
+				cfg = &models.TenantConfig{}
+			}
+			cfg.UILabels = tmpl.UILabels
+			_ = sacco.SetTenantConfig(cfg)
+		}
+	}
+	if input.DefaultLanguage != nil {
+		sacco.DefaultLanguage = *input.DefaultLanguage
+	}
+	if input.DisplayName != nil {
+		sacco.DisplayName = *input.DisplayName
+	}
 
 	if err := s.saccoRepo.Update(ctx, sacco); err != nil {
 		return nil, fmt.Errorf("update sacco: %w", err)
@@ -107,11 +131,11 @@ func (s *SACCOService) UpdateSACCO(ctx context.Context, id uuid.UUID, input Upda
 	return sacco, nil
 }
 
-func (s *SACCOService) DeleteSACCO(ctx context.Context, id uuid.UUID) error {
+func (s *OrganizationService) DeleteSACCO(ctx context.Context, id uuid.UUID) error {
 	return s.saccoRepo.Delete(ctx, id)
 }
 
-func (s *SACCOService) ListSACCOs(ctx context.Context, page, perPage int, search string) ([]models.SACCO, int64, error) {
+func (s *OrganizationService) ListSACCOs(ctx context.Context, page, perPage int, search string) ([]models.SACCO, int64, error) {
 	return s.saccoRepo.List(ctx, page, perPage, search)
 }
 
@@ -119,14 +143,14 @@ func (s *SACCOService) ListSACCOs(ctx context.Context, page, perPage int, search
 
 type AddMemberInput struct {
 	CrewMemberID uuid.UUID        `json:"crew_member_id" binding:"required"`
-	SaccoID      uuid.UUID        `json:"sacco_id"` // Set by handler from URL
+	OrganizationID      uuid.UUID        `json:"sacco_id"` // Set by handler from URL
 	Role         models.SACCORole `json:"role_in_sacco"`
 	JoinedAt     string           `json:"joined_at"`
 }
 
-func (s *SACCOService) AddMember(ctx context.Context, input AddMemberInput) (*models.CrewSACCOMembership, error) {
+func (s *OrganizationService) AddMember(ctx context.Context, input AddMemberInput) (*models.CrewSACCOMembership, error) {
 	// Check if already a member
-	existing, err := s.membershipRepo.GetActive(ctx, input.CrewMemberID, input.SaccoID)
+	existing, err := s.membershipRepo.GetActive(ctx, input.CrewMemberID, input.OrganizationID)
 	if err == nil && existing != nil {
 		return nil, fmt.Errorf("crew member is already an active member of this SACCO")
 	}
@@ -138,8 +162,8 @@ func (s *SACCOService) AddMember(ctx context.Context, input AddMemberInput) (*mo
 
 	m := &models.CrewSACCOMembership{
 		CrewMemberID: input.CrewMemberID,
-		SaccoID:      input.SaccoID,
-		RoleInSacco:  role,
+		OrganizationID:      input.OrganizationID,
+		RoleInOrg:  role,
 		IsActive:     true,
 	}
 
@@ -159,7 +183,7 @@ func (s *SACCOService) AddMember(ctx context.Context, input AddMemberInput) (*mo
 
 	s.logger.Info("member added to SACCO",
 		slog.String("crew_member_id", input.CrewMemberID.String()),
-		slog.String("sacco_id", input.SaccoID.String()),
+		slog.String("sacco_id", input.OrganizationID.String()),
 	)
 	return m, nil
 }
@@ -169,13 +193,13 @@ type UpdateMemberInput struct {
 	JoinedAt string           `json:"joined_at"`
 }
 
-func (s *SACCOService) UpdateMember(ctx context.Context, membershipID uuid.UUID, input UpdateMemberInput) (*models.CrewSACCOMembership, error) {
+func (s *OrganizationService) UpdateMember(ctx context.Context, membershipID uuid.UUID, input UpdateMemberInput) (*models.CrewSACCOMembership, error) {
 	membership, err := s.membershipRepo.GetByID(ctx, membershipID)
 	if err != nil {
 		return nil, fmt.Errorf("membership not found: %w", err)
 	}
 
-	membership.RoleInSacco = input.Role
+	membership.RoleInOrg = input.Role
 	membership.UpdatedAt = time.Now()
 	
 	if input.JoinedAt != "" {
@@ -190,7 +214,7 @@ func (s *SACCOService) UpdateMember(ctx context.Context, membershipID uuid.UUID,
 	return membership, nil
 }
 
-func (s *SACCOService) RemoveMember(ctx context.Context, membershipID uuid.UUID) error {
+func (s *OrganizationService) RemoveMember(ctx context.Context, membershipID uuid.UUID) error {
 	m, err := s.membershipRepo.GetByID(ctx, membershipID)
 	if err != nil {
 		return err
@@ -199,53 +223,53 @@ func (s *SACCOService) RemoveMember(ctx context.Context, membershipID uuid.UUID)
 	return s.membershipRepo.Update(ctx, m)
 }
 
-func (s *SACCOService) ListMembers(ctx context.Context, saccoID uuid.UUID, page, perPage int) ([]models.CrewSACCOMembership, int64, error) {
-	return s.membershipRepo.ListBySACCO(ctx, saccoID, page, perPage)
+func (s *OrganizationService) ListMembers(ctx context.Context, orgID uuid.UUID, page, perPage int) ([]models.CrewSACCOMembership, int64, error) {
+	return s.membershipRepo.ListByOrganization(ctx, orgID, page, perPage)
 }
 
-func (s *SACCOService) GetCrewMemberships(ctx context.Context, crewMemberID uuid.UUID) ([]models.CrewSACCOMembership, error) {
+func (s *OrganizationService) GetCrewMemberships(ctx context.Context, crewMemberID uuid.UUID) ([]models.CrewSACCOMembership, error) {
 	return s.membershipRepo.ListByCrewMember(ctx, crewMemberID)
 }
 
 // --- Float ---
 
-func (s *SACCOService) GetFloat(ctx context.Context, saccoID uuid.UUID) (*models.SACCOFloat, error) {
-	return s.floatRepo.GetOrCreate(ctx, saccoID)
+func (s *OrganizationService) GetFloat(ctx context.Context, orgID uuid.UUID) (*models.OrganizationFloat, error) {
+	return s.floatRepo.GetOrCreate(ctx, orgID)
 }
 
 type FloatOperationInput struct {
-	SaccoID        uuid.UUID `json:"sacco_id"`
+	OrganizationID        uuid.UUID `json:"sacco_id"`
 	AmountCents    int64     `json:"amount_cents" binding:"required,min=1"`
 	IdempotencyKey string    `json:"idempotency_key" binding:"required"`
 	Reference      string    `json:"reference"`
 }
 
-func (s *SACCOService) CreditFloat(ctx context.Context, input FloatOperationInput) (*models.SACCOFloatTransaction, error) {
-	sf, err := s.floatRepo.GetOrCreate(ctx, input.SaccoID)
+func (s *OrganizationService) CreditFloat(ctx context.Context, input FloatOperationInput) (*models.OrganizationFloatTransaction, error) {
+	sf, err := s.floatRepo.GetOrCreate(ctx, input.OrganizationID)
 	if err != nil {
 		return nil, err
 	}
 	tx, err := s.floatRepo.CreditFloat(ctx, sf.ID, sf.Version, input.AmountCents, input.IdempotencyKey, input.Reference)
 	if err == nil {
-		s.auditSvc.Log(ctx, input.SaccoID, "CREDIT_FLOAT", "sacco_float", &sf.ID, nil, tx, "", "")
+		s.auditSvc.Log(ctx, input.OrganizationID, "CREDIT_FLOAT", "sacco_float", &sf.ID, nil, tx, "", "")
 	}
 	return tx, err
 }
 
-func (s *SACCOService) DebitFloat(ctx context.Context, input FloatOperationInput) (*models.SACCOFloatTransaction, error) {
-	sf, err := s.floatRepo.GetOrCreate(ctx, input.SaccoID)
+func (s *OrganizationService) DebitFloat(ctx context.Context, input FloatOperationInput) (*models.OrganizationFloatTransaction, error) {
+	sf, err := s.floatRepo.GetOrCreate(ctx, input.OrganizationID)
 	if err != nil {
 		return nil, err
 	}
 	tx, err := s.floatRepo.DebitFloat(ctx, sf.ID, sf.Version, input.AmountCents, input.IdempotencyKey, input.Reference)
 	if err == nil {
-		s.auditSvc.Log(ctx, input.SaccoID, "DEBIT_FLOAT", "sacco_float", &sf.ID, nil, tx, "", "")
+		s.auditSvc.Log(ctx, input.OrganizationID, "DEBIT_FLOAT", "sacco_float", &sf.ID, nil, tx, "", "")
 	}
 	return tx, err
 }
 
-func (s *SACCOService) ListFloatTransactions(ctx context.Context, saccoID uuid.UUID, filter repository.SACCOFloatFilter, page, perPage int) ([]models.SACCOFloatTransaction, int64, error) {
-	sf, err := s.floatRepo.GetOrCreate(ctx, saccoID)
+func (s *OrganizationService) ListFloatTransactions(ctx context.Context, orgID uuid.UUID, filter repository.OrganizationFloatFilter, page, perPage int) ([]models.OrganizationFloatTransaction, int64, error) {
+	sf, err := s.floatRepo.GetOrCreate(ctx, orgID)
 	if err != nil {
 		return nil, 0, err
 	}

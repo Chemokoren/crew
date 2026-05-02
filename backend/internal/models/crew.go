@@ -36,6 +36,8 @@ type CrewMember struct {
 	KYCVerifiedAt *time.Time     `json:"kyc_verified_at,omitempty"`
 	PhotoURL      string         `json:"photo_url,omitempty"`
 	Role          CrewRole       `json:"role" gorm:"not null" validate:"required,oneof=DRIVER CONDUCTOR RIDER OTHER"`
+	JobTypeID     *uuid.UUID     `json:"job_type_id,omitempty" gorm:"type:uuid"`
+	JobTitle      string         `json:"job_title,omitempty" gorm:"type:varchar(100)"`
 	IsActive      bool           `json:"is_active" gorm:"default:true"`
 	CreatedAt     time.Time      `json:"created_at"`
 	UpdatedAt     time.Time      `json:"updated_at"`
@@ -44,6 +46,7 @@ type CrewMember struct {
 	// Relations
 	Memberships []CrewSACCOMembership `json:"-" gorm:"foreignKey:CrewMemberID"`
 	Documents   []Document            `json:"-" gorm:"foreignKey:CrewMemberID"`
+	JobType     *TenantJobType        `json:"-" gorm:"foreignKey:JobTypeID"`
 }
 
 func (CrewMember) TableName() string { return "crew_members" }

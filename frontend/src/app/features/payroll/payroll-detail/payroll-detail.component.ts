@@ -4,7 +4,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { ApiService } from '../../../core/services/api.service';
 import { CurrencyKesPipe } from '../../../shared/pipes/currency-kes.pipe';
 import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
-import { PayrollRun, PayrollEntry, PayrollStatus, SACCO, CrewMember } from '../../../core/models';
+import { PayrollRun, PayrollEntry, PayrollStatus, Organization, CrewMember } from '../../../core/models';
 import { ToastService } from '../../../core/services/toast.service';
 
 const STATUS_STEPS: PayrollStatus[] = ['DRAFT', 'PROCESSED', 'APPROVED', 'SUBMITTED', 'COMPLETED'];
@@ -61,7 +61,7 @@ const STATUS_STEPS: PayrollStatus[] = ['DRAFT', 'PROCESSED', 'APPROVED', 'SUBMIT
         <div class="glass-card" style="margin-bottom:var(--space-lg);">
           <h3 style="font-size:1rem;font-weight:600;margin-bottom:var(--space-md);">Run Details</h3>
           <div class="detail-grid">
-            <div class="detail-row"><span class="detail-label">SACCO</span><span class="detail-value">{{ saccoName() }}</span></div>
+            <div class="detail-row"><span class="detail-label">Organization</span><span class="detail-value">{{ saccoName() }}</span></div>
             <div class="detail-row"><span class="detail-label">Period</span><span class="detail-value">{{ r.period_start | date:'mediumDate' }} — {{ r.period_end | date:'mediumDate' }}</span></div>
             <div class="detail-row"><span class="detail-label">Status</span><span class="detail-value"><span class="badge" [ngClass]="statusBadge(r.status)">{{ r.status }}</span></span></div>
             <div class="detail-row"><span class="detail-label">Created</span><span class="detail-value">{{ r.created_at | relativeTime }}</span></div>
@@ -203,10 +203,10 @@ export class PayrollDetailComponent implements OnInit {
     this.api.getPayrollRun(this.runId).subscribe({
       next: (r) => {
         this.run.set(r.data);
-        if (r.data.sacco_id) {
-          this.api.getSACCO(r.data.sacco_id).subscribe({
+        if (r.data.organization_id) {
+          this.api.getOrganization(r.data.organization_id).subscribe({
             next: sr => this.saccoName.set(sr.data.name),
-            error: () => this.saccoName.set(r.data.sacco_id.slice(0, 8) + '...'),
+            error: () => this.saccoName.set(r.data.organization_id.slice(0, 8) + '...'),
           });
         }
         this.loading.set(false);

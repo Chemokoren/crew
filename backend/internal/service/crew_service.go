@@ -30,6 +30,8 @@ type CreateCrewInput struct {
 	FirstName  string          `json:"first_name" validate:"required"`
 	LastName   string          `json:"last_name" validate:"required"`
 	Role       models.CrewRole `json:"role" validate:"required,oneof=DRIVER CONDUCTOR RIDER OTHER"`
+	JobTypeID  *uuid.UUID      `json:"job_type_id,omitempty"`
+	JobTitle   string          `json:"job_title,omitempty"`
 }
 
 // CreateCrewMember creates a new crew member with an auto-generated crew ID.
@@ -45,6 +47,8 @@ func (s *CrewService) CreateCrewMember(ctx context.Context, input CreateCrewInpu
 		FirstName:  input.FirstName,
 		LastName:   input.LastName,
 		Role:       input.Role,
+		JobTypeID:  input.JobTypeID,
+		JobTitle:   input.JobTitle,
 		KYCStatus:  models.KYCPending,
 		IsActive:   true,
 	}
@@ -190,6 +194,8 @@ func (s *CrewService) BulkImport(ctx context.Context, inputs []CreateCrewInput) 
 			FirstName:  input.FirstName,
 			LastName:   input.LastName,
 			Role:       input.Role,
+			JobTypeID:  input.JobTypeID,
+			JobTitle:   input.JobTitle,
 			KYCStatus:  models.KYCPending,
 			IsActive:   true,
 		})

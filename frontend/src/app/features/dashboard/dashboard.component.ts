@@ -9,7 +9,8 @@ import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { CurrencyKesPipe } from '../../shared/pipes/currency-kes.pipe';
 import { RelativeTimePipe } from '../../shared/pipes/relative-time.pipe';
-import { SystemStats, Wallet, WalletTransaction, DailySummary } from '../../core/models';
+import { SystemStats, Wallet, WalletTransaction, DailySummary, Organization, IndustryType } from '../../core/models';
+import { getIndustryTemplate, getIndustryLabel, INDUSTRY_ICONS } from '../../core/config/industry-templates';
 
 @Component({
   selector: 'app-dashboard',
@@ -55,7 +56,7 @@ import { SystemStats, Wallet, WalletTransaction, DailySummary } from '../../core
               <span class="material-icons-round">business</span>
             </div>
             <div class="stat-value">{{ stats()!.total_saccos | number }}</div>
-            <div class="stat-label">Registered SACCOs</div>
+            <div class="stat-label">Organizations</div>
           </div>
 
           <div class="stat-card">
@@ -80,6 +81,90 @@ import { SystemStats, Wallet, WalletTransaction, DailySummary } from '../../core
             </div>
             <div class="stat-value">{{ stats()!.total_users | number }}</div>
             <div class="stat-label">Platform Users</div>
+          </div>
+        </div>
+      }
+
+      <!-- F10: Industry-Adaptive Widgets -->
+      @if (auth.isAdmin() && tenantIndustry()) {
+        <div class="section-block">
+          <h2 class="section-title">
+            <span class="material-icons-round" style="font-size:20px;color:#a855f7;">tune</span>
+            {{ industryLabel() }} Overview
+          </h2>
+          <div class="industry-grid">
+            @if (tenantIndustry() === 'TRANSPORT') {
+              <div class="industry-card glass-card">
+                <div class="industry-card-icon" style="background:var(--color-warning-light);color:var(--color-warning);"><span class="material-icons-round">directions_bus</span></div>
+                <div class="industry-card-content"><span class="industry-card-value">{{ stats()?.total_vehicles ?? 0 }}</span><span class="industry-card-label">Fleet Vehicles</span></div>
+              </div>
+              <div class="industry-card glass-card">
+                <div class="industry-card-icon" style="background:var(--color-info-light);color:var(--color-info);"><span class="material-icons-round">route</span></div>
+                <div class="industry-card-content"><span class="industry-card-value">—</span><span class="industry-card-label">Active Routes</span></div>
+              </div>
+              <div class="industry-card glass-card">
+                <div class="industry-card-icon" style="background:rgba(236,72,153,0.12);color:#ec4899;"><span class="material-icons-round">local_gas_station</span></div>
+                <div class="industry-card-content"><span class="industry-card-value">—</span><span class="industry-card-label">Daily Trips</span></div>
+              </div>
+            }
+            @if (tenantIndustry() === 'CONSTRUCTION') {
+              <div class="industry-card glass-card">
+                <div class="industry-card-icon" style="background:rgba(251,146,60,0.12);color:#fb923c;"><span class="material-icons-round">construction</span></div>
+                <div class="industry-card-content"><span class="industry-card-value">—</span><span class="industry-card-label">Active Sites</span></div>
+              </div>
+              <div class="industry-card glass-card">
+                <div class="industry-card-icon" style="background:rgba(168,85,247,0.12);color:#a855f7;"><span class="material-icons-round">engineering</span></div>
+                <div class="industry-card-content"><span class="industry-card-value">—</span><span class="industry-card-label">Running Projects</span></div>
+              </div>
+              <div class="industry-card glass-card">
+                <div class="industry-card-icon" style="background:var(--color-success-light);color:var(--color-success);"><span class="material-icons-round">groups</span></div>
+                <div class="industry-card-content"><span class="industry-card-value">—</span><span class="industry-card-label">Workers On Site</span></div>
+              </div>
+            }
+            @if (tenantIndustry() === 'HEALTH') {
+              <div class="industry-card glass-card">
+                <div class="industry-card-icon" style="background:rgba(34,211,238,0.12);color:#22d3ee;"><span class="material-icons-round">local_hospital</span></div>
+                <div class="industry-card-content"><span class="industry-card-value">—</span><span class="industry-card-label">Visits Today</span></div>
+              </div>
+              <div class="industry-card glass-card">
+                <div class="industry-card-icon" style="background:rgba(236,72,153,0.12);color:#ec4899;"><span class="material-icons-round">map</span></div>
+                <div class="industry-card-content"><span class="industry-card-value">—</span><span class="industry-card-label">Coverage Areas</span></div>
+              </div>
+              <div class="industry-card glass-card">
+                <div class="industry-card-icon" style="background:rgba(16,185,129,0.12);color:#10b981;"><span class="material-icons-round">health_and_safety</span></div>
+                <div class="industry-card-content"><span class="industry-card-value">—</span><span class="industry-card-label">Active CHPs</span></div>
+              </div>
+            }
+            @if (tenantIndustry() === 'AGRICULTURE') {
+              <div class="industry-card glass-card">
+                <div class="industry-card-icon" style="background:rgba(132,204,22,0.12);color:#84cc16;"><span class="material-icons-round">grass</span></div>
+                <div class="industry-card-content"><span class="industry-card-value">—</span><span class="industry-card-label">Farm Blocks</span></div>
+              </div>
+              <div class="industry-card glass-card">
+                <div class="industry-card-icon" style="background:rgba(251,191,36,0.12);color:#fbbf24;"><span class="material-icons-round">agriculture</span></div>
+                <div class="industry-card-content"><span class="industry-card-value">—</span><span class="industry-card-label">Active Workers</span></div>
+              </div>
+            }
+            @if (tenantIndustry() === 'LOGISTICS') {
+              <div class="industry-card glass-card">
+                <div class="industry-card-icon" style="background:rgba(99,102,241,0.12);color:#6366f1;"><span class="material-icons-round">local_shipping</span></div>
+                <div class="industry-card-content"><span class="industry-card-value">—</span><span class="industry-card-label">Active Deliveries</span></div>
+              </div>
+              <div class="industry-card glass-card">
+                <div class="industry-card-icon" style="background:rgba(239,68,68,0.12);color:#ef4444;"><span class="material-icons-round">warehouse</span></div>
+                <div class="industry-card-content"><span class="industry-card-value">—</span><span class="industry-card-label">Warehouses</span></div>
+              </div>
+            }
+            @if (tenantIndustry() === 'HOSPITALITY') {
+              <div class="industry-card glass-card">
+                <div class="industry-card-icon" style="background:rgba(251,146,60,0.12);color:#fb923c;"><span class="material-icons-round">hotel</span></div>
+                <div class="industry-card-content"><span class="industry-card-value">—</span><span class="industry-card-label">Active Shifts</span></div>
+              </div>
+              <div class="industry-card glass-card">
+                <div class="industry-card-icon" style="background:rgba(168,85,247,0.12);color:#a855f7;"><span class="material-icons-round">restaurant</span></div>
+                <div class="industry-card-content"><span class="industry-card-value">—</span><span class="industry-card-label">Locations</span></div>
+              </div>
+            }
           </div>
         </div>
       }
@@ -233,8 +318,8 @@ import { SystemStats, Wallet, WalletTransaction, DailySummary } from '../../core
               <div class="action-icon-wrapper" style="background:var(--color-info-light);color:var(--color-info);">
                 <span class="material-icons-round">business</span>
               </div>
-              <span class="action-label">SACCOs</span>
-              <span class="action-desc">Manage cooperatives</span>
+              <span class="action-label">Organizations</span>
+              <span class="action-desc">Manage organizations</span>
             </a>
           }
           <a routerLink="/wallets" class="action-card glass-card" id="quick-wallet">
@@ -385,6 +470,20 @@ import { SystemStats, Wallet, WalletTransaction, DailySummary } from '../../core
       &:hover { background: rgba(0, 210, 255, 0.04); }
     }
 
+    /* F10: Industry Adaptive */
+    .industry-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-md); }
+    .industry-card {
+      display: flex; align-items: center; gap: var(--space-md); padding: var(--space-lg) !important;
+    }
+    .industry-card-icon {
+      width: 44px; height: 44px; border-radius: var(--radius-md);
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+      .material-icons-round { font-size: 22px; }
+    }
+    .industry-card-content { display: flex; flex-direction: column; }
+    .industry-card-value { font-family: var(--font-heading); font-size: 1.25rem; font-weight: 800; color: var(--color-text-primary); }
+    .industry-card-label { font-size: 0.75rem; color: var(--color-text-muted); }
+
     @media (max-width: 768px) {
       .wallet-hero { flex-direction: column; align-items: flex-start; gap: var(--space-md); }
       .wallet-hero-value { font-size: 1.5rem; }
@@ -409,14 +508,28 @@ export class DashboardComponent implements OnInit {
   activeAssignments = signal(0);
   recentTxns = signal<WalletTransaction[]>([]);
   earningsHistory = signal<DailySummary[]>([]);
+  tenantIndustry = signal<IndustryType | ''>('');
 
   private maxEarning = 0;
   private readonly API = environment.apiUrl;
   private readonly silentHeaders = { 'X-Skip-Error-Toast': 'true' };
 
+  industryLabel(): string {
+    const labels: Record<string, string> = {
+      TRANSPORT: 'Transport', CONSTRUCTION: 'Construction', HEALTH: 'Community Health',
+      LOGISTICS: 'Logistics', AGRICULTURE: 'Agriculture', HOSPITALITY: 'Hospitality',
+      GENERAL: 'General', CUSTOM: 'Custom',
+    };
+    return labels[this.tenantIndustry()] || 'Industry';
+  }
+
   ngOnInit(): void {
     if (this.auth.isAdmin()) {
       this.api.getSystemStats().subscribe({ next: (res) => this.stats.set(res.data) });
+      // F10: Detect industry from first Organization
+      this.api.getOrganizations({ per_page: '1' }).subscribe({
+        next: r => { if (r.data?.length && r.data[0].industry_type) this.tenantIndustry.set(r.data[0].industry_type); },
+      });
     }
 
     const user = this.auth.currentUser();

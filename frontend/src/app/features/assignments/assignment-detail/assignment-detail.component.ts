@@ -24,6 +24,16 @@ import { Assignment } from '../../../core/models';
         </div>
         @if (assignment()) {
           <div class="page-actions" style="display:flex;gap:8px;">
+            @if (assignment()!.status === 'SCHEDULED') {
+              <button class="btn btn-info" (click)="checkIn()" id="btn-check-in">
+                <span class="material-icons-round">login</span> Check In
+              </button>
+            }
+            @if (assignment()!.status === 'ACTIVE') {
+              <button class="btn btn-success" (click)="checkOut()" id="btn-check-out">
+                <span class="material-icons-round">logout</span> Check Out
+              </button>
+            }
             @if (assignment()!.status === 'ACTIVE' || assignment()!.status === 'SCHEDULED') {
               <button class="btn btn-primary" (click)="completeAssignment()" id="btn-complete">
                 <span class="material-icons-round">check_circle</span> Complete
@@ -90,19 +100,19 @@ import { Assignment } from '../../../core/models';
             </div>
           </div>
 
-          <!-- SACCO Card -->
+          <!-- Organization Card -->
           <div class="detail-card">
             <div class="detail-card-header">
               <span class="material-icons-round detail-card-icon" style="color:var(--color-success);">business</span>
-              <h3>SACCO</h3>
+              <h3>Organization</h3>
             </div>
             <div class="detail-field">
               <span class="detail-label">Organization</span>
-              <span class="detail-value highlight">{{ assignment()!.sacco_name || '—' }}</span>
+              <span class="detail-value highlight">{{ assignment()!.organization_name || '—' }}</span>
             </div>
             <div class="detail-field">
-              <span class="detail-label">SACCO ID</span>
-              <span class="detail-value mono">{{ assignment()!.sacco_id }}</span>
+              <span class="detail-label">Organization ID</span>
+              <span class="detail-value mono">{{ assignment()!.organization_id }}</span>
             </div>
           </div>
 
@@ -143,6 +153,37 @@ import { Assignment } from '../../../core/models';
               <span class="detail-value">{{ assignment()!.shift_end ? (assignment()!.shift_end | date:'shortTime') : 'Ongoing' }}</span>
             </div>
           </div>
+
+          <!-- Check-in/out Tracking (F6) -->
+          @if (assignment()!.check_in_at || assignment()!.check_out_at) {
+            <div class="detail-card">
+              <div class="detail-card-header">
+                <span class="material-icons-round detail-card-icon" style="color:#22d3ee;">timer</span>
+                <h3>Time Tracking</h3>
+              </div>
+              @if (assignment()!.check_in_at) {
+                <div class="detail-field">
+                  <span class="detail-label">Checked In</span>
+                  <span class="detail-value">{{ assignment()!.check_in_at | date:'short' }}</span>
+                </div>
+              }
+              @if (assignment()!.check_out_at) {
+                <div class="detail-field">
+                  <span class="detail-label">Checked Out</span>
+                  <span class="detail-value">{{ assignment()!.check_out_at | date:'short' }}</span>
+                </div>
+                <div class="detail-field">
+                  <span class="detail-label">Duration</span>
+                  <span class="detail-value highlight">{{ elapsedTime() }}</span>
+                </div>
+              } @else if (assignment()!.status === 'ACTIVE') {
+                <div class="checkin-live">
+                  <span class="live-dot"></span>
+                  <span>Checked in — on site</span>
+                </div>
+              }
+            </div>
+          }
 
           <!-- Earnings Card -->
           <div class="detail-card">
@@ -286,6 +327,24 @@ import { Assignment } from '../../../core/models';
       font-size: 0.8125rem;
     }
 
+    .btn-info { background: rgba(59,130,246,0.15); color: var(--color-info); border: 1px solid rgba(59,130,246,0.3); }
+    .btn-info:hover { background: rgba(59,130,246,0.25); }
+    .btn-success { background: rgba(16,185,129,0.15); color: var(--color-success); border: 1px solid rgba(16,185,129,0.3); }
+    .btn-success:hover { background: rgba(16,185,129,0.25); }
+
+    .checkin-live {
+      display: flex; align-items: center; gap: 8px; padding: 8px 0;
+      font-size: 0.85rem; color: var(--color-success); font-weight: 500;
+    }
+    .live-dot {
+      width: 8px; height: 8px; background: var(--color-success);
+      border-radius: 50%; animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
     @media (max-width: 768px) {
       .detail-grid { grid-template-columns: 1fr; }
       .detail-value.mono { max-width: 140px; }
@@ -336,6 +395,36 @@ export class AssignmentDetailComponent implements OnInit {
         next: () => { this.toast.success('Assignment cancelled'); this.loadAssignment(a.id); },
       });
     }
+  }
+
+  // F6: Check-in/Check-out
+  checkIn(): void {
+    const a = this.assignment();
+    if (!a) return;
+    this.api.checkInAssignment(a.id).subscribe({
+      next: () => { this.toast.success('Checked in successfully'); this.loadAssignment(a.id); },
+    });
+  }
+
+  checkOut(): void {
+    const a = this.assignment();
+    if (!a) return;
+    const hoursStr = prompt('Hours worked (optional, leave empty for auto):');
+    const hours = hoursStr ? parseFloat(hoursStr) : undefined;
+    this.api.checkOutAssignment(a.id, hours ? { hours_worked: hours } : undefined).subscribe({
+      next: () => { this.toast.success('Checked out successfully'); this.loadAssignment(a.id); },
+    });
+  }
+
+  elapsedTime(): string {
+    const a = this.assignment();
+    if (!a?.check_in_at) return '—';
+    const start = new Date(a.check_in_at).getTime();
+    const end = a.check_out_at ? new Date(a.check_out_at).getTime() : Date.now();
+    const diffMs = end - start;
+    const hours = Math.floor(diffMs / 3600000);
+    const mins = Math.floor((diffMs % 3600000) / 60000);
+    return `${hours}h ${mins}m`;
   }
 
   statusBannerClass(status: string): string {

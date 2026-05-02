@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { RouterOutlet, Router, NavigationEnd } from '@angular/router';
 import { filter } from 'rxjs';
 import { AuthService } from './core/services/auth.service';
+import { OrgContextService } from './core/services/org-context.service';
 import { SidebarComponent } from './shared/components/sidebar/sidebar.component';
 import { TopbarComponent } from './shared/components/topbar/topbar.component';
 import { ToastComponent } from './shared/components/toast/toast.component';
@@ -52,6 +53,7 @@ import { ConfirmDialogComponent } from './shared/components/confirm-dialog/confi
 export class AppComponent implements OnInit {
   private router = inject(Router);
   private auth = inject(AuthService);
+  private orgCtx = inject(OrgContextService);
 
   sidebarMobileOpen = signal(false);
   private currentUrl = '';
@@ -71,7 +73,7 @@ export class AppComponent implements OnInit {
     // Only fires if the user has a token (i.e., was previously authenticated).
     if (this.auth.accessToken) {
       this.auth.fetchProfile().subscribe({
-        // If the token is invalid/expired, the error interceptor handles 401 → logout.
+        next: () => this.orgCtx.load(),
         error: () => { /* handled by interceptor */ },
       });
     }

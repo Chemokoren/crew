@@ -126,14 +126,16 @@ func TestAssignmentHandler_Create(t *testing.T) {
 	router, _, _, assignmentHandler := setupApiTestEnv()
 	router.POST("/assignments", mockAuthMiddleware(types.RoleSystemAdmin, nil), assignmentHandler.Create)
 
+	vid := uuid.New()
 	reqBody := dto.CreateAssignmentRequest{
 		CrewMemberID:     uuid.New(),
-		VehicleID:        uuid.New(),
-		SaccoID:          uuid.New(),
+		VehicleID:        &vid,
+		OrganizationID:          uuid.New(),
 		ShiftDate:        "2023-10-10",
 		ShiftStart:       "2023-10-10T08:00:00Z",
 		EarningModel:     models.EarningFixed,
 		FixedAmountCents: 1000,
+		WorkType:         models.WorkTypeShift,
 	}
 	body, _ := json.Marshal(reqBody)
 

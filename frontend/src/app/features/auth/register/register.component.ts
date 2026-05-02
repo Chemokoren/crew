@@ -49,7 +49,7 @@ import { SystemRole } from '../../../core/models';
               <label class="form-label" for="reg-role">Role</label>
               <select class="form-select" id="reg-role" [(ngModel)]="role" name="role" required>
                 <option value="CREW">Crew Member</option>
-                <option value="SACCO_ADMIN">SACCO Admin</option>
+                <option value="SACCO_ADMIN">Organization Admin</option>
               </select>
             </div>
 

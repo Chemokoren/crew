@@ -456,12 +456,12 @@ func (r *MembershipRepo) Update(_ context.Context, m *models.CrewSACCOMembership
 	return nil
 }
 
-func (r *MembershipRepo) ListBySACCO(_ context.Context, saccoID uuid.UUID, page, perPage int) ([]models.CrewSACCOMembership, int64, error) {
+func (r *MembershipRepo) ListByOrganization(_ context.Context, orgID uuid.UUID, page, perPage int) ([]models.CrewSACCOMembership, int64, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	var all []models.CrewSACCOMembership
 	for _, m := range r.members {
-		if m.SaccoID == saccoID && m.IsActive {
+		if m.OrganizationID == orgID && m.IsActive {
 			all = append(all, *m)
 		}
 	}
@@ -480,49 +480,49 @@ func (r *MembershipRepo) ListByCrewMember(_ context.Context, crewMemberID uuid.U
 	return all, nil
 }
 
-func (r *MembershipRepo) GetActive(_ context.Context, crewMemberID, saccoID uuid.UUID) (*models.CrewSACCOMembership, error) {
+func (r *MembershipRepo) GetActive(_ context.Context, crewMemberID, orgID uuid.UUID) (*models.CrewSACCOMembership, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	for _, m := range r.members {
-		if m.CrewMemberID == crewMemberID && m.SaccoID == saccoID && m.IsActive {
+		if m.CrewMemberID == crewMemberID && m.OrganizationID == orgID && m.IsActive {
 			return m, nil
 		}
 	}
 	return nil, errs.ErrNotFound
 }
 
-// --- SACCOFloatRepo Mock ---
+// --- OrganizationFloatRepo Mock ---
 
-type SACCOFloatRepo struct {
+type OrganizationFloatRepo struct {
 	mu     sync.RWMutex
-	floats map[uuid.UUID]*models.SACCOFloat
-	txs    []models.SACCOFloatTransaction
+	floats map[uuid.UUID]*models.OrganizationFloat
+	txs    []models.OrganizationFloatTransaction
 }
 
-func NewSACCOFloatRepo() *SACCOFloatRepo {
-	return &SACCOFloatRepo{
-		floats: make(map[uuid.UUID]*models.SACCOFloat),
+func NewOrganizationFloatRepo() *OrganizationFloatRepo {
+	return &OrganizationFloatRepo{
+		floats: make(map[uuid.UUID]*models.OrganizationFloat),
 	}
 }
 
-func (r *SACCOFloatRepo) GetOrCreate(_ context.Context, saccoID uuid.UUID) (*models.SACCOFloat, error) {
+func (r *OrganizationFloatRepo) GetOrCreate(_ context.Context, orgID uuid.UUID) (*models.OrganizationFloat, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, f := range r.floats {
-		if f.SaccoID == saccoID {
+		if f.OrganizationID == orgID {
 			return f, nil
 		}
 	}
-	f := &models.SACCOFloat{
+	f := &models.OrganizationFloat{
 		ID:       uuid.New(),
-		SaccoID:  saccoID,
+		OrganizationID:  orgID,
 		Currency: "KES",
 	}
 	r.floats[f.ID] = f
 	return f, nil
 }
 
-func (r *SACCOFloatRepo) CreditFloat(_ context.Context, floatID uuid.UUID, version int, amountCents int64, idempotencyKey, reference string) (*models.SACCOFloatTransaction, error) {
+func (r *OrganizationFloatRepo) CreditFloat(_ context.Context, floatID uuid.UUID, version int, amountCents int64, idempotencyKey, reference string) (*models.OrganizationFloatTransaction, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	f, ok := r.floats[floatID]
@@ -534,9 +534,9 @@ func (r *SACCOFloatRepo) CreditFloat(_ context.Context, floatID uuid.UUID, versi
 	}
 	f.BalanceCents += amountCents
 	f.Version++
-	tx := models.SACCOFloatTransaction{
+	tx := models.OrganizationFloatTransaction{
 		ID:                uuid.New(),
-		SACCOFloatID:      floatID,
+		OrganizationFloatID:      floatID,
 		IdempotencyKey:    idempotencyKey,
 		TransactionType:   "CREDIT",
 		AmountCents:       amountCents,
@@ -547,7 +547,7 @@ func (r *SACCOFloatRepo) CreditFloat(_ context.Context, floatID uuid.UUID, versi
 	return &tx, nil
 }
 
-func (r *SACCOFloatRepo) DebitFloat(_ context.Context, floatID uuid.UUID, version int, amountCents int64, idempotencyKey, reference string) (*models.SACCOFloatTransaction, error) {
+func (r *OrganizationFloatRepo) DebitFloat(_ context.Context, floatID uuid.UUID, version int, amountCents int64, idempotencyKey, reference string) (*models.OrganizationFloatTransaction, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	f, ok := r.floats[floatID]
@@ -562,9 +562,9 @@ func (r *SACCOFloatRepo) DebitFloat(_ context.Context, floatID uuid.UUID, versio
 	}
 	f.BalanceCents -= amountCents
 	f.Version++
-	tx := models.SACCOFloatTransaction{
+	tx := models.OrganizationFloatTransaction{
 		ID:                uuid.New(),
-		SACCOFloatID:      floatID,
+		OrganizationFloatID:      floatID,
 		IdempotencyKey:    idempotencyKey,
 		TransactionType:   "DEBIT",
 		AmountCents:       amountCents,
@@ -575,12 +575,12 @@ func (r *SACCOFloatRepo) DebitFloat(_ context.Context, floatID uuid.UUID, versio
 	return &tx, nil
 }
 
-func (r *SACCOFloatRepo) GetTransactions(_ context.Context, floatID uuid.UUID, filter repository.SACCOFloatFilter, page, perPage int) ([]models.SACCOFloatTransaction, int64, error) {
+func (r *OrganizationFloatRepo) GetTransactions(_ context.Context, floatID uuid.UUID, filter repository.OrganizationFloatFilter, page, perPage int) ([]models.OrganizationFloatTransaction, int64, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	var all []models.SACCOFloatTransaction
+	var all []models.OrganizationFloatTransaction
 	for _, tx := range r.txs {
-		if tx.SACCOFloatID == floatID {
+		if tx.OrganizationFloatID == floatID {
 			all = append(all, tx)
 		}
 	}

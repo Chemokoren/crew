@@ -20,20 +20,20 @@ import (
 	"github.com/kibsoft/amy-mis/pkg/jwt"
 )
 
-func setupSACCOTestEnv() (*gin.Engine, *mock.SACCOFloatRepo, uuid.UUID, string) {
+func setupSACCOTestEnv() (*gin.Engine, *mock.OrganizationFloatRepo, uuid.UUID, string) {
 	gin.SetMode(gin.TestMode)
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	jwtMgr := jwt.NewManager("test-secret-key-that-is-at-least-32-chars-long!", 15, 7)
 
 	saccoRepo := mock.NewSACCORepo()
 	membershipRepo := mock.NewMembershipRepo()
-	floatRepo := mock.NewSACCOFloatRepo()
+	floatRepo := mock.NewOrganizationFloatRepo()
 
 	auditRepo := mock.NewAuditRepo()
 	auditSvc := service.NewAuditService(auditRepo, logger)
 
-	saccoSvc := service.NewSACCOService(saccoRepo, membershipRepo, floatRepo, auditSvc, logger)
-	saccoHandler := handler.NewSACCOHandler(saccoSvc)
+	saccoSvc := service.NewOrganizationService(saccoRepo, membershipRepo, floatRepo, auditSvc, logger)
+	saccoHandler := handler.NewOrganizationHandler(saccoSvc)
 
 	router := gin.New()
 	secured := router.Group("/api/v1")
@@ -64,9 +64,9 @@ func setupSACCOTestEnv() (*gin.Engine, *mock.SACCOFloatRepo, uuid.UUID, string) 
 }
 
 func TestGetFloat(t *testing.T) {
-	router, _, saccoID, token := setupSACCOTestEnv()
+	router, _, orgID, token := setupSACCOTestEnv()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/saccos/"+saccoID.String()+"/float", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/saccos/"+orgID.String()+"/float", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
@@ -86,10 +86,10 @@ func TestGetFloat(t *testing.T) {
 }
 
 func TestCreditFloat(t *testing.T) {
-	router, _, saccoID, token := setupSACCOTestEnv()
+	router, _, orgID, token := setupSACCOTestEnv()
 
 	body := `{"amount_cents": 10000, "idempotency_key": "DEP-001-KEY", "reference": "DEP-001"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/saccos/"+saccoID.String()+"/float/credit", bytes.NewBufferString(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/saccos/"+orgID.String()+"/float/credit", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
@@ -110,11 +110,11 @@ func TestCreditFloat(t *testing.T) {
 }
 
 func TestDebitFloat(t *testing.T) {
-	router, _, saccoID, token := setupSACCOTestEnv()
+	router, _, orgID, token := setupSACCOTestEnv()
 
 	// First credit to have balance
 	bodyCredit := `{"amount_cents": 10000, "idempotency_key": "DEP-001-KEY", "reference": "DEP-001"}`
-	reqCredit := httptest.NewRequest(http.MethodPost, "/api/v1/saccos/"+saccoID.String()+"/float/credit", bytes.NewBufferString(bodyCredit))
+	reqCredit := httptest.NewRequest(http.MethodPost, "/api/v1/saccos/"+orgID.String()+"/float/credit", bytes.NewBufferString(bodyCredit))
 	reqCredit.Header.Set("Content-Type", "application/json")
 	reqCredit.Header.Set("Authorization", "Bearer "+token)
 	wCredit := httptest.NewRecorder()
@@ -122,7 +122,7 @@ func TestDebitFloat(t *testing.T) {
 
 	// Now debit
 	bodyDebit := `{"amount_cents": 3000, "idempotency_key": "PAY-001-KEY", "reference": "PAY-001"}`
-	reqDebit := httptest.NewRequest(http.MethodPost, "/api/v1/saccos/"+saccoID.String()+"/float/debit", bytes.NewBufferString(bodyDebit))
+	reqDebit := httptest.NewRequest(http.MethodPost, "/api/v1/saccos/"+orgID.String()+"/float/debit", bytes.NewBufferString(bodyDebit))
 	reqDebit.Header.Set("Content-Type", "application/json")
 	reqDebit.Header.Set("Authorization", "Bearer "+token)
 	wDebit := httptest.NewRecorder()
@@ -142,18 +142,18 @@ func TestDebitFloat(t *testing.T) {
 }
 
 func TestListFloatTransactions(t *testing.T) {
-	router, _, saccoID, token := setupSACCOTestEnv()
+	router, _, orgID, token := setupSACCOTestEnv()
 
 	// Credit
 	bodyCredit := `{"amount_cents": 10000, "idempotency_key": "DEP-002-KEY", "reference": "DEP-002"}`
-	reqCredit := httptest.NewRequest(http.MethodPost, "/api/v1/saccos/"+saccoID.String()+"/float/credit", bytes.NewBufferString(bodyCredit))
+	reqCredit := httptest.NewRequest(http.MethodPost, "/api/v1/saccos/"+orgID.String()+"/float/credit", bytes.NewBufferString(bodyCredit))
 	reqCredit.Header.Set("Content-Type", "application/json")
 	reqCredit.Header.Set("Authorization", "Bearer "+token)
 	wCredit := httptest.NewRecorder()
 	router.ServeHTTP(wCredit, reqCredit)
 
 	// List
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/saccos/"+saccoID.String()+"/float/transactions", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/saccos/"+orgID.String()+"/float/transactions", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 

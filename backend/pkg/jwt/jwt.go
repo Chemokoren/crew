@@ -16,7 +16,7 @@ type Claims struct {
 	Phone        string           `json:"phone"`
 	SystemRole   types.SystemRole `json:"system_role"`
 	CrewMemberID *uuid.UUID       `json:"crew_member_id,omitempty"`
-	SaccoID      *uuid.UUID       `json:"sacco_id,omitempty"`
+	OrganizationID      *uuid.UUID       `json:"organization_id,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -43,13 +43,13 @@ func NewManager(secret string, accessExpiryMinutes, refreshExpiryDays int) *Mana
 }
 
 // GenerateTokenPair creates a new access + refresh token pair.
-func (m *Manager) GenerateTokenPair(userID uuid.UUID, phone string, role types.SystemRole, crewMemberID, saccoID *uuid.UUID) (*TokenPair, error) {
-	accessToken, err := m.generateToken(userID, phone, role, crewMemberID, saccoID, m.accessExpiry)
+func (m *Manager) GenerateTokenPair(userID uuid.UUID, phone string, role types.SystemRole, crewMemberID, orgID *uuid.UUID) (*TokenPair, error) {
+	accessToken, err := m.generateToken(userID, phone, role, crewMemberID, orgID, m.accessExpiry)
 	if err != nil {
 		return nil, fmt.Errorf("generate access token: %w", err)
 	}
 
-	refreshToken, err := m.generateToken(userID, phone, role, crewMemberID, saccoID, m.refreshExpiry)
+	refreshToken, err := m.generateToken(userID, phone, role, crewMemberID, orgID, m.refreshExpiry)
 	if err != nil {
 		return nil, fmt.Errorf("generate refresh token: %w", err)
 	}
@@ -81,14 +81,14 @@ func (m *Manager) VerifyToken(tokenString string) (*Claims, error) {
 	return claims, nil
 }
 
-func (m *Manager) generateToken(userID uuid.UUID, phone string, role types.SystemRole, crewMemberID, saccoID *uuid.UUID, expiry time.Duration) (string, error) {
+func (m *Manager) generateToken(userID uuid.UUID, phone string, role types.SystemRole, crewMemberID, orgID *uuid.UUID, expiry time.Duration) (string, error) {
 	now := time.Now()
 	claims := Claims{
 		UserID:       userID,
 		Phone:        phone,
 		SystemRole:   role,
 		CrewMemberID: crewMemberID,
-		SaccoID:      saccoID,
+		OrganizationID:      orgID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(expiry)),
 			IssuedAt:  jwt.NewNumericDate(now),

@@ -56,6 +56,7 @@ import (
 	pgRepo "github.com/kibsoft/amy-mis/internal/repository/postgres"
 	"github.com/kibsoft/amy-mis/internal/credit"
 	"github.com/kibsoft/amy-mis/internal/service"
+	"github.com/kibsoft/amy-mis/internal/ussd"
 	"github.com/kibsoft/amy-mis/internal/worker"
 	"github.com/kibsoft/amy-mis/pkg/jwt"
 	"github.com/kibsoft/amy-mis/pkg/types"
@@ -201,12 +202,12 @@ func main() {
 	walletRepo := pgRepo.NewWalletRepo(db)
 	assignmentRepo := pgRepo.NewAssignmentRepo(db)
 	earningRepo := pgRepo.NewEarningRepo(db)
-	saccoRepo := pgRepo.NewSACCORepo(db)
+	orgRepo := pgRepo.NewSACCORepo(db)
 	vehicleRepo := pgRepo.NewVehicleRepo(db)
 	routeRepo := pgRepo.NewRouteRepo(db)
 	payrollRepo := pgRepo.NewPayrollRepo(db)
 	membershipRepo := pgRepo.NewMembershipRepo(db)
-	floatRepo := pgRepo.NewSACCOFloatRepo(db)
+	floatRepo := pgRepo.NewOrganizationFloatRepo(db)
 	documentRepo := pgRepo.NewDocumentRepo(db)
 	notificationRepo := pgRepo.NewNotificationRepo(db)
 	notificationPrefRepo := pgRepo.NewNotificationPreferenceRepo(db)
@@ -219,6 +220,8 @@ func main() {
 	snapshotRepo := pgRepo.NewWalletSnapshotRepo(db)
 	scoreHistoryRepo := pgRepo.NewCreditScoreHistoryRepo(db)
 	negativeEventRepo := pgRepo.NewNegativeEventRepo(db)
+	jobTypeRepo := pgRepo.NewTenantJobTypeRepo(db)
+	payScheduleRepo := pgRepo.NewPayScheduleRepo(db)
 
 	// --- 8. Initialize transaction manager ---
 	txMgr := database.NewTxManager(db)
@@ -370,14 +373,15 @@ func main() {
 
 	walletSvc := service.NewWalletService(walletRepo, crewRepo, auditSvc, logger)
 	assignmentSvc := service.NewAssignmentService(assignmentRepo, earningRepo, walletSvc, notifSvc, txMgr, logger)
-	saccoSvc := service.NewSACCOService(saccoRepo, membershipRepo, floatRepo, auditSvc, logger)
+	saccoSvc := service.NewOrganizationService(orgRepo, membershipRepo, floatRepo, auditSvc, logger)
+	tenantSvc := service.NewTenantService(orgRepo, jobTypeRepo, payScheduleRepo, logger)
 	vehicleSvc := service.NewVehicleService(vehicleRepo, logger)
 	routeSvc := service.NewRouteService(routeRepo, logger)
 	docSvc := service.NewDocumentService(documentRepo, logger)
 	// --- Credit Scoring Engine (V3 architecture) ---
 	featureComputer := credit.NewFeatureComputer(
 		earningRepo, assignmentRepo, walletRepo, loanRepo,
-		insuranceRepo, crewRepo, userRepo, snapshotRepo, negativeEventRepo, logger,
+		insuranceRepo, crewRepo, userRepo, snapshotRepo, negativeEventRepo, membershipRepo, logger,
 	)
 	creditScorer := credit.NewRulesScorer() // Swap to MLScorer/HybridScorer for V3
 	creditEngine := credit.NewEngine(featureComputer, creditScorer, creditScoreRepo, scoreHistoryRepo, logger)
@@ -393,7 +397,7 @@ func main() {
 	crewHandler := handler.NewCrewHandler(crewSvc)
 	walletHandler := handler.NewWalletHandler(walletSvc, cfg.CSVExportMaxRows)
 	assignmentHandler := handler.NewAssignmentHandler(assignmentSvc)
-	saccoHandler := handler.NewSACCOHandler(saccoSvc)
+	orgHandler := handler.NewOrganizationHandler(saccoSvc)
 	vehicleHandler := handler.NewVehicleHandler(vehicleSvc)
 	routeHandler := handler.NewRouteHandler(routeSvc)
 	notifHandler := handler.NewNotificationHandler(notifSvc)
@@ -402,7 +406,16 @@ func main() {
 	creditHandler := handler.NewCreditHandler(creditSvc)
 	loanHandler := handler.NewLoanHandler(loanSvc)
 	insuranceHandler := handler.NewInsuranceHandler(insuranceSvc)
+	tenantHandler := handler.NewTenantHandler(tenantSvc)
 	adminHandler := handler.NewAdminHandler(authSvc, notifSvc, auditRepo, statutoryRateRepo)
+
+	// --- USSD Session Handler (Phase G) ---
+	ussdSession := ussd.NewSessionHandler(
+		userRepo, crewRepo, assignmentRepo, earningRepo,
+		orgRepo, jobTypeRepo, payScheduleRepo, membershipRepo, walletRepo,
+		logger,
+	)
+	ussdHandler := handler.NewUSSDHandler(ussdSession)
 
 
 	// --- 13a. Payment: JamboPay (config-driven) ---
@@ -548,6 +561,9 @@ func main() {
 		webhooks.POST("/perpay", webhookHandler.HandlePerpay)
 	}
 
+	// USSD callback (Africa's Talking — no JWT, public endpoint)
+	v1.POST("/ussd/callback", ussdHandler.Callback)
+
 	// API v1 — authenticated endpoints
 	serviceAPIKey := os.Getenv("SERVICE_API_KEY")
 	secured := v1.Group("")
@@ -586,6 +602,10 @@ func main() {
 				adminAssignments.POST("/:id/cancel", assignmentHandler.Cancel)
 				adminAssignments.POST("/:id/reassign", assignmentHandler.Reassign)
 			}
+
+			// Check-in/check-out accessible to crew, sacco admin, and system admin
+			assignments.POST("/:id/check-in", middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin, types.RoleCrewUser), assignmentHandler.CheckIn)
+			assignments.POST("/:id/check-out", middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin, types.RoleCrewUser), assignmentHandler.CheckOut)
 		}
 
 		// Wallets (system admin only for direct credit/debit; crew can view own)
@@ -605,24 +625,76 @@ func main() {
 			wallets.POST("/:crew_member_id/payout", payoutHandler.Payout)
 		}
 
-		// SACCOs (system admin + sacco admin)
+		// SACCOs / Organizations (system admin + sacco admin)
+		// Original route kept for backward compat
 		saccos := secured.Group("/saccos")
 		saccos.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin))
 		{
-			saccos.POST("", saccoHandler.Create)
-			saccos.GET("", saccoHandler.List)
-			saccos.GET("/:id", saccoHandler.GetByID)
-			saccos.PUT("/:id", saccoHandler.Update)
-			saccos.DELETE("/:id", saccoHandler.Delete)
-			saccos.GET("/:id/members", saccoHandler.ListMembers)
-			saccos.POST("/:id/members", saccoHandler.AddMember)
-			saccos.PUT("/:id/members/:membership_id", saccoHandler.UpdateMember)
-			saccos.DELETE("/:id/members/:membership_id", saccoHandler.RemoveMember)
-			saccos.GET("/:id/float", saccoHandler.GetFloat)
-			saccos.POST("/:id/float/credit", saccoHandler.CreditFloat)
-			saccos.POST("/:id/float/debit", saccoHandler.DebitFloat)
-			saccos.GET("/:id/float/transactions", saccoHandler.ListFloatTransactions)
+			saccos.POST("", orgHandler.Create)
+			saccos.GET("", orgHandler.List)
+			saccos.GET("/:id", orgHandler.GetByID)
+			saccos.PUT("/:id", orgHandler.Update)
+			saccos.DELETE("/:id", orgHandler.Delete)
+			saccos.GET("/:id/members", orgHandler.ListMembers)
+			saccos.POST("/:id/members", orgHandler.AddMember)
+			saccos.PUT("/:id/members/:membership_id", orgHandler.UpdateMember)
+			saccos.DELETE("/:id/members/:membership_id", orgHandler.RemoveMember)
+			saccos.GET("/:id/float", orgHandler.GetFloat)
+			saccos.POST("/:id/float/credit", orgHandler.CreditFloat)
+			saccos.POST("/:id/float/debit", orgHandler.DebitFloat)
+			saccos.GET("/:id/float/transactions", orgHandler.ListFloatTransactions)
 		}
+
+		// D1: /organizations/* aliases — same handlers, industry-agnostic URL
+		orgs := secured.Group("/organizations")
+		orgs.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin))
+		{
+			orgs.POST("", orgHandler.Create)
+			orgs.GET("", orgHandler.List)
+			orgs.GET("/:id", orgHandler.GetByID)
+			orgs.PUT("/:id", orgHandler.Update)
+			orgs.DELETE("/:id", orgHandler.Delete)
+			orgs.GET("/:id/members", orgHandler.ListMembers)
+			orgs.POST("/:id/members", orgHandler.AddMember)
+			orgs.PUT("/:id/members/:membership_id", orgHandler.UpdateMember)
+			orgs.DELETE("/:id/members/:membership_id", orgHandler.RemoveMember)
+			orgs.GET("/:id/float", orgHandler.GetFloat)
+			orgs.POST("/:id/float/credit", orgHandler.CreditFloat)
+			orgs.POST("/:id/float/debit", orgHandler.DebitFloat)
+			orgs.GET("/:id/float/transactions", orgHandler.ListFloatTransactions)
+			// Tenant config, job types, pay schedules — also under /organizations/
+			orgs.GET("/:id/config", tenantHandler.GetConfig)
+			orgs.PUT("/:id/config", tenantHandler.UpdateConfig)
+			orgs.GET("/:id/job-types", tenantHandler.ListJobTypes)
+			orgs.POST("/:id/job-types", tenantHandler.CreateJobType)
+			orgs.PUT("/:id/job-types/:job_type_id", tenantHandler.UpdateJobType)
+			orgs.DELETE("/:id/job-types/:job_type_id", tenantHandler.DeleteJobType)
+			orgs.GET("/:id/pay-schedules", tenantHandler.ListPaySchedules)
+			orgs.POST("/:id/pay-schedules", tenantHandler.CreatePaySchedule)
+			orgs.PUT("/:id/pay-schedules/:schedule_id", tenantHandler.UpdatePaySchedule)
+			orgs.DELETE("/:id/pay-schedules/:schedule_id", tenantHandler.DeletePaySchedule)
+			orgs.POST("/:id/bootstrap", tenantHandler.BootstrapIndustry)
+		}
+
+		// Tenant configuration — legacy /tenants/* routes (backward compat)
+		tenants := secured.Group("/tenants")
+		tenants.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin))
+		{
+			tenants.GET("/:id/config", tenantHandler.GetConfig)
+			tenants.PUT("/:id/config", tenantHandler.UpdateConfig)
+			tenants.GET("/:id/job-types", tenantHandler.ListJobTypes)
+			tenants.POST("/:id/job-types", tenantHandler.CreateJobType)
+			tenants.PUT("/:id/job-types/:job_type_id", tenantHandler.UpdateJobType)
+			tenants.DELETE("/:id/job-types/:job_type_id", tenantHandler.DeleteJobType)
+			tenants.GET("/:id/pay-schedules", tenantHandler.ListPaySchedules)
+			tenants.POST("/:id/pay-schedules", tenantHandler.CreatePaySchedule)
+			tenants.PUT("/:id/pay-schedules/:schedule_id", tenantHandler.UpdatePaySchedule)
+			tenants.DELETE("/:id/pay-schedules/:schedule_id", tenantHandler.DeletePaySchedule)
+			tenants.POST("/:id/bootstrap", tenantHandler.BootstrapIndustry)
+		}
+
+		// Industry templates (public, read-only)
+		secured.GET("/industry-templates", tenantHandler.GetIndustryTemplate)
 
 		// Vehicles
 		vehicles := secured.Group("/vehicles")

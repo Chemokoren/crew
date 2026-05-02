@@ -102,7 +102,7 @@ func SeedDatabase(db *gorm.DB) error {
 		Email:        "sacco_admin@amy.com",
 		PasswordHash: passwordHash,
 		SystemRole:   types.RoleSaccoAdmin,
-		SaccoID:      &sacco.ID,
+		OrganizationID:      &sacco.ID,
 		IsActive:     true,
 	}
 	if err := db.Where(models.User{Phone: saccoAdminUser.Phone}).FirstOrCreate(&saccoAdminUser).Error; err != nil {
@@ -141,7 +141,7 @@ func SeedDatabase(db *gorm.DB) error {
 	// 5. VEHICLES
 	// ========================================
 	vehicle := models.Vehicle{
-		SaccoID:        sacco.ID,
+		OrganizationID:        sacco.ID,
 		RegistrationNo: "KCX 123A",
 		VehicleType:    models.VehicleMatatu,
 		RouteID:        &route.ID,
@@ -153,7 +153,7 @@ func SeedDatabase(db *gorm.DB) error {
 	}
 
 	vehicle2 := models.Vehicle{
-		SaccoID:        sacco.ID,
+		OrganizationID:        sacco.ID,
 		RegistrationNo: "KDG 456B",
 		VehicleType:    models.VehicleMatatu,
 		RouteID:        &route2.ID,
@@ -165,7 +165,7 @@ func SeedDatabase(db *gorm.DB) error {
 	}
 
 	vehicle3 := models.Vehicle{
-		SaccoID:        sacco2.ID,
+		OrganizationID:        sacco2.ID,
 		RegistrationNo: "KBZ 789C",
 		VehicleType:    models.VehicleMatatu,
 		RouteID:        &route.ID,
@@ -286,8 +286,8 @@ func SeedDatabase(db *gorm.DB) error {
 	// ========================================
 	membership1 := models.CrewSACCOMembership{
 		CrewMemberID: crew.ID,
-		SaccoID:      sacco.ID,
-		RoleInSacco:  models.SACCORoleMember,
+		OrganizationID:      sacco.ID,
+		RoleInOrg:  models.SACCORoleMember,
 		JoinedAt:     time.Now(),
 		IsActive:     true,
 	}
@@ -297,8 +297,8 @@ func SeedDatabase(db *gorm.DB) error {
 
 	membership2 := models.CrewSACCOMembership{
 		CrewMemberID: crew2.ID,
-		SaccoID:      sacco.ID,
-		RoleInSacco:  models.SACCORoleMember,
+		OrganizationID:      sacco.ID,
+		RoleInOrg:  models.SACCORoleMember,
 		JoinedAt:     time.Now(),
 		IsActive:     true,
 	}
@@ -308,8 +308,8 @@ func SeedDatabase(db *gorm.DB) error {
 
 	membership3 := models.CrewSACCOMembership{
 		CrewMemberID: crew3.ID,
-		SaccoID:      sacco2.ID,
-		RoleInSacco:  models.SACCORoleMember,
+		OrganizationID:      sacco2.ID,
+		RoleInOrg:  models.SACCORoleMember,
 		JoinedAt:     time.Now(),
 		IsActive:     true,
 	}
@@ -361,8 +361,8 @@ func SeedDatabase(db *gorm.DB) error {
 
 	assignment1 := models.Assignment{
 		CrewMemberID:     crew.ID,
-		VehicleID:        vehicle.ID,
-		SaccoID:          sacco.ID,
+		VehicleID:        &vehicle.ID,
+		OrganizationID:          sacco.ID,
 		RouteID:          &route.ID,
 		ShiftDate:        today,
 		ShiftStart:       shiftStart,
@@ -371,16 +371,17 @@ func SeedDatabase(db *gorm.DB) error {
 		FixedAmountCents: 200000, // 2000 KES
 		Notes:            "Morning shift — CBD to Kilimani",
 		CreatedByID:      adminUser.ID,
+		WorkType:         models.WorkTypeShift,
 	}
-	if err := db.Omit("CommissionBasis").Where("crew_member_id = ? AND vehicle_id = ? AND shift_date = ?",
-		crew.ID, vehicle.ID, today).FirstOrCreate(&assignment1).Error; err != nil {
+	if err := db.Omit("CommissionBasis").Where("crew_member_id = ? AND shift_date = ?",
+		crew.ID, today).FirstOrCreate(&assignment1).Error; err != nil {
 		return err
 	}
 
 	assignment2 := models.Assignment{
 		CrewMemberID:    crew2.ID,
-		VehicleID:       vehicle2.ID,
-		SaccoID:         sacco.ID,
+		VehicleID:       &vehicle2.ID,
+		OrganizationID:         sacco.ID,
 		RouteID:         &route2.ID,
 		ShiftDate:       today,
 		ShiftStart:      shiftStart.Add(1 * time.Hour),
@@ -390,9 +391,10 @@ func SeedDatabase(db *gorm.DB) error {
 		CommissionBasis: models.CommissionOnRevenue,
 		Notes:           "Afternoon shift — Westlands to Karen",
 		CreatedByID:     adminUser.ID,
+		WorkType:        models.WorkTypeShift,
 	}
-	if err := db.Where("crew_member_id = ? AND vehicle_id = ? AND shift_date = ?",
-		crew2.ID, vehicle2.ID, today).FirstOrCreate(&assignment2).Error; err != nil {
+	if err := db.Where("crew_member_id = ? AND shift_date = ? AND shift_start = ?",
+		crew2.ID, today, shiftStart.Add(1*time.Hour)).FirstOrCreate(&assignment2).Error; err != nil {
 		return err
 	}
 

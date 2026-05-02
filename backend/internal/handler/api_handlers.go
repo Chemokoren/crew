@@ -57,30 +57,38 @@ func (h *AssignmentHandler) Create(c *gin.Context) {
 
 	// Gap 4: SACCO_ADMIN can only create assignments within their own SACCO
 	if claims.SystemRole == types.RoleSaccoAdmin {
-		if claims.SaccoID == nil {
+		if claims.OrganizationID == nil {
 			Forbidden(c, "SACCO admin has no SACCO assigned")
 			return
 		}
-		if req.SaccoID != *claims.SaccoID {
+		if req.OrganizationID != *claims.OrganizationID {
 			Forbidden(c, "Cannot create assignments for a different SACCO")
 			return
 		}
 	}
 
 	result, err := h.assignmentSvc.CreateAssignment(c.Request.Context(), service.CreateAssignmentInput{
-		CrewMemberID:     req.CrewMemberID,
-		VehicleID:        req.VehicleID,
-		SaccoID:          req.SaccoID,
-		RouteID:          req.RouteID,
-		ShiftDate:        shiftDate,
-		ShiftStart:       shiftStart,
-		EarningModel:     req.EarningModel,
-		FixedAmountCents: req.FixedAmountCents,
-		CommissionRate:   req.CommissionRate,
-		HybridBaseCents:  req.HybridBaseCents,
-		CommissionBasis:  req.CommissionBasis,
-		Notes:            req.Notes,
-		CreatedByID:      claims.UserID,
+		CrewMemberID:      req.CrewMemberID,
+		VehicleID:         req.VehicleID,
+		OrganizationID:           req.OrganizationID,
+		RouteID:           req.RouteID,
+		ShiftDate:         shiftDate,
+		ShiftStart:        shiftStart,
+		EarningModel:      req.EarningModel,
+		FixedAmountCents:  req.FixedAmountCents,
+		CommissionRate:    req.CommissionRate,
+		HybridBaseCents:   req.HybridBaseCents,
+		CommissionBasis:   req.CommissionBasis,
+		Notes:             req.Notes,
+		CreatedByID:       claims.UserID,
+		WorkType:          req.WorkType,
+		WorkSite:          req.WorkSite,
+		ProjectRef:        req.ProjectRef,
+		HourlyRateCents:   req.HourlyRateCents,
+		DailyRateCents:    req.DailyRateCents,
+		PerUnitRateCents:  req.PerUnitRateCents,
+		OvertimeRateCents: req.OvertimeRateCents,
+		PayScheduleID:     req.PayScheduleID,
 	})
 	if err != nil {
 		MapServiceError(c, err)
@@ -111,7 +119,12 @@ func (h *AssignmentHandler) Complete(c *gin.Context) {
 		return
 	}
 
-	earning, err := h.assignmentSvc.CompleteAssignment(c.Request.Context(), id, req.TotalRevenueCents)
+	earning, err := h.assignmentSvc.CompleteAssignment(c.Request.Context(), id, service.CompleteAssignmentInput{
+		TotalRevenueCents: req.TotalRevenueCents,
+		HoursWorked:       req.HoursWorked,
+		UnitsCompleted:    req.UnitsCompleted,
+		OvertimeHours:     req.OvertimeHours,
+	})
 	if err != nil {
 		MapServiceError(c, err)
 		return
@@ -148,8 +161,8 @@ func (h *AssignmentHandler) GetByID(c *gin.Context) {
 
 	// Gap 4: SACCO_ADMIN can only view assignments within their SACCO
 	claims := middleware.GetClaims(c)
-	if claims.SystemRole == types.RoleSaccoAdmin && claims.SaccoID != nil {
-		if assignment.SaccoID != *claims.SaccoID {
+	if claims.SystemRole == types.RoleSaccoAdmin && claims.OrganizationID != nil {
+		if assignment.OrganizationID != *claims.OrganizationID {
 			Forbidden(c, "Cannot access assignments from a different SACCO")
 			return
 		}
@@ -174,11 +187,11 @@ func (h *AssignmentHandler) List(c *gin.Context) {
 
 	// Gap 4: SACCO_ADMIN is automatically scoped to their own SACCO
 	claims := middleware.GetClaims(c)
-	if claims.SystemRole == types.RoleSaccoAdmin && claims.SaccoID != nil {
-		filter.SaccoID = claims.SaccoID
-	} else if saccoID := c.Query("sacco_id"); saccoID != "" {
-		id, _ := uuid.Parse(saccoID)
-		filter.SaccoID = &id
+	if claims.SystemRole == types.RoleSaccoAdmin && claims.OrganizationID != nil {
+		filter.OrganizationID = claims.OrganizationID
+	} else if orgID := c.Query("sacco_id"); orgID != "" {
+		id, _ := uuid.Parse(orgID)
+		filter.OrganizationID = &id
 	}
 
 	if crewID := c.Query("crew_member_id"); crewID != "" {
@@ -192,6 +205,15 @@ func (h *AssignmentHandler) List(c *gin.Context) {
 		if d, err := time.Parse("2006-01-02", dateStr); err == nil {
 			filter.ShiftDate = &d
 		}
+	}
+	if wt := c.Query("work_type"); wt != "" {
+		filter.WorkType = wt
+	}
+	if ws := c.Query("work_site"); ws != "" {
+		filter.WorkSite = ws
+	}
+	if pr := c.Query("project_ref"); pr != "" {
+		filter.ProjectRef = pr
 	}
 
 	assignments, total, err := h.assignmentSvc.ListAssignments(c.Request.Context(), filter, page, perPage)
@@ -255,6 +277,46 @@ func (h *AssignmentHandler) Reassign(c *gin.Context) {
 		return
 	}
 	SuccessResponse(c, http.StatusOK, result)
+}
+
+// CheckIn godoc
+// @Summary Check in to an assignment (start tracking time)
+// @Tags Assignment
+// @Param id path string true "Assignment ID"
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/assignments/{id}/check-in [post]
+func (h *AssignmentHandler) CheckIn(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		BadRequest(c, "Invalid assignment ID")
+		return
+	}
+	result, err := h.assignmentSvc.CheckIn(c.Request.Context(), id)
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, dto.AssignmentToResponse(result))
+}
+
+// CheckOut godoc
+// @Summary Check out of an assignment (auto-calculates hours worked)
+// @Tags Assignment
+// @Param id path string true "Assignment ID"
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/assignments/{id}/check-out [post]
+func (h *AssignmentHandler) CheckOut(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		BadRequest(c, "Invalid assignment ID")
+		return
+	}
+	result, err := h.assignmentSvc.CheckOut(c.Request.Context(), id)
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, dto.AssignmentToResponse(result))
 }
 
 // --- Wallet Handler ---
@@ -637,6 +699,8 @@ func (h *CrewHandler) Create(c *gin.Context) {
 		FirstName:  req.FirstName,
 		LastName:   req.LastName,
 		Role:       req.Role,
+		JobTypeID:  req.JobTypeID,
+		JobTitle:   req.JobTitle,
 	})
 	if err != nil {
 		MapServiceError(c, err)
@@ -717,18 +781,25 @@ func (h *CrewHandler) List(c *gin.Context) {
 	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "20"))
 
 	filter := repository.CrewFilter{
-		Role:      c.Query("role"),
-		KYCStatus: c.Query("kyc_status"),
-		Search:    c.Query("search"),
+		Role:        c.Query("role"),
+		KYCStatus:   c.Query("kyc_status"),
+		Search:      c.Query("search"),
+		JobTypeCode: c.Query("job_type_code"),
+	}
+
+	// Parse job_type_id if provided
+	if jtID := c.Query("job_type_id"); jtID != "" {
+		id, _ := uuid.Parse(jtID)
+		filter.JobTypeID = &id
 	}
 
 	// Gap 4: SACCO_ADMIN is automatically scoped to their own SACCO
 	claims := middleware.GetClaims(c)
-	if claims.SystemRole == types.RoleSaccoAdmin && claims.SaccoID != nil {
-		filter.SaccoID = claims.SaccoID
-	} else if saccoID := c.Query("sacco_id"); saccoID != "" {
-		id, _ := uuid.Parse(saccoID)
-		filter.SaccoID = &id
+	if claims.SystemRole == types.RoleSaccoAdmin && claims.OrganizationID != nil {
+		filter.OrganizationID = claims.OrganizationID
+	} else if orgID := c.Query("sacco_id"); orgID != "" {
+		id, _ := uuid.Parse(orgID)
+		filter.OrganizationID = &id
 	}
 
 	members, total, err := h.crewSvc.ListCrewMembers(c.Request.Context(), filter, page, perPage)
@@ -818,6 +889,8 @@ func (h *CrewHandler) BulkImport(c *gin.Context) {
 			FirstName:  m.FirstName,
 			LastName:   m.LastName,
 			Role:       m.Role,
+			JobTypeID:  m.JobTypeID,
+			JobTitle:   m.JobTitle,
 		}
 	}
 

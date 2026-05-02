@@ -15,22 +15,27 @@ import (
 
 // CrewFilter specifies filtering criteria for crew member queries.
 type CrewFilter struct {
-	SaccoID   *uuid.UUID
-	Role      string
-	KYCStatus string
-	IsActive  *bool
-	Search    string // Matches first_name, last_name, crew_id
+	OrganizationID     *uuid.UUID
+	Role        string
+	KYCStatus   string
+	IsActive    *bool
+	Search      string     // Matches first_name, last_name, crew_id
+	JobTypeID   *uuid.UUID // Filter by tenant-configurable job type
+	JobTypeCode string     // Filter by job type code (e.g. "MASON", "FOREMAN")
 }
 
 // AssignmentFilter specifies filtering criteria for assignment queries.
 type AssignmentFilter struct {
-	SaccoID      *uuid.UUID
+	OrganizationID      *uuid.UUID
 	CrewMemberID *uuid.UUID
 	VehicleID    *uuid.UUID
 	Status       string
 	ShiftDate    *time.Time
 	DateFrom     *time.Time
 	DateTo       *time.Time
+	WorkType     string // SHIFT, DAILY, HOURLY, TASK, PROJECT, BOOKING
+	WorkSite     string
+	ProjectRef   string
 }
 
 // EarningFilter specifies filtering criteria for earning queries.
@@ -85,8 +90,8 @@ type CrewRepository interface {
 	BulkCreate(ctx context.Context, members []models.CrewMember) ([]BulkError, error)
 }
 
-// SACCORepository handles SACCO data access.
-type SACCORepository interface {
+// OrganizationRepository handles SACCO data access.
+type OrganizationRepository interface {
 	Create(ctx context.Context, sacco *models.SACCO) error
 	GetByID(ctx context.Context, id uuid.UUID) (*models.SACCO, error)
 	Update(ctx context.Context, sacco *models.SACCO) error
@@ -100,7 +105,7 @@ type VehicleRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*models.Vehicle, error)
 	Update(ctx context.Context, vehicle *models.Vehicle) error
 	Delete(ctx context.Context, id uuid.UUID) error
-	List(ctx context.Context, saccoID *uuid.UUID, page, perPage int) ([]models.Vehicle, int64, error)
+	List(ctx context.Context, orgID *uuid.UUID, page, perPage int) ([]models.Vehicle, int64, error)
 }
 
 // RouteRepository handles route data access.
@@ -160,9 +165,15 @@ type PayrollRepository interface {
 	Create(ctx context.Context, run *models.PayrollRun) error
 	GetByID(ctx context.Context, id uuid.UUID) (*models.PayrollRun, error)
 	Update(ctx context.Context, run *models.PayrollRun) error
-	List(ctx context.Context, saccoID *uuid.UUID, page, perPage int) ([]models.PayrollRun, int64, error)
+	List(ctx context.Context, orgID *uuid.UUID, page, perPage int) ([]models.PayrollRun, int64, error)
 	CreateEntries(ctx context.Context, entries []models.PayrollEntry) error
 	GetEntries(ctx context.Context, runID uuid.UUID) ([]models.PayrollEntry, error)
+
+	// Pay period management
+	CreatePayPeriod(ctx context.Context, period *models.PayPeriod) error
+	GetPayPeriodByID(ctx context.Context, id uuid.UUID) (*models.PayPeriod, error)
+	UpdatePayPeriod(ctx context.Context, period *models.PayPeriod) error
+	ListPayPeriods(ctx context.Context, scheduleID uuid.UUID, page, perPage int) ([]models.PayPeriod, int64, error)
 }
 
 // MembershipRepository handles crew-SACCO membership data access.
@@ -170,32 +181,32 @@ type MembershipRepository interface {
 	Create(ctx context.Context, m *models.CrewSACCOMembership) error
 	GetByID(ctx context.Context, id uuid.UUID) (*models.CrewSACCOMembership, error)
 	Update(ctx context.Context, m *models.CrewSACCOMembership) error
-	ListBySACCO(ctx context.Context, saccoID uuid.UUID, page, perPage int) ([]models.CrewSACCOMembership, int64, error)
+	ListByOrganization(ctx context.Context, orgID uuid.UUID, page, perPage int) ([]models.CrewSACCOMembership, int64, error)
 	ListByCrewMember(ctx context.Context, crewMemberID uuid.UUID) ([]models.CrewSACCOMembership, error)
-	GetActive(ctx context.Context, crewMemberID, saccoID uuid.UUID) (*models.CrewSACCOMembership, error)
+	GetActive(ctx context.Context, crewMemberID, orgID uuid.UUID) (*models.CrewSACCOMembership, error)
 }
 
-// SACCOFloatFilter specifies filtering for SACCO float transaction queries.
-type SACCOFloatFilter struct {
+// OrganizationFloatFilter specifies filtering for SACCO float transaction queries.
+type OrganizationFloatFilter struct {
 	TransactionType string
 	DateFrom        *time.Time
 	DateTo          *time.Time
 }
 
-// SACCOFloatRepository handles SACCO float data access with atomic operations.
-type SACCOFloatRepository interface {
-	GetOrCreate(ctx context.Context, saccoID uuid.UUID) (*models.SACCOFloat, error)
+// OrganizationFloatRepository handles SACCO float data access with atomic operations.
+type OrganizationFloatRepository interface {
+	GetOrCreate(ctx context.Context, orgID uuid.UUID) (*models.OrganizationFloat, error)
 	CreditFloat(ctx context.Context, floatID uuid.UUID, version int, amountCents int64,
-		idempotencyKey, reference string) (*models.SACCOFloatTransaction, error)
+		idempotencyKey, reference string) (*models.OrganizationFloatTransaction, error)
 	DebitFloat(ctx context.Context, floatID uuid.UUID, version int, amountCents int64,
-		idempotencyKey, reference string) (*models.SACCOFloatTransaction, error)
-	GetTransactions(ctx context.Context, floatID uuid.UUID, filter SACCOFloatFilter, page, perPage int) ([]models.SACCOFloatTransaction, int64, error)
+		idempotencyKey, reference string) (*models.OrganizationFloatTransaction, error)
+	GetTransactions(ctx context.Context, floatID uuid.UUID, filter OrganizationFloatFilter, page, perPage int) ([]models.OrganizationFloatTransaction, int64, error)
 }
 
 // DocumentFilter specifies filtering for document queries.
 type DocumentFilter struct {
 	CrewMemberID *uuid.UUID
-	SaccoID      *uuid.UUID
+	OrganizationID      *uuid.UUID
 	VehicleID    *uuid.UUID
 	DocumentType string
 }
@@ -321,4 +332,24 @@ type NegativeEventRepository interface {
 	Create(ctx context.Context, event *models.CreditNegativeEvent) error
 	CountUnresolved(ctx context.Context, crewMemberID uuid.UUID) (int64, error)
 	CountByType(ctx context.Context, crewMemberID uuid.UUID, eventType string) (int64, error)
+}
+
+// TenantJobTypeRepository handles configurable job type data access per tenant.
+type TenantJobTypeRepository interface {
+	Create(ctx context.Context, jobType *models.TenantJobType) error
+	GetByID(ctx context.Context, id uuid.UUID) (*models.TenantJobType, error)
+	Update(ctx context.Context, jobType *models.TenantJobType) error
+	Delete(ctx context.Context, id uuid.UUID) error
+	ListByOrganization(ctx context.Context, orgID uuid.UUID) ([]models.TenantJobType, error)
+	GetByCode(ctx context.Context, orgID uuid.UUID, code string) (*models.TenantJobType, error)
+}
+
+// PayScheduleRepository handles pay schedule data access per tenant.
+type PayScheduleRepository interface {
+	Create(ctx context.Context, schedule *models.PaySchedule) error
+	GetByID(ctx context.Context, id uuid.UUID) (*models.PaySchedule, error)
+	Update(ctx context.Context, schedule *models.PaySchedule) error
+	Delete(ctx context.Context, id uuid.UUID) error
+	ListByOrganization(ctx context.Context, orgID uuid.UUID) ([]models.PaySchedule, error)
+	GetDefault(ctx context.Context, orgID uuid.UUID) (*models.PaySchedule, error)
 }

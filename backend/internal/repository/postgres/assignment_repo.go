@@ -69,7 +69,7 @@ func (r *AssignmentRepo) GetByID(ctx context.Context, id uuid.UUID) (*models.Ass
 	if err := r.getDB(ctx).
 		Preload("CrewMember").
 		Preload("Vehicle").
-		Preload("Sacco").
+		Preload("Organization").
 		Preload("Route").
 		Where("id = ?", id).First(&assignment).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -93,8 +93,8 @@ func (r *AssignmentRepo) List(ctx context.Context, filter repository.AssignmentF
 
 	query := r.getDB(ctx).Model(&models.Assignment{})
 
-	if filter.SaccoID != nil {
-		query = query.Where("sacco_id = ?", *filter.SaccoID)
+	if filter.OrganizationID != nil {
+		query = query.Where("sacco_id = ?", *filter.OrganizationID)
 	}
 	if filter.CrewMemberID != nil {
 		query = query.Where("crew_member_id = ?", *filter.CrewMemberID)
@@ -114,6 +114,15 @@ func (r *AssignmentRepo) List(ctx context.Context, filter repository.AssignmentF
 	if filter.DateTo != nil {
 		query = query.Where("shift_date <= ?", *filter.DateTo)
 	}
+	if filter.WorkType != "" {
+		query = query.Where("work_type = ?", filter.WorkType)
+	}
+	if filter.WorkSite != "" {
+		query = query.Where("work_site ILIKE ?", "%"+filter.WorkSite+"%")
+	}
+	if filter.ProjectRef != "" {
+		query = query.Where("project_ref = ?", filter.ProjectRef)
+	}
 
 	query.Count(&total)
 
@@ -121,7 +130,7 @@ func (r *AssignmentRepo) List(ctx context.Context, filter repository.AssignmentF
 	if err := query.
 		Preload("CrewMember").
 		Preload("Vehicle").
-		Preload("Sacco").
+		Preload("Organization").
 		Preload("Route").
 		Offset(offset).Limit(perPage).
 		Order("shift_date DESC, shift_start DESC").

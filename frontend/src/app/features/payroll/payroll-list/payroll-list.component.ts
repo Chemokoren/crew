@@ -5,7 +5,7 @@ import { Router } from '@angular/router';
 import { ApiService } from '../../../core/services/api.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { CurrencyKesPipe } from '../../../shared/pipes/currency-kes.pipe';
-import { PayrollRun, SACCO } from '../../../core/models';
+import { PayrollRun, Organization } from '../../../core/models';
 import { AutocompleteComponent, AutocompleteOption } from '../../../shared/components/autocomplete/autocomplete.component';
 
 @Component({
@@ -42,11 +42,11 @@ import { AutocompleteComponent, AutocompleteOption } from '../../../shared/compo
         <div class="modal-backdrop" (click)="showModal.set(false)"><div class="modal-content" (click)="$event.stopPropagation()">
           <div class="modal-header"><h3>Create Payroll Run</h3><button class="btn btn-ghost btn-icon" (click)="showModal.set(false)"><span class="material-icons-round">close</span></button></div>
           <div class="modal-body">
-            <div class="form-group" style="position:relative; z-index: 55;"><label class="form-label">SACCO</label>
+            <div class="form-group" style="position:relative; z-index: 55;"><label class="form-label">Organization</label>
               <app-autocomplete
-                [(ngModel)]="form.sacco_id"
+                [(ngModel)]="form.organization_id"
                 [options]="saccoOptions()"
-                placeholder="Search SACCO..."
+                placeholder="Search Organization..."
                 inputId="select-sacco"
               ></app-autocomplete>
             </div>
@@ -64,8 +64,8 @@ export class PayrollListComponent implements OnInit {
   private toast = inject(ToastService);
   private router = inject(Router);
   items = signal<PayrollRun[]>([]); loading = signal(true); showModal = signal(false); creating = signal(false);
-  saccos = signal<SACCO[]>([]);
-  form = { sacco_id: '', period_start: '', period_end: '' };
+  saccos = signal<Organization[]>([]);
+  form = { organization_id: '', period_start: '', period_end: '' };
 
   saccoOptions = computed<AutocompleteOption[]>(() => {
     return this.saccos().map(s => ({
@@ -78,7 +78,7 @@ export class PayrollListComponent implements OnInit {
 
   ngOnInit() {
     this.load();
-    this.api.getSACCOs().subscribe({ next: r => this.saccos.set(r.data) });
+    this.api.getOrganizations().subscribe({ next: r => this.saccos.set(r.data) });
   }
 
   load() { this.loading.set(true); this.api.getPayrollRuns().subscribe({ next: r => { this.items.set(r.data); this.loading.set(false); }, error: () => this.loading.set(false) }); }
@@ -86,7 +86,7 @@ export class PayrollListComponent implements OnInit {
   create() {
     this.creating.set(true);
     this.api.createPayrollRun(this.form).subscribe({
-      next: () => { this.toast.success('Payroll run created'); this.showModal.set(false); this.creating.set(false); this.form = { sacco_id: '', period_start: '', period_end: '' }; this.load(); },
+      next: () => { this.toast.success('Payroll run created'); this.showModal.set(false); this.creating.set(false); this.form = { organization_id: '', period_start: '', period_end: '' }; this.load(); },
       error: () => this.creating.set(false),
     });
   }

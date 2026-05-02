@@ -7,7 +7,7 @@ import { ToastService } from '../../../core/services/toast.service';
 import { ConfirmDialogService } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { CurrencyKesPipe } from '../../../shared/pipes/currency-kes.pipe';
 import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
-import { SACCO, SACCOFloat, SACCOMembership, SACCOFloatTransaction, CrewMember, PaginationMeta } from '../../../core/models';
+import { Organization, SACCOFloat, SACCOMembership, SACCOFloatTransaction, CrewMember, PaginationMeta } from '../../../core/models';
 import { AutocompleteComponent, AutocompleteOption } from '../../../shared/components/autocomplete/autocomplete.component';
 
 @Component({
@@ -21,9 +21,9 @@ import { AutocompleteComponent, AutocompleteOption } from '../../../shared/compo
       <div class="page-header">
         <div>
           <button class="btn btn-ghost btn-sm" (click)="goBack()" style="margin-bottom:var(--space-xs);">
-            <span class="material-icons-round" style="font-size:16px;">arrow_back</span> Back to SACCOs
+            <span class="material-icons-round" style="font-size:16px;">arrow_back</span> Back to Organizations
           </button>
-          <h1 class="page-title">{{ sacco()?.name || 'SACCO Details' }}</h1>
+          <h1 class="page-title">{{ sacco()?.name || 'Organization Details' }}</h1>
           <p class="page-subtitle">{{ sacco()?.registration_number }}</p>
         </div>
         <div class="page-actions">
@@ -80,7 +80,7 @@ import { AutocompleteComponent, AutocompleteOption } from '../../../shared/compo
             @if (members().length === 0) {
               <div class="empty-state" style="padding:var(--space-lg);"><span class="material-icons-round empty-icon">group_off</span><div class="empty-title">No members yet</div></div>
             } @else {
-              <div class="data-table-wrapper"><table class="data-table"><thead><tr><th>Member Name</th><th>Position</th><th>SACCO Role</th><th>Joined</th><th>Actions</th></tr></thead>
+              <div class="data-table-wrapper"><table class="data-table"><thead><tr><th>Member Name</th><th>Position</th><th>Organization Role</th><th>Joined</th><th>Actions</th></tr></thead>
                 <tbody>@for (m of members(); track m.id) {
                   <tr>
                     <td style="font-weight:500; color:var(--color-text-primary);">{{ getCrewDetails(m.crew_member_id).name }}</td>
@@ -148,10 +148,10 @@ import { AutocompleteComponent, AutocompleteOption } from '../../../shared/compo
 
       <!-- ========== MODALS ========== -->
 
-      <!-- Edit SACCO Modal -->
+      <!-- Edit Organization Modal -->
       @if (showModal() === 'edit') {
         <div class="modal-backdrop" (click)="closeModal()"><div class="modal-content" (click)="$event.stopPropagation()">
-          <div class="modal-header"><h3>Edit SACCO</h3><button class="btn-ghost" (click)="closeModal()"><span class="material-icons-round">close</span></button></div>
+          <div class="modal-header"><h3>Edit Organization</h3><button class="btn-ghost" (click)="closeModal()"><span class="material-icons-round">close</span></button></div>
           <div class="modal-body">
             <label class="form-label">Name</label><input class="form-input" [(ngModel)]="editForm.name" id="edit-name">
             <label class="form-label" style="margin-top:var(--space-sm);">County</label><input class="form-input" [(ngModel)]="editForm.county" id="edit-county">
@@ -173,7 +173,7 @@ import { AutocompleteComponent, AutocompleteOption } from '../../../shared/compo
               <app-autocomplete [(ngModel)]="memberCrewId" [options]="crewOptions()" placeholder="Search Crew..."></app-autocomplete>
             </div>
             <div style="position:relative; z-index: 54; margin-top:var(--space-sm);">
-              <label class="form-label">Role in SACCO</label>
+              <label class="form-label">Role in Organization</label>
               <app-autocomplete [(ngModel)]="memberRole" [options]="roleOptions()" placeholder="Search Role..."></app-autocomplete>
             </div>
             <div style="margin-top:var(--space-sm);">
@@ -191,7 +191,7 @@ import { AutocompleteComponent, AutocompleteOption } from '../../../shared/compo
           <div class="modal-header"><h3>Edit Role</h3><button class="btn-ghost" (click)="closeModal()"><span class="material-icons-round">close</span></button></div>
           <div class="modal-body">
             <div style="position:relative; z-index: 54; margin-top:var(--space-sm);">
-              <label class="form-label">Role in SACCO</label>
+              <label class="form-label">Role in Organization</label>
               <app-autocomplete [(ngModel)]="editMemberRole" [options]="roleOptions()" placeholder="Search Role..."></app-autocomplete>
             </div>
             <div style="margin-top:var(--space-sm);">
@@ -243,7 +243,7 @@ export class SaccoDetailComponent implements OnInit {
   private router = inject(Router);
   private confirmService = inject(ConfirmDialogService);
 
-  sacco = signal<SACCO | null>(null);
+  sacco = signal<Organization | null>(null);
   saccoFloat = signal<SACCOFloat | null>(null);
   members = signal<SACCOMembership[]>([]);
   memberCount = signal(0);
@@ -298,7 +298,7 @@ export class SaccoDetailComponent implements OnInit {
 
   loadSACCO(): void {
     this.loading.set(true);
-    this.api.getSACCO(this.saccoId).subscribe({
+    this.api.getOrganization(this.saccoId).subscribe({
       next: (r) => {
         this.sacco.set(r.data);
         this.editForm = {
@@ -348,8 +348,8 @@ export class SaccoDetailComponent implements OnInit {
 
   submitEdit(): void {
     this.submitting.set(true);
-    this.api.updateSACCO(this.saccoId, this.editForm).subscribe({
-      next: () => { this.toast.success('SACCO updated'); this.closeModal(); this.submitting.set(false); this.loadSACCO(); },
+    this.api.updateOrganization(this.saccoId, this.editForm).subscribe({
+      next: () => { this.toast.success('Organization updated'); this.closeModal(); this.submitting.set(false); this.loadSACCO(); },
       error: () => this.submitting.set(false),
     });
   }
@@ -394,14 +394,14 @@ export class SaccoDetailComponent implements OnInit {
       joined_at: this.editMemberJoinedAt ? new Date(this.editMemberJoinedAt).toISOString() : undefined
     };
     
-    this.api.updateSACCOMember(this.saccoId, this.editMembershipId, payload).subscribe({
+    this.api.updateOrganizationMember(this.saccoId, this.editMembershipId, payload).subscribe({
       next: () => { this.toast.success('Role updated'); this.closeModal(); this.submitting.set(false); this.loadMembers(); },
       error: () => this.submitting.set(false),
     });
   }
 
   removeMember(m: SACCOMembership): void {
-    this.confirmService.danger('Remove Member', 'Remove this member from the SACCO?').subscribe(res => {
+    this.confirmService.danger('Remove Member', 'Remove this member from the Organization?').subscribe(res => {
       if (res.confirmed) {
         this.api.removeSACCOMember(this.saccoId, m.id).subscribe({
           next: () => { this.toast.success('Member removed'); this.loadMembers(); },

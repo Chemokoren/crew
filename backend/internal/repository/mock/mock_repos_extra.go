@@ -59,12 +59,12 @@ func (r *VehicleRepo) Delete(_ context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (r *VehicleRepo) List(_ context.Context, saccoID *uuid.UUID, page, perPage int) ([]models.Vehicle, int64, error) {
+func (r *VehicleRepo) List(_ context.Context, orgID *uuid.UUID, page, perPage int) ([]models.Vehicle, int64, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	var all []models.Vehicle
 	for _, v := range r.vehicles {
-		if saccoID == nil || v.SaccoID == *saccoID {
+		if orgID == nil || v.OrganizationID == *orgID {
 			all = append(all, *v)
 		}
 	}
@@ -135,10 +135,14 @@ type PayrollRepo struct {
 	mu      sync.RWMutex
 	runs    map[uuid.UUID]*models.PayrollRun
 	entries []models.PayrollEntry
+	periods map[uuid.UUID]*models.PayPeriod
 }
 
 func NewPayrollRepo() *PayrollRepo {
-	return &PayrollRepo{runs: make(map[uuid.UUID]*models.PayrollRun)}
+	return &PayrollRepo{
+		runs:    make(map[uuid.UUID]*models.PayrollRun),
+		periods: make(map[uuid.UUID]*models.PayPeriod),
+	}
 }
 
 func (r *PayrollRepo) Create(_ context.Context, run *models.PayrollRun) error {
@@ -171,12 +175,12 @@ func (r *PayrollRepo) Update(_ context.Context, run *models.PayrollRun) error {
 	return nil
 }
 
-func (r *PayrollRepo) List(_ context.Context, saccoID *uuid.UUID, page, perPage int) ([]models.PayrollRun, int64, error) {
+func (r *PayrollRepo) List(_ context.Context, orgID *uuid.UUID, page, perPage int) ([]models.PayrollRun, int64, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	var all []models.PayrollRun
 	for _, run := range r.runs {
-		if saccoID == nil || run.SaccoID == *saccoID {
+		if orgID == nil || run.OrganizationID == *orgID {
 			all = append(all, *run)
 		}
 	}
@@ -205,6 +209,48 @@ func (r *PayrollRepo) GetEntries(_ context.Context, runID uuid.UUID) ([]models.P
 		}
 	}
 	return runEntries, nil
+}
+
+func (r *PayrollRepo) CreatePayPeriod(_ context.Context, period *models.PayPeriod) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if period.ID == uuid.Nil {
+		period.ID = uuid.New()
+	}
+	period.CreatedAt = time.Now()
+	period.UpdatedAt = time.Now()
+	r.periods[period.ID] = period
+	return nil
+}
+
+func (r *PayrollRepo) GetPayPeriodByID(_ context.Context, id uuid.UUID) (*models.PayPeriod, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	p, ok := r.periods[id]
+	if !ok {
+		return nil, errs.ErrNotFound
+	}
+	return p, nil
+}
+
+func (r *PayrollRepo) UpdatePayPeriod(_ context.Context, period *models.PayPeriod) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	period.UpdatedAt = time.Now()
+	r.periods[period.ID] = period
+	return nil
+}
+
+func (r *PayrollRepo) ListPayPeriods(_ context.Context, scheduleID uuid.UUID, page, perPage int) ([]models.PayPeriod, int64, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var all []models.PayPeriod
+	for _, p := range r.periods {
+		if p.PayScheduleID == scheduleID {
+			all = append(all, *p)
+		}
+	}
+	return all, int64(len(all)), nil
 }
 
 // --- StatutoryRateRepo Mock ---

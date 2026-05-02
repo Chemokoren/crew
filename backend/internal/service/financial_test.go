@@ -15,6 +15,8 @@ import (
 	"github.com/kibsoft/amy-mis/internal/repository/mock"
 )
 
+func uuidPtr(id uuid.UUID) *uuid.UUID { return &id }
+
 // --- Mock Assignment & Earning Repos for service tests ---
 
 type mockEarningRepo struct {
@@ -79,11 +81,11 @@ func TestFixedEarningCalc(t *testing.T) {
 	crew := makeCrewForTest(t, crewRepo)
 
 	a, _ := svc.CreateAssignment(ctx, CreateAssignmentInput{
-		CrewMemberID: crew.ID, VehicleID: uuid.New(), SaccoID: uuid.New(),
+		CrewMemberID: crew.ID, VehicleID: uuidPtr(uuid.New()), OrganizationID: uuid.New(),
 		ShiftDate: time.Now(), ShiftStart: time.Now(),
 		EarningModel: models.EarningFixed, FixedAmountCents: 250000,
 	})
-	earning, err := svc.CompleteAssignment(ctx, a.ID, 0)
+	earning, err := svc.CompleteAssignment(ctx, a.ID, CompleteAssignmentInput{TotalRevenueCents: 0})
 	if err != nil {
 		t.Fatalf("complete: %v", err)
 	}
@@ -102,11 +104,11 @@ func TestCommissionEarningCalc(t *testing.T) {
 	crew := makeCrewForTest(t, crewRepo)
 
 	a, _ := svc.CreateAssignment(ctx, CreateAssignmentInput{
-		CrewMemberID: crew.ID, VehicleID: uuid.New(), SaccoID: uuid.New(),
+		CrewMemberID: crew.ID, VehicleID: uuidPtr(uuid.New()), OrganizationID: uuid.New(),
 		ShiftDate: time.Now(), ShiftStart: time.Now(),
 		EarningModel: models.EarningCommission, CommissionRate: 0.10,
 	})
-	earning, err := svc.CompleteAssignment(ctx, a.ID, 500000) // 10% of 500K
+	earning, err := svc.CompleteAssignment(ctx, a.ID, CompleteAssignmentInput{TotalRevenueCents: 500000}) // 10% of 500K
 	if err != nil {
 		t.Fatalf("complete: %v", err)
 	}
@@ -121,11 +123,11 @@ func TestHybridEarningCalc(t *testing.T) {
 	crew := makeCrewForTest(t, crewRepo)
 
 	a, _ := svc.CreateAssignment(ctx, CreateAssignmentInput{
-		CrewMemberID: crew.ID, VehicleID: uuid.New(), SaccoID: uuid.New(),
+		CrewMemberID: crew.ID, VehicleID: uuidPtr(uuid.New()), OrganizationID: uuid.New(),
 		ShiftDate: time.Now(), ShiftStart: time.Now(),
 		EarningModel: models.EarningHybrid, HybridBaseCents: 100000, CommissionRate: 0.05,
 	})
-	earning, err := svc.CompleteAssignment(ctx, a.ID, 1000000) // 100K + 5% of 1M
+	earning, err := svc.CompleteAssignment(ctx, a.ID, CompleteAssignmentInput{TotalRevenueCents: 1000000}) // 100K + 5% of 1M
 	if err != nil {
 		t.Fatalf("complete: %v", err)
 	}
@@ -267,12 +269,12 @@ func TestCompleteAssignment_TriggersNotification(t *testing.T) {
 	userRepo.Create(ctx, user)
 
 	a, _ := assignmentSvc.CreateAssignment(ctx, CreateAssignmentInput{
-		CrewMemberID: crew.ID, VehicleID: uuid.New(), SaccoID: uuid.New(),
+		CrewMemberID: crew.ID, VehicleID: uuidPtr(uuid.New()), OrganizationID: uuid.New(),
 		ShiftDate: time.Now(), ShiftStart: time.Now(),
 		EarningModel: models.EarningFixed, FixedAmountCents: 250000,
 	})
 
-	_, err := assignmentSvc.CompleteAssignment(ctx, a.ID, 0)
+	_, err := assignmentSvc.CompleteAssignment(ctx, a.ID, CompleteAssignmentInput{TotalRevenueCents: 0})
 	if err != nil {
 		t.Fatalf("complete: %v", err)
 	}

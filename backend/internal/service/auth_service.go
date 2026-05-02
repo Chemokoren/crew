@@ -54,6 +54,7 @@ type RegisterInput struct {
 	LastName   string          `json:"last_name" validate:"required_if=Role CREW"`
 	NationalID string          `json:"national_id" validate:"required_if=Role CREW"`
 	CrewRole   models.CrewRole `json:"crew_role" validate:"required_if=Role CREW,omitempty,oneof=DRIVER CONDUCTOR RIDER OTHER"`
+	JobTypeID  *uuid.UUID      `json:"job_type_id,omitempty"` // Tenant-specific job type (optional, overrides CrewRole display)
 }
 
 // RegisterResult holds the output of a successful registration.
@@ -113,6 +114,7 @@ func (s *AuthService) Register(ctx context.Context, input RegisterInput) (*Regis
 				FirstName:  input.FirstName,
 				LastName:   input.LastName,
 				Role:       input.CrewRole,
+				JobTypeID:  input.JobTypeID,
 				KYCStatus:  models.KYCPending,
 				IsActive:   true,
 			}
@@ -144,7 +146,7 @@ func (s *AuthService) Register(ctx context.Context, input RegisterInput) (*Regis
 	}
 
 	// 6. Generate tokens (outside transaction — not a DB operation)
-	tokens, err := s.jwt.GenerateTokenPair(user.ID, user.Phone, user.SystemRole, user.CrewMemberID, user.SaccoID)
+	tokens, err := s.jwt.GenerateTokenPair(user.ID, user.Phone, user.SystemRole, user.CrewMemberID, user.OrganizationID)
 	if err != nil {
 		return nil, fmt.Errorf("generate tokens: %w", err)
 	}
@@ -201,7 +203,7 @@ func (s *AuthService) Login(ctx context.Context, input LoginInput) (*LoginResult
 	}
 
 	// 5. Generate tokens
-	tokens, err := s.jwt.GenerateTokenPair(user.ID, user.Phone, user.SystemRole, user.CrewMemberID, user.SaccoID)
+	tokens, err := s.jwt.GenerateTokenPair(user.ID, user.Phone, user.SystemRole, user.CrewMemberID, user.OrganizationID)
 	if err != nil {
 		return nil, fmt.Errorf("generate tokens: %w", err)
 	}
@@ -233,7 +235,7 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*j
 		return nil, ErrAccountDisabled
 	}
 
-	tokens, err := s.jwt.GenerateTokenPair(user.ID, user.Phone, user.SystemRole, user.CrewMemberID, user.SaccoID)
+	tokens, err := s.jwt.GenerateTokenPair(user.ID, user.Phone, user.SystemRole, user.CrewMemberID, user.OrganizationID)
 	if err != nil {
 		return nil, fmt.Errorf("generate tokens: %w", err)
 	}

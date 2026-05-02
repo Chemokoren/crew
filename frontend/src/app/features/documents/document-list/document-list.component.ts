@@ -158,7 +158,7 @@ export class DocumentListComponent implements OnInit {
     { value: 'KYC_ID_FRONT', label: 'KYC ID Front' },
     { value: 'KYC_ID_BACK', label: 'KYC ID Back' },
     { value: 'KYC_SELFIE', label: 'KYC Selfie' },
-    { value: 'SACCO_REGISTRATION', label: 'SACCO Registration' },
+    { value: 'SACCO_REGISTRATION', label: 'Organization Registration' },
     { value: 'VEHICLE_LOGBOOK', label: 'Vehicle Logbook' },
     { value: 'OTHER', label: 'Other' },
   ];

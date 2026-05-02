@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { ApiService } from '../../../core/services/api.service';
 import { ToastService } from '../../../core/services/toast.service';
-import { Vehicle, SACCO } from '../../../core/models';
+import { Vehicle, Organization } from '../../../core/models';
 import { AutocompleteComponent, AutocompleteOption } from '../../../shared/components/autocomplete/autocomplete.component';
 import { ConfirmDialogService } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 
@@ -21,7 +21,7 @@ import { ConfirmDialogService } from '../../../shared/components/confirm-dialog/
       <!-- Filters -->
       <div class="filters-bar">
         <select class="form-select" [(ngModel)]="filterSacco" (ngModelChange)="load()" id="filter-sacco" style="max-width:220px;">
-          <option value="">All SACCOs</option>
+          <option value="">All Organizations</option>
           @for (s of saccos(); track s.id) { <option [value]="s.id">{{ s.name }}</option> }
         </select>
         <select class="form-select" [(ngModel)]="filterType" (ngModelChange)="applyLocalFilter()" id="filter-type" style="max-width:180px;">
@@ -53,8 +53,8 @@ import { ConfirmDialogService } from '../../../shared/components/confirm-dialog/
           <div class="modal-header"><h3>Add Vehicle</h3><button class="btn btn-ghost btn-icon" (click)="showModal.set(false)"><span class="material-icons-round">close</span></button></div>
           <div class="modal-body">
             <div class="form-group"><label class="form-label">Registration Number</label><input class="form-input" [(ngModel)]="form.registration_no" placeholder="KAA 123A" /></div>
-            <div class="form-group" style="position:relative; z-index: 55;"><label class="form-label">SACCO</label>
-              <app-autocomplete [(ngModel)]="form.sacco_id" [options]="saccoOptions()" placeholder="Search SACCO..."></app-autocomplete>
+            <div class="form-group" style="position:relative; z-index: 55;"><label class="form-label">Organization</label>
+              <app-autocomplete [(ngModel)]="form.organization_id" [options]="saccoOptions()" placeholder="Search Organization..."></app-autocomplete>
             </div>
             <div class="form-group" style="position:relative; z-index: 54;"><label class="form-label">Type</label>
               <app-autocomplete [(ngModel)]="form.vehicle_type" [options]="typeOptions()" placeholder="Search Type..."></app-autocomplete>
@@ -69,10 +69,10 @@ import { ConfirmDialogService } from '../../../shared/components/confirm-dialog/
 export class VehicleListComponent implements OnInit {
   private api = inject(ApiService); private toast = inject(ToastService); private router = inject(Router);
   private confirmService = inject(ConfirmDialogService);
-  items = signal<Vehicle[]>([]); filtered = signal<Vehicle[]>([]); saccos = signal<SACCO[]>([]);
+  items = signal<Vehicle[]>([]); filtered = signal<Vehicle[]>([]); saccos = signal<Organization[]>([]);
   loading = signal(true); showModal = signal(false); creating = signal(false);
   filterSacco = ''; filterType = '';
-  form = { registration_no: '', sacco_id: '', vehicle_type: 'MATATU', capacity: 14 };
+  form = { registration_no: '', organization_id: '', vehicle_type: 'MATATU', capacity: 14 };
 
   saccoOptions = computed<AutocompleteOption[]>(() => this.saccos().map(s => ({ value: s.id, label: s.name, sublabel: `Reg: ${s.registration_number||'N/A'}`, searchText: `${s.name} ${s.registration_number||''}` })));
   typeOptions = signal<AutocompleteOption[]>([
@@ -82,14 +82,14 @@ export class VehicleListComponent implements OnInit {
   ]);
 
   ngOnInit() {
-    this.api.getSACCOs({ per_page: '200' }).subscribe({ next: r => this.saccos.set(r.data) });
+    this.api.getOrganizations({ per_page: '200' }).subscribe({ next: r => this.saccos.set(r.data) });
     this.load();
   }
 
   load() {
     this.loading.set(true);
     const params: Record<string, string> = {};
-    if (this.filterSacco) params['sacco_id'] = this.filterSacco;
+    if (this.filterSacco) params['organization_id'] = this.filterSacco;
     this.api.getVehicles(params).subscribe({
       next: r => { this.items.set(r.data); this.applyLocalFilter(); this.loading.set(false); },
       error: () => this.loading.set(false),

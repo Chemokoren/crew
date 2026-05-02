@@ -13,26 +13,26 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// SACCOFloatRepo is the GORM implementation of repository.SACCOFloatRepository.
-type SACCOFloatRepo struct {
+// OrganizationFloatRepo is the GORM implementation of repository.OrganizationFloatRepository.
+type OrganizationFloatRepo struct {
 	db *gorm.DB
 }
 
-func NewSACCOFloatRepo(db *gorm.DB) *SACCOFloatRepo {
-	return &SACCOFloatRepo{db: db}
+func NewOrganizationFloatRepo(db *gorm.DB) *OrganizationFloatRepo {
+	return &OrganizationFloatRepo{db: db}
 }
 
-func (r *SACCOFloatRepo) GetOrCreate(ctx context.Context, saccoID uuid.UUID) (*models.SACCOFloat, error) {
-	var sf models.SACCOFloat
-	err := r.db.WithContext(ctx).Where("sacco_id = ?", saccoID).First(&sf).Error
+func (r *OrganizationFloatRepo) GetOrCreate(ctx context.Context, orgID uuid.UUID) (*models.OrganizationFloat, error) {
+	var sf models.OrganizationFloat
+	err := r.db.WithContext(ctx).Where("sacco_id = ?", orgID).First(&sf).Error
 	if err == nil {
 		return &sf, nil
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, fmt.Errorf("get sacco float: %w", err)
 	}
-	sf = models.SACCOFloat{
-		SaccoID:  saccoID,
+	sf = models.OrganizationFloat{
+		OrganizationID:  orgID,
 		Currency: "KES",
 	}
 	if err := r.db.WithContext(ctx).Create(&sf).Error; err != nil {
@@ -41,12 +41,12 @@ func (r *SACCOFloatRepo) GetOrCreate(ctx context.Context, saccoID uuid.UUID) (*m
 	return &sf, nil
 }
 
-func (r *SACCOFloatRepo) CreditFloat(ctx context.Context, floatID uuid.UUID, version int, amountCents int64,
-	idempotencyKey, reference string) (*models.SACCOFloatTransaction, error) {
+func (r *OrganizationFloatRepo) CreditFloat(ctx context.Context, floatID uuid.UUID, version int, amountCents int64,
+	idempotencyKey, reference string) (*models.OrganizationFloatTransaction, error) {
 
 	// Check idempotency
 	if idempotencyKey != "" {
-		var existing models.SACCOFloatTransaction
+		var existing models.OrganizationFloatTransaction
 		if err := r.db.WithContext(ctx).Where("idempotency_key = ?", idempotencyKey).First(&existing).Error; err == nil {
 			return &existing, nil
 		}
@@ -55,11 +55,11 @@ func (r *SACCOFloatRepo) CreditFloat(ctx context.Context, floatID uuid.UUID, ver
 	return r.executeFloatOp(ctx, floatID, version, amountCents, "CREDIT", idempotencyKey, reference)
 }
 
-func (r *SACCOFloatRepo) DebitFloat(ctx context.Context, floatID uuid.UUID, version int, amountCents int64,
-	idempotencyKey, reference string) (*models.SACCOFloatTransaction, error) {
+func (r *OrganizationFloatRepo) DebitFloat(ctx context.Context, floatID uuid.UUID, version int, amountCents int64,
+	idempotencyKey, reference string) (*models.OrganizationFloatTransaction, error) {
 
 	if idempotencyKey != "" {
-		var existing models.SACCOFloatTransaction
+		var existing models.OrganizationFloatTransaction
 		if err := r.db.WithContext(ctx).Where("idempotency_key = ?", idempotencyKey).First(&existing).Error; err == nil {
 			return &existing, nil
 		}
@@ -68,14 +68,14 @@ func (r *SACCOFloatRepo) DebitFloat(ctx context.Context, floatID uuid.UUID, vers
 	return r.executeFloatOp(ctx, floatID, version, -amountCents, "DEBIT", idempotencyKey, reference)
 }
 
-func (r *SACCOFloatRepo) executeFloatOp(ctx context.Context, floatID uuid.UUID, version int, delta int64,
-	txType, idempotencyKey, reference string) (*models.SACCOFloatTransaction, error) {
+func (r *OrganizationFloatRepo) executeFloatOp(ctx context.Context, floatID uuid.UUID, version int, delta int64,
+	txType, idempotencyKey, reference string) (*models.OrganizationFloatTransaction, error) {
 
-	var tx models.SACCOFloatTransaction
+	var tx models.OrganizationFloatTransaction
 
 	err := r.db.WithContext(ctx).Transaction(func(dbTx *gorm.DB) error {
 		// Lock and verify version
-		var sf models.SACCOFloat
+		var sf models.OrganizationFloat
 		if err := dbTx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", floatID).First(&sf).Error; err != nil {
 			return fmt.Errorf("lock float: %w", err)
 		}
@@ -99,8 +99,8 @@ func (r *SACCOFloatRepo) executeFloatOp(ctx context.Context, floatID uuid.UUID, 
 			return fmt.Errorf("update float balance: %w", err)
 		}
 
-		tx = models.SACCOFloatTransaction{
-			SACCOFloatID:      floatID,
+		tx = models.OrganizationFloatTransaction{
+			OrganizationFloatID:      floatID,
 			IdempotencyKey:    idempotencyKey,
 			TransactionType:   txType,
 			AmountCents:       abs64(delta),
@@ -118,11 +118,11 @@ func (r *SACCOFloatRepo) executeFloatOp(ctx context.Context, floatID uuid.UUID, 
 	return &tx, nil
 }
 
-func (r *SACCOFloatRepo) GetTransactions(ctx context.Context, floatID uuid.UUID, filter repository.SACCOFloatFilter, page, perPage int) ([]models.SACCOFloatTransaction, int64, error) {
-	var txs []models.SACCOFloatTransaction
+func (r *OrganizationFloatRepo) GetTransactions(ctx context.Context, floatID uuid.UUID, filter repository.OrganizationFloatFilter, page, perPage int) ([]models.OrganizationFloatTransaction, int64, error) {
+	var txs []models.OrganizationFloatTransaction
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&models.SACCOFloatTransaction{}).Where("sacco_float_id = ?", floatID)
+	query := r.db.WithContext(ctx).Model(&models.OrganizationFloatTransaction{}).Where("sacco_float_id = ?", floatID)
 	if filter.TransactionType != "" {
 		query = query.Where("transaction_type = ?", filter.TransactionType)
 	}

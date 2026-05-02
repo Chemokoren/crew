@@ -22,7 +22,7 @@ func NewDocumentService(docRepo repository.DocumentRepository, logger *slog.Logg
 
 type CreateDocumentInput struct {
 	CrewMemberID *uuid.UUID         `json:"crew_member_id"`
-	SaccoID      *uuid.UUID         `json:"sacco_id"`
+	OrganizationID      *uuid.UUID         `json:"sacco_id"`
 	VehicleID    *uuid.UUID         `json:"vehicle_id"`
 	DocumentType models.DocumentType `json:"document_type" binding:"required"`
 	FileName     string             `json:"file_name" binding:"required"`
@@ -35,7 +35,7 @@ type CreateDocumentInput struct {
 func (s *DocumentService) CreateDocument(ctx context.Context, input CreateDocumentInput) (*models.Document, error) {
 	doc := &models.Document{
 		CrewMemberID: input.CrewMemberID,
-		SaccoID:      input.SaccoID,
+		OrganizationID:      input.OrganizationID,
 		VehicleID:    input.VehicleID,
 		DocumentType: input.DocumentType,
 		FileName:     input.FileName,

@@ -14,15 +14,15 @@ import (
 
 // --- SACCO Handler ---
 
-type SACCOHandler struct {
-	saccoSvc *service.SACCOService
+type OrganizationHandler struct {
+	saccoSvc *service.OrganizationService
 }
 
-func NewSACCOHandler(svc *service.SACCOService) *SACCOHandler {
-	return &SACCOHandler{saccoSvc: svc}
+func NewOrganizationHandler(svc *service.OrganizationService) *OrganizationHandler {
+	return &OrganizationHandler{saccoSvc: svc}
 }
 
-func (h *SACCOHandler) Create(c *gin.Context) {
+func (h *OrganizationHandler) Create(c *gin.Context) {
 	var req service.CreateSACCOInput
 	if err := c.ShouldBindJSON(&req); err != nil {
 		BadRequest(c, err.Error())
@@ -36,7 +36,7 @@ func (h *SACCOHandler) Create(c *gin.Context) {
 	SuccessResponse(c, http.StatusCreated, sacco)
 }
 
-func (h *SACCOHandler) GetByID(c *gin.Context) {
+func (h *OrganizationHandler) GetByID(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		BadRequest(c, "Invalid SACCO ID")
@@ -50,7 +50,7 @@ func (h *SACCOHandler) GetByID(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, sacco)
 }
 
-func (h *SACCOHandler) Update(c *gin.Context) {
+func (h *OrganizationHandler) Update(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		BadRequest(c, "Invalid SACCO ID")
@@ -69,7 +69,7 @@ func (h *SACCOHandler) Update(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, sacco)
 }
 
-func (h *SACCOHandler) Delete(c *gin.Context) {
+func (h *OrganizationHandler) Delete(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		BadRequest(c, "Invalid SACCO ID")
@@ -82,7 +82,7 @@ func (h *SACCOHandler) Delete(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, gin.H{"message": "SACCO deleted"})
 }
 
-func (h *SACCOHandler) List(c *gin.Context) {
+func (h *OrganizationHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "20"))
 	search := c.Query("search")
@@ -95,18 +95,18 @@ func (h *SACCOHandler) List(c *gin.Context) {
 	ListResponse(c, saccos, buildMeta(page, perPage, total))
 }
 
-func (h *SACCOHandler) AddMember(c *gin.Context) {
+func (h *OrganizationHandler) AddMember(c *gin.Context) {
 	var req service.AddMemberInput
 	if err := c.ShouldBindJSON(&req); err != nil {
 		BadRequest(c, err.Error())
 		return
 	}
-	saccoID, err := uuid.Parse(c.Param("id"))
+	orgID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		BadRequest(c, "Invalid SACCO ID")
 		return
 	}
-	req.SaccoID = saccoID
+	req.OrganizationID = orgID
 
 	m, err := h.saccoSvc.AddMember(c.Request.Context(), req)
 	if err != nil {
@@ -116,7 +116,7 @@ func (h *SACCOHandler) AddMember(c *gin.Context) {
 	SuccessResponse(c, http.StatusCreated, m)
 }
 
-func (h *SACCOHandler) UpdateMember(c *gin.Context) {
+func (h *OrganizationHandler) UpdateMember(c *gin.Context) {
 	membershipID, err := uuid.Parse(c.Param("membership_id"))
 	if err != nil {
 		BadRequest(c, "Invalid membership ID")
@@ -135,7 +135,7 @@ func (h *SACCOHandler) UpdateMember(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, m)
 }
 
-func (h *SACCOHandler) RemoveMember(c *gin.Context) {
+func (h *OrganizationHandler) RemoveMember(c *gin.Context) {
 	membershipID, err := uuid.Parse(c.Param("membership_id"))
 	if err != nil {
 		BadRequest(c, "Invalid membership ID")
@@ -148,8 +148,8 @@ func (h *SACCOHandler) RemoveMember(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, gin.H{"message": "Member removed"})
 }
 
-func (h *SACCOHandler) ListMembers(c *gin.Context) {
-	saccoID, err := uuid.Parse(c.Param("id"))
+func (h *OrganizationHandler) ListMembers(c *gin.Context) {
+	orgID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		BadRequest(c, "Invalid SACCO ID")
 		return
@@ -157,7 +157,7 @@ func (h *SACCOHandler) ListMembers(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "20"))
 
-	members, total, err := h.saccoSvc.ListMembers(c.Request.Context(), saccoID, page, perPage)
+	members, total, err := h.saccoSvc.ListMembers(c.Request.Context(), orgID, page, perPage)
 	if err != nil {
 		MapServiceError(c, err)
 		return
@@ -165,13 +165,13 @@ func (h *SACCOHandler) ListMembers(c *gin.Context) {
 	ListResponse(c, members, buildMeta(page, perPage, total))
 }
 
-func (h *SACCOHandler) GetFloat(c *gin.Context) {
-	saccoID, err := uuid.Parse(c.Param("id"))
+func (h *OrganizationHandler) GetFloat(c *gin.Context) {
+	orgID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		BadRequest(c, "Invalid SACCO ID")
 		return
 	}
-	sf, err := h.saccoSvc.GetFloat(c.Request.Context(), saccoID)
+	sf, err := h.saccoSvc.GetFloat(c.Request.Context(), orgID)
 	if err != nil {
 		MapServiceError(c, err)
 		return
@@ -179,8 +179,8 @@ func (h *SACCOHandler) GetFloat(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, sf)
 }
 
-func (h *SACCOHandler) CreditFloat(c *gin.Context) {
-	saccoID, err := uuid.Parse(c.Param("id"))
+func (h *OrganizationHandler) CreditFloat(c *gin.Context) {
+	orgID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		BadRequest(c, "Invalid SACCO ID")
 		return
@@ -190,7 +190,7 @@ func (h *SACCOHandler) CreditFloat(c *gin.Context) {
 		BadRequest(c, err.Error())
 		return
 	}
-	req.SaccoID = saccoID
+	req.OrganizationID = orgID
 	tx, err := h.saccoSvc.CreditFloat(c.Request.Context(), req)
 	if err != nil {
 		MapServiceError(c, err)
@@ -199,8 +199,8 @@ func (h *SACCOHandler) CreditFloat(c *gin.Context) {
 	SuccessResponse(c, http.StatusCreated, tx)
 }
 
-func (h *SACCOHandler) DebitFloat(c *gin.Context) {
-	saccoID, err := uuid.Parse(c.Param("id"))
+func (h *OrganizationHandler) DebitFloat(c *gin.Context) {
+	orgID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		BadRequest(c, "Invalid SACCO ID")
 		return
@@ -210,7 +210,7 @@ func (h *SACCOHandler) DebitFloat(c *gin.Context) {
 		BadRequest(c, err.Error())
 		return
 	}
-	req.SaccoID = saccoID
+	req.OrganizationID = orgID
 	tx, err := h.saccoSvc.DebitFloat(c.Request.Context(), req)
 	if err != nil {
 		MapServiceError(c, err)
@@ -219,8 +219,8 @@ func (h *SACCOHandler) DebitFloat(c *gin.Context) {
 	SuccessResponse(c, http.StatusCreated, tx)
 }
 
-func (h *SACCOHandler) ListFloatTransactions(c *gin.Context) {
-	saccoID, err := uuid.Parse(c.Param("id"))
+func (h *OrganizationHandler) ListFloatTransactions(c *gin.Context) {
+	orgID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		BadRequest(c, "Invalid SACCO ID")
 		return
@@ -228,11 +228,11 @@ func (h *SACCOHandler) ListFloatTransactions(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "20"))
 	
-	filter := repository.SACCOFloatFilter{
+	filter := repository.OrganizationFloatFilter{
 		TransactionType: c.Query("type"),
 	}
 
-	txs, total, err := h.saccoSvc.ListFloatTransactions(c.Request.Context(), saccoID, filter, page, perPage)
+	txs, total, err := h.saccoSvc.ListFloatTransactions(c.Request.Context(), orgID, filter, page, perPage)
 	if err != nil {
 		MapServiceError(c, err)
 		return
@@ -353,12 +353,12 @@ func (h *VehicleHandler) Delete(c *gin.Context) {
 func (h *VehicleHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "20"))
-	var saccoID *uuid.UUID
+	var orgID *uuid.UUID
 	if s := c.Query("sacco_id"); s != "" {
 		id, _ := uuid.Parse(s)
-		saccoID = &id
+		orgID = &id
 	}
-	vehicles, total, err := h.vehicleSvc.ListVehicles(c.Request.Context(), saccoID, page, perPage)
+	vehicles, total, err := h.vehicleSvc.ListVehicles(c.Request.Context(), orgID, page, perPage)
 	if err != nil {
 		MapServiceError(c, err)
 		return
@@ -553,12 +553,12 @@ func (h *PayrollHandler) GetByID(c *gin.Context) {
 func (h *PayrollHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "20"))
-	var saccoID *uuid.UUID
+	var orgID *uuid.UUID
 	if s := c.Query("sacco_id"); s != "" {
 		id, _ := uuid.Parse(s)
-		saccoID = &id
+		orgID = &id
 	}
-	runs, total, err := h.payrollSvc.ListPayrollRuns(c.Request.Context(), saccoID, page, perPage)
+	runs, total, err := h.payrollSvc.ListPayrollRuns(c.Request.Context(), orgID, page, perPage)
 	if err != nil {
 		MapServiceError(c, err)
 		return

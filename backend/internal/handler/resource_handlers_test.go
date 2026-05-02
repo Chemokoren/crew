@@ -23,8 +23,8 @@ func TestSACCOHandler_Create(t *testing.T) {
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	auditSvc := service.NewAuditService(mock.NewAuditRepo(), logger)
-	saccoSvc := service.NewSACCOService(mock.NewSACCORepo(), mock.NewMembershipRepo(), mock.NewSACCOFloatRepo(), auditSvc, logger)
-	saccoHandler := NewSACCOHandler(saccoSvc)
+	saccoSvc := service.NewOrganizationService(mock.NewSACCORepo(), mock.NewMembershipRepo(), mock.NewOrganizationFloatRepo(), auditSvc, logger)
+	saccoHandler := NewOrganizationHandler(saccoSvc)
 
 	router.POST("/saccos", mockAuthMiddleware(types.RoleSystemAdmin, nil), saccoHandler.Create)
 
@@ -62,7 +62,7 @@ func TestVehicleHandler_Create(t *testing.T) {
 		RegistrationNo: "KAA 123A",
 		VehicleType:    models.VehicleMatatu,
 		Capacity:       14,
-		SaccoID:        uuid.New(),
+		OrganizationID:        uuid.New(),
 	}
 	body, _ := json.Marshal(reqBody)
 

@@ -33,7 +33,9 @@ type FeatureVector struct {
 	CompletedShifts90d  int     `json:"completed_shifts_90d"`
 	CancelledShifts30d  int     `json:"cancelled_shifts_30d"`
 	CancellationRate    float64 `json:"cancellation_rate"`    // 0.0 – 1.0
+	CompletionRate      float64 `json:"completion_rate"`      // completed / (completed + cancelled)
 	ActiveDaysRatio     float64 `json:"active_days_ratio"`    // days_worked / 30
+	HoursConsistency30d float64 `json:"hours_consistency_30d"` // std_dev / mean of daily hours (lower = better)
 	ShiftConsistency    float64 `json:"shift_consistency"`    // this_month / last_month (capped 1.0)
 
 	// --- Income ---
@@ -61,9 +63,13 @@ type FeatureVector struct {
 	IsActive             bool    `json:"is_active"`
 
 	// --- Platform Tenure ---
-	AccountAgeDays       int     `json:"account_age_days"`
-	FirstShiftAgeDays    int     `json:"first_shift_age_days"`
-	DaysSinceLastShift   int     `json:"days_since_last_shift"`
+	AccountAgeDays         int     `json:"account_age_days"`
+	FirstShiftAgeDays      int     `json:"first_shift_age_days"`
+	DaysSinceLastShift     int     `json:"days_since_last_shift"`
+	OrgCount               int     `json:"org_count"`                 // Number of organizations worker has been with
+	CrossOrgTenureMonths   int     `json:"cross_org_tenure_months"`   // Total months across all orgs
+	WorkTypeDiversity      int     `json:"work_type_diversity"`       // Number of distinct WorkTypes
+	PrimaryWorkType        string  `json:"primary_work_type"`         // Most frequent WorkType
 
 	// --- External Credit (CRB) ---
 	CRBScoreAvailable    bool    `json:"crb_score_available"`

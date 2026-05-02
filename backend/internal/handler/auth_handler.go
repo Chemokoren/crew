@@ -41,6 +41,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		LastName:   req.LastName,
 		NationalID: req.NationalID,
 		CrewRole:   req.CrewRole,
+		JobTypeID:  req.JobTypeID,
 	})
 	if err != nil {
 		MapServiceError(c, err)

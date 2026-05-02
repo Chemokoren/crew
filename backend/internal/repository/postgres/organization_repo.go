@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// SACCORepo is the GORM implementation of repository.SACCORepository.
+// SACCORepo is the GORM implementation of repository.OrganizationRepository.
 type SACCORepo struct {
 	db *gorm.DB
 }

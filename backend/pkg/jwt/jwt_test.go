@@ -73,9 +73,9 @@ func TestTokenWithOptionalClaims(t *testing.T) {
 	m := newTestManager()
 	userID := uuid.New()
 	crewID := uuid.New()
-	saccoID := uuid.New()
+	orgID := uuid.New()
 
-	pair, err := m.GenerateTokenPair(userID, "+254700000000", types.RoleSaccoAdmin, &crewID, &saccoID)
+	pair, err := m.GenerateTokenPair(userID, "+254700000000", types.RoleSaccoAdmin, &crewID, &orgID)
 	if err != nil {
 		t.Fatalf("GenerateTokenPair: %v", err)
 	}
@@ -88,8 +88,8 @@ func TestTokenWithOptionalClaims(t *testing.T) {
 	if claims.CrewMemberID == nil || *claims.CrewMemberID != crewID {
 		t.Errorf("CrewMemberID = %v, want %v", claims.CrewMemberID, crewID)
 	}
-	if claims.SaccoID == nil || *claims.SaccoID != saccoID {
-		t.Errorf("SaccoID = %v, want %v", claims.SaccoID, saccoID)
+	if claims.OrganizationID == nil || *claims.OrganizationID != orgID {
+		t.Errorf("OrganizationID = %v, want %v", claims.OrganizationID, orgID)
 	}
 }
 

@@ -2,6 +2,7 @@ import { Component, inject, signal, model, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthService } from '../../../core/services/auth.service';
+import { OrgContextService } from '../../../core/services/org-context.service';
 import { NotificationStateService } from '../../../core/services/notification-state.service';
 
 interface NavItem {
@@ -10,6 +11,8 @@ interface NavItem {
   route: string;
   roles?: string[];
   section?: string;
+  /** Feature key for industry-based visibility filtering. */
+  feature?: string;
 }
 
 @Component({
@@ -338,6 +341,7 @@ interface NavItem {
 })
 export class SidebarComponent {
   auth = inject(AuthService);
+  orgCtx = inject(OrgContextService);
   notifState = inject(NotificationStateService);
 
   collapsed = signal(false);
@@ -348,26 +352,34 @@ export class SidebarComponent {
     { label: 'Dashboard', icon: 'dashboard', route: '/dashboard', section: 'Overview' },
     { label: 'Crew', icon: 'groups', route: '/crew', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Operations' },
     { label: 'Assignments', icon: 'assignment', route: '/assignments', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Operations' },
+    { label: 'Bulk Assign', icon: 'playlist_add', route: '/assignments-bulk', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Operations' },
     { label: 'Earnings', icon: 'trending_up', route: '/earnings', section: 'Operations' },
     { label: 'Wallets', icon: 'account_balance_wallet', route: '/wallets', section: 'Finance' },
-    { label: 'SACCOs', icon: 'business', route: '/saccos', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Organization' },
-    { label: 'Vehicles', icon: 'directions_bus', route: '/vehicles', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Organization' },
-    { label: 'Routes', icon: 'route', route: '/routes', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Organization' },
+    { label: 'Organizations', icon: 'business', route: '/saccos', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Organization' },
+    { label: 'Vehicles', icon: 'directions_bus', route: '/vehicles', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Organization', feature: 'vehicles' },
+    { label: 'Routes', icon: 'route', route: '/routes', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Organization', feature: 'routes' },
+    { label: 'Work Sites', icon: 'location_on', route: '/work-sites', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Organization', feature: 'work-sites' },
+    { label: 'Facilitators', icon: 'support_agent', route: '/facilitators', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Operations', feature: 'facilitators' },
     { label: 'Payroll', icon: 'receipt_long', route: '/payroll', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Finance' },
+    { label: 'Pay Schedules', icon: 'event_repeat', route: '/pay-schedules', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Finance' },
     { label: 'Loans', icon: 'savings', route: '/loans', section: 'Finance' },
     { label: 'Credit Score', icon: 'credit_score', route: '/credit', section: 'Finance' },
     { label: 'Insurance', icon: 'health_and_safety', route: '/insurance', section: 'Finance' },
     { label: 'Documents', icon: 'folder', route: '/documents', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'System' },
     { label: 'Notifications', icon: 'notifications', route: '/notifications', section: 'System' },
     { label: 'Admin', icon: 'admin_panel_settings', route: '/admin', roles: ['SYSTEM_ADMIN'], section: 'System' },
+    { label: 'Tenant Settings', icon: 'tune', route: '/settings/tenant', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'System' },
   ];
 
   filteredNavItems(): NavItem[] {
     const role = this.auth.userRole();
     if (!role) return [];
     return this.navItems.filter(item => {
-      if (!item.roles) return true;
-      return item.roles.includes(role);
+      // Role check
+      if (item.roles && !item.roles.includes(role)) return false;
+      // Industry-adaptive visibility
+      if (item.feature && !this.orgCtx.isFeatureVisible(item.feature)) return false;
+      return true;
     });
   }
 

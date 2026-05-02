@@ -54,8 +54,8 @@ func (r *DocumentRepo) List(ctx context.Context, filter repository.DocumentFilte
 	if filter.CrewMemberID != nil {
 		query = query.Where("crew_member_id = ?", *filter.CrewMemberID)
 	}
-	if filter.SaccoID != nil {
-		query = query.Where("sacco_id = ?", *filter.SaccoID)
+	if filter.OrganizationID != nil {
+		query = query.Where("sacco_id = ?", *filter.OrganizationID)
 	}
 	if filter.VehicleID != nil {
 		query = query.Where("vehicle_id = ?", *filter.VehicleID)

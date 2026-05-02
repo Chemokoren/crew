@@ -5,7 +5,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { ApiService } from '../../../core/services/api.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
-import { Vehicle, SACCO, Route as AppRoute } from '../../../core/models';
+import { Vehicle, Organization, Route as AppRoute } from '../../../core/models';
 
 @Component({
   selector: 'app-vehicle-detail',
@@ -32,7 +32,7 @@ import { Vehicle, SACCO, Route as AppRoute } from '../../../core/models';
         <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
           <div class="stat-card"><div class="stat-icon" style="background:rgba(0,210,255,0.12);color:var(--color-accent);"><span class="material-icons-round">directions_bus</span></div><div class="stat-value" style="font-size:1rem;">{{ v.registration_no }}</div><div class="stat-label">Registration</div></div>
           <div class="stat-card"><div class="stat-icon" style="background:rgba(168,85,247,0.12);color:#a855f7;"><span class="material-icons-round">category</span></div><div class="stat-value">{{ v.vehicle_type }}</div><div class="stat-label">Type</div></div>
-          <div class="stat-card"><div class="stat-icon" style="background:rgba(255,184,0,0.12);color:#ffb800;"><span class="material-icons-round">business</span></div><div class="stat-value" style="font-size:0.9rem;">{{ saccoName() }}</div><div class="stat-label">SACCO</div></div>
+          <div class="stat-card"><div class="stat-icon" style="background:rgba(255,184,0,0.12);color:#ffb800;"><span class="material-icons-round">business</span></div><div class="stat-value" style="font-size:0.9rem;">{{ saccoName() }}</div><div class="stat-label">Organization</div></div>
           <div class="stat-card"><div class="stat-icon" style="background:var(--color-success-light);color:var(--color-success);"><span class="material-icons-round">route</span></div><div class="stat-value" style="font-size:0.9rem;">{{ routeName() }}</div><div class="stat-label">Route</div></div>
         </div>
 
@@ -43,7 +43,7 @@ import { Vehicle, SACCO, Route as AppRoute } from '../../../core/models';
             <div class="detail-row"><span class="detail-label">Registration No.</span><span class="detail-value" style="font-weight:600;color:var(--color-text-primary);">{{ v.registration_no }}</span></div>
             <div class="detail-row"><span class="detail-label">Vehicle Type</span><span class="detail-value"><span class="badge badge-accent">{{ v.vehicle_type }}</span></span></div>
             <div class="detail-row"><span class="detail-label">Capacity</span><span class="detail-value">{{ v.capacity }} passengers</span></div>
-            <div class="detail-row"><span class="detail-label">SACCO</span><span class="detail-value">{{ saccoName() }}</span></div>
+            <div class="detail-row"><span class="detail-label">Organization</span><span class="detail-value">{{ saccoName() }}</span></div>
             <div class="detail-row"><span class="detail-label">Assigned Route</span><span class="detail-value">{{ routeName() }}</span></div>
             <div class="detail-row"><span class="detail-label">Status</span><span class="detail-value"><span class="badge" [ngClass]="v.is_active?'badge-success':'badge-danger'">{{ v.is_active?'Active':'Inactive' }}</span></span></div>
             <div class="detail-row"><span class="detail-label">Registered</span><span class="detail-value">{{ v.created_at | relativeTime }}</span></div>
@@ -118,11 +118,11 @@ export class VehicleDetailComponent implements OnInit {
           capacity: v.capacity,
           route_id: v.route_id || '',
         };
-        // Resolve SACCO name
-        if (v.sacco_id) {
-          this.api.getSACCO(v.sacco_id).subscribe({
+        // Resolve Organization name
+        if (v.organization_id) {
+          this.api.getOrganization(v.organization_id).subscribe({
             next: sr => this.saccoName.set(sr.data.name),
-            error: () => this.saccoName.set(v.sacco_id.slice(0, 8) + '...'),
+            error: () => this.saccoName.set(v.organization_id.slice(0, 8) + '...'),
           });
         }
         // Resolve route name

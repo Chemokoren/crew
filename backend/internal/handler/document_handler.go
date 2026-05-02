@@ -51,7 +51,7 @@ func (h *DocumentHandler) Upload(c *gin.Context) {
 	docType := models.DocumentType(docTypeStr)
 
 	// Parse optional entities
-	var crewMemberID, saccoID, vehicleID *uuid.UUID
+	var crewMemberID, orgID, vehicleID *uuid.UUID
 	if cm := c.PostForm("crew_member_id"); cm != "" {
 		if id, err := uuid.Parse(cm); err == nil {
 			crewMemberID = &id
@@ -59,7 +59,7 @@ func (h *DocumentHandler) Upload(c *gin.Context) {
 	}
 	if sm := c.PostForm("sacco_id"); sm != "" {
 		if id, err := uuid.Parse(sm); err == nil {
-			saccoID = &id
+			orgID = &id
 		}
 	}
 	if vm := c.PostForm("vehicle_id"); vm != "" {
@@ -89,7 +89,7 @@ func (h *DocumentHandler) Upload(c *gin.Context) {
 	// Create document record
 	doc, err := h.docSvc.CreateDocument(c.Request.Context(), service.CreateDocumentInput{
 		CrewMemberID: crewMemberID,
-		SaccoID:      saccoID,
+		OrganizationID:      orgID,
 		VehicleID:    vehicleID,
 		DocumentType: docType,
 		FileName:     file.Filename,
@@ -146,7 +146,7 @@ func (h *DocumentHandler) List(c *gin.Context) {
 	}
 	if sm := c.Query("sacco_id"); sm != "" {
 		if id, err := uuid.Parse(sm); err == nil {
-			filter.SaccoID = &id
+			filter.OrganizationID = &id
 		}
 	}
 	if vm := c.Query("vehicle_id"); vm != "" {

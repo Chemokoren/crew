@@ -18,7 +18,7 @@ const (
 // Vehicle represents a transport vehicle registered to a SACCO.
 type Vehicle struct {
 	ID             uuid.UUID      `json:"id" gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
-	SaccoID        uuid.UUID      `json:"sacco_id" gorm:"type:uuid;not null;index"`
+	OrganizationID uuid.UUID      `json:"organization_id" gorm:"column:sacco_id;type:uuid;not null;index"`
 	RegistrationNo string         `json:"registration_no" gorm:"uniqueIndex;not null" validate:"required"`
 	VehicleType    VehicleType    `json:"vehicle_type" gorm:"not null" validate:"required,oneof=MATATU BODA TUK_TUK"`
 	RouteID        *uuid.UUID     `json:"route_id,omitempty" gorm:"type:uuid"`
@@ -29,7 +29,7 @@ type Vehicle struct {
 	DeletedAt      gorm.DeletedAt `json:"-" gorm:"index"`
 
 	// Relations
-	Sacco SACCO  `json:"-" gorm:"foreignKey:SaccoID"`
+	Organization Organization `json:"-" gorm:"foreignKey:OrganizationID"`
 	Route *Route `json:"-" gorm:"foreignKey:RouteID"`
 }
 

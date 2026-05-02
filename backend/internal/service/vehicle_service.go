@@ -21,7 +21,7 @@ func NewVehicleService(vehicleRepo repository.VehicleRepository, logger *slog.Lo
 }
 
 type CreateVehicleInput struct {
-	SaccoID        uuid.UUID          `json:"sacco_id" binding:"required"`
+	OrganizationID        uuid.UUID          `json:"sacco_id" binding:"required"`
 	RegistrationNo string             `json:"registration_no" binding:"required"`
 	VehicleType    models.VehicleType `json:"vehicle_type" binding:"required"`
 	RouteID        *uuid.UUID         `json:"route_id"`
@@ -30,7 +30,7 @@ type CreateVehicleInput struct {
 
 func (s *VehicleService) CreateVehicle(ctx context.Context, input CreateVehicleInput) (*models.Vehicle, error) {
 	vehicle := &models.Vehicle{
-		SaccoID:        input.SaccoID,
+		OrganizationID:        input.OrganizationID,
 		RegistrationNo: input.RegistrationNo,
 		VehicleType:    input.VehicleType,
 		RouteID:        input.RouteID,
@@ -89,6 +89,6 @@ func (s *VehicleService) DeleteVehicle(ctx context.Context, id uuid.UUID) error 
 	return s.vehicleRepo.Delete(ctx, id)
 }
 
-func (s *VehicleService) ListVehicles(ctx context.Context, saccoID *uuid.UUID, page, perPage int) ([]models.Vehicle, int64, error) {
-	return s.vehicleRepo.List(ctx, saccoID, page, perPage)
+func (s *VehicleService) ListVehicles(ctx context.Context, orgID *uuid.UUID, page, perPage int) ([]models.Vehicle, int64, error) {
+	return s.vehicleRepo.List(ctx, orgID, page, perPage)
 }

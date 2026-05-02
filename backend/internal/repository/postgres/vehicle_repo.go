@@ -29,7 +29,7 @@ func (r *VehicleRepo) Create(ctx context.Context, vehicle *models.Vehicle) error
 
 func (r *VehicleRepo) GetByID(ctx context.Context, id uuid.UUID) (*models.Vehicle, error) {
 	var vehicle models.Vehicle
-	if err := r.db.WithContext(ctx).Preload("Sacco").Preload("Route").Where("id = ?", id).First(&vehicle).Error; err != nil {
+	if err := r.db.WithContext(ctx).Preload("Organization").Preload("Route").Where("id = ?", id).First(&vehicle).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errs.ErrNotFound
 		}
@@ -52,19 +52,19 @@ func (r *VehicleRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (r *VehicleRepo) List(ctx context.Context, saccoID *uuid.UUID, page, perPage int) ([]models.Vehicle, int64, error) {
+func (r *VehicleRepo) List(ctx context.Context, orgID *uuid.UUID, page, perPage int) ([]models.Vehicle, int64, error) {
 	var vehicles []models.Vehicle
 	var total int64
 
 	query := r.db.WithContext(ctx).Model(&models.Vehicle{})
-	if saccoID != nil {
-		query = query.Where("sacco_id = ?", *saccoID)
+	if orgID != nil {
+		query = query.Where("sacco_id = ?", *orgID)
 	}
 
 	query.Count(&total)
 
 	offset := (page - 1) * perPage
-	if err := query.Preload("Sacco").Preload("Route").Offset(offset).Limit(perPage).Order("registration_no ASC").Find(&vehicles).Error; err != nil {
+	if err := query.Preload("Organization").Preload("Route").Offset(offset).Limit(perPage).Order("registration_no ASC").Find(&vehicles).Error; err != nil {
 		return nil, 0, fmt.Errorf("list vehicles: %w", err)
 	}
 

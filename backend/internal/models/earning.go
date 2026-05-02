@@ -13,6 +13,11 @@ const (
 	EarningTypeCommission EarningType = "COMMISSION"
 	EarningTypeBonus      EarningType = "BONUS"
 	EarningTypeAdjustment EarningType = "ADJUSTMENT"
+	EarningTypeHourly     EarningType = "HOURLY_PAY"
+	EarningTypeDailyRate  EarningType = "DAILY_RATE"
+	EarningTypeTaskPay    EarningType = "TASK_PAY"
+	EarningTypeSalary     EarningType = "SALARY"
+	EarningTypeOvertime   EarningType = "OVERTIME"
 )
 
 // Earning represents a single earning record for a crew member from an assignment.

@@ -22,6 +22,7 @@ type RegisterRequest struct {
 	LastName   string           `json:"last_name"`
 	NationalID string           `json:"national_id"`
 	CrewRole   models.CrewRole  `json:"crew_role"`
+	JobTypeID  *uuid.UUID       `json:"job_type_id,omitempty"`
 }
 
 type LoginRequest struct {
@@ -51,7 +52,7 @@ type UserResponse struct {
 	Email        string           `json:"email,omitempty"`
 	SystemRole   types.SystemRole `json:"system_role"`
 	CrewMemberID *uuid.UUID       `json:"crew_member_id,omitempty"`
-	SaccoID      *uuid.UUID       `json:"sacco_id,omitempty"`
+	OrganizationID      *uuid.UUID       `json:"sacco_id,omitempty"`
 	IsActive     bool             `json:"is_active"`
 	LastLoginAt  *time.Time       `json:"last_login_at,omitempty"`
 	CreatedAt    time.Time        `json:"created_at"`
@@ -64,7 +65,7 @@ func UserToResponse(u *models.User) UserResponse {
 		Email:        u.Email,
 		SystemRole:   u.SystemRole,
 		CrewMemberID: u.CrewMemberID,
-		SaccoID:      u.SaccoID,
+		OrganizationID:      u.OrganizationID,
 		IsActive:     u.IsActive,
 		LastLoginAt:  u.LastLoginAt,
 		CreatedAt:    u.CreatedAt,
@@ -74,33 +75,45 @@ func UserToResponse(u *models.User) UserResponse {
 // --- Crew Member DTOs ---
 
 type CrewMemberResponse struct {
-	ID            uuid.UUID        `json:"id"`
-	CrewID        string           `json:"crew_id"`
-	FirstName     string           `json:"first_name"`
-	LastName      string           `json:"last_name"`
-	FullName      string           `json:"full_name"`
-	Role          models.CrewRole  `json:"role"`
-	KYCStatus     models.KYCStatus `json:"kyc_status"`
-	KYCVerifiedAt *time.Time       `json:"kyc_verified_at,omitempty"`
-	PhotoURL      string           `json:"photo_url,omitempty"`
-	IsActive      bool             `json:"is_active"`
-	CreatedAt     time.Time        `json:"created_at"`
+	ID              uuid.UUID        `json:"id"`
+	CrewID          string           `json:"crew_id"`
+	FirstName       string           `json:"first_name"`
+	LastName        string           `json:"last_name"`
+	FullName        string           `json:"full_name"`
+	Role            models.CrewRole  `json:"role"`
+	JobTypeID       *uuid.UUID       `json:"job_type_id,omitempty"`
+	JobTitle        string           `json:"job_title,omitempty"`
+	JobTypeName     string           `json:"job_type_name,omitempty"`
+	JobTypeCategory string           `json:"job_type_category,omitempty"`
+	KYCStatus       models.KYCStatus `json:"kyc_status"`
+	KYCVerifiedAt   *time.Time       `json:"kyc_verified_at,omitempty"`
+	PhotoURL        string           `json:"photo_url,omitempty"`
+	IsActive        bool             `json:"is_active"`
+	CreatedAt       time.Time        `json:"created_at"`
 }
 
 func CrewToResponse(c *models.CrewMember) CrewMemberResponse {
-	return CrewMemberResponse{
+	resp := CrewMemberResponse{
 		ID:            c.ID,
 		CrewID:        c.CrewID,
 		FirstName:     c.FirstName,
 		LastName:      c.LastName,
 		FullName:      c.FullName(),
 		Role:          c.Role,
+		JobTypeID:     c.JobTypeID,
+		JobTitle:      c.JobTitle,
 		KYCStatus:     c.KYCStatus,
 		KYCVerifiedAt: c.KYCVerifiedAt,
 		PhotoURL:      c.PhotoURL,
 		IsActive:      c.IsActive,
 		CreatedAt:     c.CreatedAt,
 	}
+	// Populate job type display info from preloaded relation
+	if c.JobType != nil {
+		resp.JobTypeName = c.JobType.DisplayName
+		resp.JobTypeCategory = string(c.JobType.Category)
+	}
+	return resp
 }
 
 func CrewListToResponse(members []models.CrewMember) []CrewMemberResponse {
@@ -116,6 +129,8 @@ type CreateCrewRequest struct {
 	FirstName  string          `json:"first_name" binding:"required"`
 	LastName   string          `json:"last_name" binding:"required"`
 	Role       models.CrewRole `json:"role" binding:"required,oneof=DRIVER CONDUCTOR RIDER OTHER"`
+	JobTypeID  *uuid.UUID      `json:"job_type_id,omitempty"`
+	JobTitle   string          `json:"job_title,omitempty"`
 }
 
 type UpdateKYCRequest struct {
@@ -126,16 +141,18 @@ type UpdateKYCRequest struct {
 // --- SACCO DTOs ---
 
 type SACCOResponse struct {
-	ID                 uuid.UUID `json:"id"`
-	Name               string    `json:"name"`
-	RegistrationNumber string    `json:"registration_number"`
-	County             string    `json:"county"`
-	SubCounty          string    `json:"sub_county,omitempty"`
-	ContactPhone       string    `json:"contact_phone"`
-	ContactEmail       string    `json:"contact_email,omitempty"`
-	Currency           string    `json:"currency"`
-	IsActive           bool      `json:"is_active"`
-	CreatedAt          time.Time `json:"created_at"`
+	ID                 uuid.UUID           `json:"id"`
+	Name               string              `json:"name"`
+	RegistrationNumber string              `json:"registration_number"`
+	County             string              `json:"county"`
+	SubCounty          string              `json:"sub_county,omitempty"`
+	ContactPhone       string              `json:"contact_phone"`
+	ContactEmail       string              `json:"contact_email,omitempty"`
+	Currency           string              `json:"currency"`
+	IndustryType       models.IndustryType `json:"industry_type"`
+	DisplayName        string              `json:"display_name,omitempty"`
+	IsActive           bool                `json:"is_active"`
+	CreatedAt          time.Time           `json:"created_at"`
 }
 
 func SACCOToResponse(s *models.SACCO) SACCOResponse {
@@ -148,6 +165,8 @@ func SACCOToResponse(s *models.SACCO) SACCOResponse {
 		ContactPhone:       s.ContactPhone,
 		ContactEmail:       s.ContactEmail,
 		Currency:           s.Currency,
+		IndustryType:       s.IndustryType,
+		DisplayName:        s.DisplayName,
 		IsActive:           s.IsActive,
 		CreatedAt:          s.CreatedAt,
 	}
@@ -182,7 +201,7 @@ type UpdateSACCORequest struct {
 
 type VehicleResponse struct {
 	ID             uuid.UUID          `json:"id"`
-	SaccoID        uuid.UUID          `json:"sacco_id"`
+	OrganizationID        uuid.UUID          `json:"sacco_id"`
 	RegistrationNo string             `json:"registration_no"`
 	VehicleType    models.VehicleType `json:"vehicle_type"`
 	RouteID        *uuid.UUID         `json:"route_id,omitempty"`
@@ -194,7 +213,7 @@ type VehicleResponse struct {
 func VehicleToResponse(v *models.Vehicle) VehicleResponse {
 	return VehicleResponse{
 		ID:             v.ID,
-		SaccoID:        v.SaccoID,
+		OrganizationID:        v.OrganizationID,
 		RegistrationNo: v.RegistrationNo,
 		VehicleType:    v.VehicleType,
 		RouteID:        v.RouteID,
@@ -213,7 +232,7 @@ func VehicleListToResponse(vehicles []models.Vehicle) []VehicleResponse {
 }
 
 type CreateVehicleRequest struct {
-	SaccoID        uuid.UUID          `json:"sacco_id" binding:"required"`
+	OrganizationID        uuid.UUID          `json:"sacco_id" binding:"required"`
 	RegistrationNo string             `json:"registration_no" binding:"required"`
 	VehicleType    models.VehicleType `json:"vehicle_type" binding:"required,oneof=MATATU BODA TUK_TUK"`
 	RouteID        *uuid.UUID         `json:"route_id"`
@@ -226,9 +245,9 @@ type AssignmentResponse struct {
 	ID                    uuid.UUID              `json:"id"`
 	CrewMemberID          uuid.UUID              `json:"crew_member_id"`
 	CrewMemberName        string                 `json:"crew_member_name"`
-	VehicleID             uuid.UUID              `json:"vehicle_id"`
-	VehicleRegistrationNo string                 `json:"vehicle_registration_no"`
-	SaccoID               uuid.UUID              `json:"sacco_id"`
+	VehicleID             *uuid.UUID             `json:"vehicle_id,omitempty"`
+	VehicleRegistrationNo string                 `json:"vehicle_registration_no,omitempty"`
+	OrganizationID               uuid.UUID              `json:"sacco_id"`
 	SaccoName             string                 `json:"sacco_name"`
 	RouteID               *uuid.UUID             `json:"route_id,omitempty"`
 	RouteName             string                 `json:"route_name,omitempty"`
@@ -244,6 +263,19 @@ type AssignmentResponse struct {
 	Notes                 string                 `json:"notes,omitempty"`
 	CreatedByID           uuid.UUID              `json:"created_by_id"`
 	CreatedAt             time.Time              `json:"created_at"`
+	// Generalized fields
+	WorkType              models.WorkType        `json:"work_type"`
+	WorkSite              string                 `json:"work_site,omitempty"`
+	ProjectRef            string                 `json:"project_ref,omitempty"`
+	HoursWorked           *float64               `json:"hours_worked,omitempty"`
+	UnitsCompleted        *int                   `json:"units_completed,omitempty"`
+	HourlyRateCents       int64                  `json:"hourly_rate_cents,omitempty"`
+	DailyRateCents        int64                  `json:"daily_rate_cents,omitempty"`
+	PerUnitRateCents      int64                  `json:"per_unit_rate_cents,omitempty"`
+	OvertimeHours         *float64               `json:"overtime_hours,omitempty"`
+	OvertimeRateCents     int64                  `json:"overtime_rate_cents,omitempty"`
+	CheckInAt             *time.Time             `json:"check_in_at,omitempty"`
+	CheckOutAt            *time.Time             `json:"check_out_at,omitempty"`
 }
 
 func AssignmentToResponse(a *models.Assignment) AssignmentResponse {
@@ -251,7 +283,7 @@ func AssignmentToResponse(a *models.Assignment) AssignmentResponse {
 		ID:               a.ID,
 		CrewMemberID:     a.CrewMemberID,
 		VehicleID:        a.VehicleID,
-		SaccoID:          a.SaccoID,
+		OrganizationID:          a.OrganizationID,
 		RouteID:          a.RouteID,
 		ShiftDate:        a.ShiftDate,
 		ShiftStart:       a.ShiftStart,
@@ -265,6 +297,18 @@ func AssignmentToResponse(a *models.Assignment) AssignmentResponse {
 		Notes:            a.Notes,
 		CreatedByID:      a.CreatedByID,
 		CreatedAt:        a.CreatedAt,
+		WorkType:         a.WorkType,
+		WorkSite:         a.WorkSite,
+		ProjectRef:       a.ProjectRef,
+		HoursWorked:      a.HoursWorked,
+		UnitsCompleted:   a.UnitsCompleted,
+		HourlyRateCents:  a.HourlyRateCents,
+		DailyRateCents:   a.DailyRateCents,
+		PerUnitRateCents: a.PerUnitRateCents,
+		OvertimeHours:    a.OvertimeHours,
+		OvertimeRateCents: a.OvertimeRateCents,
+		CheckInAt:        a.CheckInAt,
+		CheckOutAt:       a.CheckOutAt,
 	}
 
 	// Resolve human-readable names from preloaded relations
@@ -274,8 +318,8 @@ func AssignmentToResponse(a *models.Assignment) AssignmentResponse {
 	if a.Vehicle.ID != (uuid.UUID{}) {
 		resp.VehicleRegistrationNo = a.Vehicle.RegistrationNo
 	}
-	if a.Sacco.ID != (uuid.UUID{}) {
-		resp.SaccoName = a.Sacco.Name
+	if a.Organization.ID != (uuid.UUID{}) {
+		resp.SaccoName = a.Organization.Name
 	}
 	if a.Route != nil && a.Route.ID != (uuid.UUID{}) {
 		resp.RouteName = a.Route.Name
@@ -293,22 +337,33 @@ func AssignmentListToResponse(assignments []models.Assignment) []AssignmentRespo
 }
 
 type CreateAssignmentRequest struct {
-	CrewMemberID     uuid.UUID              `json:"crew_member_id" binding:"required"`
-	VehicleID        uuid.UUID              `json:"vehicle_id" binding:"required"`
-	SaccoID          uuid.UUID              `json:"sacco_id" binding:"required"`
-	RouteID          *uuid.UUID             `json:"route_id"`
-	ShiftDate        string                 `json:"shift_date" binding:"required"`
-	ShiftStart       string                 `json:"shift_start" binding:"required"`
-	EarningModel     models.EarningModel    `json:"earning_model" binding:"required,oneof=FIXED COMMISSION HYBRID"`
-	FixedAmountCents int64                  `json:"fixed_amount_cents"`
-	CommissionRate   float64                `json:"commission_rate"`
-	HybridBaseCents  int64                  `json:"hybrid_base_cents"`
-	CommissionBasis  models.CommissionBasis `json:"commission_basis"`
-	Notes            string                 `json:"notes"`
+	CrewMemberID      uuid.UUID              `json:"crew_member_id" binding:"required"`
+	VehicleID         *uuid.UUID             `json:"vehicle_id"`
+	OrganizationID           uuid.UUID              `json:"sacco_id" binding:"required"`
+	RouteID           *uuid.UUID             `json:"route_id"`
+	ShiftDate         string                 `json:"shift_date" binding:"required"`
+	ShiftStart        string                 `json:"shift_start" binding:"required"`
+	EarningModel      models.EarningModel    `json:"earning_model" binding:"required"`
+	FixedAmountCents  int64                  `json:"fixed_amount_cents"`
+	CommissionRate    float64                `json:"commission_rate"`
+	HybridBaseCents   int64                  `json:"hybrid_base_cents"`
+	CommissionBasis   models.CommissionBasis `json:"commission_basis"`
+	Notes             string                 `json:"notes"`
+	WorkType          models.WorkType        `json:"work_type"`
+	WorkSite          string                 `json:"work_site"`
+	ProjectRef        string                 `json:"project_ref"`
+	HourlyRateCents   int64                  `json:"hourly_rate_cents"`
+	DailyRateCents    int64                  `json:"daily_rate_cents"`
+	PerUnitRateCents  int64                  `json:"per_unit_rate_cents"`
+	OvertimeRateCents int64                  `json:"overtime_rate_cents"`
+	PayScheduleID     *uuid.UUID             `json:"pay_schedule_id"`
 }
 
 type CompleteAssignmentRequest struct {
-	TotalRevenueCents int64 `json:"total_revenue_cents" binding:"required,min=0"`
+	TotalRevenueCents int64    `json:"total_revenue_cents"`
+	HoursWorked       *float64 `json:"hours_worked"`
+	UnitsCompleted    *int     `json:"units_completed"`
+	OvertimeHours     *float64 `json:"overtime_hours"`
 }
 
 // --- Wallet DTOs ---

@@ -16,12 +16,12 @@ func TestSACCOService(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	saccoRepo := mock.NewSACCORepo()
 	membershipRepo := mock.NewMembershipRepo()
-	floatRepo := mock.NewSACCOFloatRepo()
+	floatRepo := mock.NewOrganizationFloatRepo()
 
 	auditRepo := mock.NewAuditRepo()
 	auditSvc := service.NewAuditService(auditRepo, logger)
 
-	svc := service.NewSACCOService(saccoRepo, membershipRepo, floatRepo, auditSvc, logger)
+	svc := service.NewOrganizationService(saccoRepo, membershipRepo, floatRepo, auditSvc, logger)
 
 	t.Run("Create and Get SACCO", func(t *testing.T) {
 		ctx := context.Background()
@@ -52,12 +52,12 @@ func TestSACCOService(t *testing.T) {
 
 	t.Run("Add Member", func(t *testing.T) {
 		ctx := context.Background()
-		saccoID := uuid.New()
+		orgID := uuid.New()
 		crewID := uuid.New()
 
 		m, err := svc.AddMember(ctx, service.AddMemberInput{
 			CrewMemberID: crewID,
-			SaccoID:      saccoID,
+			OrganizationID:      orgID,
 			Role:         models.SACCORoleMember,
 		})
 		if err != nil {
@@ -70,7 +70,7 @@ func TestSACCOService(t *testing.T) {
 		// Add again should fail
 		_, err = svc.AddMember(ctx, service.AddMemberInput{
 			CrewMemberID: crewID,
-			SaccoID:      saccoID,
+			OrganizationID:      orgID,
 			Role:         models.SACCORoleMember,
 		})
 		if err == nil {
@@ -80,11 +80,11 @@ func TestSACCOService(t *testing.T) {
 
 	t.Run("Float Operations", func(t *testing.T) {
 		ctx := context.Background()
-		saccoID := uuid.New()
+		orgID := uuid.New()
 
 		// Credit
 		tx, err := svc.CreditFloat(ctx, service.FloatOperationInput{
-			SaccoID:        saccoID,
+			OrganizationID:        orgID,
 			AmountCents:    1000,
 			IdempotencyKey: "credit-1",
 		})
@@ -97,7 +97,7 @@ func TestSACCOService(t *testing.T) {
 
 		// Debit
 		tx2, err := svc.DebitFloat(ctx, service.FloatOperationInput{
-			SaccoID:        saccoID,
+			OrganizationID:        orgID,
 			AmountCents:    400,
 			IdempotencyKey: "debit-1",
 		})
@@ -110,7 +110,7 @@ func TestSACCOService(t *testing.T) {
 
 		// Debit too much
 		_, err = svc.DebitFloat(ctx, service.FloatOperationInput{
-			SaccoID:        saccoID,
+			OrganizationID:        orgID,
 			AmountCents:    1000,
 			IdempotencyKey: "debit-2",
 		})
@@ -166,16 +166,16 @@ func TestSACCOService(t *testing.T) {
 
 	t.Run("Remove and List Members", func(t *testing.T) {
 		ctx := context.Background()
-		saccoID := uuid.New()
+		orgID := uuid.New()
 		crewID := uuid.New()
 
 		m, _ := svc.AddMember(ctx, service.AddMemberInput{
 			CrewMemberID: crewID,
-			SaccoID:      saccoID,
+			OrganizationID:      orgID,
 			Role:         models.SACCORoleMember,
 		})
 
-		members, total, err := svc.ListMembers(ctx, saccoID, 1, 10)
+		members, total, err := svc.ListMembers(ctx, orgID, 1, 10)
 		if err != nil {
 			t.Fatalf("unexpected error on list members: %v", err)
 		}
@@ -188,7 +188,7 @@ func TestSACCOService(t *testing.T) {
 			t.Fatalf("unexpected error on remove member: %v", err)
 		}
 
-		membersAfter, totalAfter, _ := svc.ListMembers(ctx, saccoID, 1, 10)
+		membersAfter, totalAfter, _ := svc.ListMembers(ctx, orgID, 1, 10)
 		if totalAfter != 0 || len(membersAfter) != 0 {
 			t.Errorf("expected 0 members after removal, got %d", totalAfter)
 		}

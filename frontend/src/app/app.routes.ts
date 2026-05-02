@@ -46,6 +46,11 @@ export const routes: Routes = [
         loadComponent: () => import('./features/crew/crew-detail/crew-detail.component').then(m => m.CrewDetailComponent),
       },
       {
+        path: 'crew/:id/financial-profile',
+        canActivate: [roleGuard('SYSTEM_ADMIN', 'SACCO_ADMIN', 'LENDER', 'INSURER')],
+        loadComponent: () => import('./features/crew/financial-profile/financial-profile.component').then(m => m.FinancialProfileComponent),
+      },
+      {
         path: 'assignments',
         canActivate: [roleGuard('SYSTEM_ADMIN', 'SACCO_ADMIN')],
         loadComponent: () => import('./features/assignments/assignment-list/assignment-list.component').then(m => m.AssignmentListComponent),
@@ -54,6 +59,11 @@ export const routes: Routes = [
         path: 'assignments/:id',
         canActivate: [roleGuard('SYSTEM_ADMIN', 'SACCO_ADMIN')],
         loadComponent: () => import('./features/assignments/assignment-detail/assignment-detail.component').then(m => m.AssignmentDetailComponent),
+      },
+      {
+        path: 'assignments-bulk',
+        canActivate: [roleGuard('SYSTEM_ADMIN', 'SACCO_ADMIN')],
+        loadComponent: () => import('./features/assignments/bulk-assignment/bulk-assignment.component').then(m => m.BulkAssignmentComponent),
       },
       {
         path: 'earnings',
@@ -104,6 +114,11 @@ export const routes: Routes = [
         loadComponent: () => import('./features/payroll/payroll-detail/payroll-detail.component').then(m => m.PayrollDetailComponent),
       },
       {
+        path: 'pay-schedules',
+        canActivate: [roleGuard('SYSTEM_ADMIN', 'SACCO_ADMIN')],
+        loadComponent: () => import('./features/payroll/pay-schedule-dashboard/pay-schedule-dashboard.component').then(m => m.PayScheduleDashboardComponent),
+      },
+      {
         path: 'statutory-rates',
         canActivate: [roleGuard('SYSTEM_ADMIN')],
         loadComponent: () => import('./features/payroll/statutory-rates/statutory-rates.component').then(m => m.StatutoryRatesComponent),
@@ -141,6 +156,21 @@ export const routes: Routes = [
         path: 'admin',
         canActivate: [roleGuard('SYSTEM_ADMIN')],
         loadComponent: () => import('./features/admin/admin-dashboard/admin-dashboard.component').then(m => m.AdminDashboardComponent),
+      },
+      {
+        path: 'settings/tenant',
+        canActivate: [roleGuard('SYSTEM_ADMIN', 'SACCO_ADMIN')],
+        loadComponent: () => import('./features/settings/tenant-settings.component').then(m => m.TenantSettingsComponent),
+      },
+      {
+        path: 'work-sites',
+        canActivate: [roleGuard('SYSTEM_ADMIN', 'SACCO_ADMIN')],
+        loadComponent: () => import('./features/work-sites/work-sites.component').then(m => m.WorkSitesComponent),
+      },
+      {
+        path: 'facilitators',
+        canActivate: [roleGuard('SYSTEM_ADMIN', 'SACCO_ADMIN')],
+        loadComponent: () => import('./features/facilitators/facilitators.component').then(m => m.FacilitatorsComponent),
       },
     ],
   },

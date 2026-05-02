@@ -5,12 +5,13 @@ import { environment } from '../../../environments/environment';
 import {
   ApiResponse, ApiListResponse,
   CrewMember, Assignment, Wallet, WalletTransaction,
-  SACCO, Vehicle, Route, PayrollRun, PayrollEntry,
+  Organization, Vehicle, Route, PayrollRun, PayrollEntry,
   Earning, DailySummary, CreditScore, DetailedScoreResult, CreditScoreHistory,
   LoanApplication, LoanTier, InsurancePolicy, Notification, NotificationPreference,
   AuditLog, AdminUser, NotificationTemplate, Document,
   SystemStats, SACCOFloat, SACCOMembership, SACCOFloatTransaction,
-  StatutoryRate
+  StatutoryRate, TenantJobType, PaySchedule, PayPeriod, FinancialProfile,
+  BootstrapResult
 } from '../models';
 
 @Injectable({ providedIn: 'root' })
@@ -102,57 +103,57 @@ export class ApiService {
     return this.http.get(`${this.API}/wallets/${crewMemberId}/export`, { responseType: 'blob' });
   }
 
-  // --- SACCOs ---
-  getSACCOs(params?: Record<string, string>): Observable<ApiListResponse<SACCO>> {
-    return this.http.get<ApiListResponse<SACCO>>(`${this.API}/saccos`, { params: this.buildParams(params) });
+  // --- Organizations ---
+  getOrganizations(params?: Record<string, string>): Observable<ApiListResponse<Organization>> {
+    return this.http.get<ApiListResponse<Organization>>(`${this.API}/organizations`, { params: this.buildParams(params) });
   }
 
-  getSACCO(id: string): Observable<ApiResponse<SACCO>> {
-    return this.http.get<ApiResponse<SACCO>>(`${this.API}/saccos/${id}`);
+  getOrganization(id: string): Observable<ApiResponse<Organization>> {
+    return this.http.get<ApiResponse<Organization>>(`${this.API}/organizations/${id}`);
   }
 
-  createSACCO(data: Record<string, unknown>): Observable<ApiResponse<SACCO>> {
-    return this.http.post<ApiResponse<SACCO>>(`${this.API}/saccos`, data);
+  createOrganization(data: Record<string, unknown>): Observable<ApiResponse<Organization>> {
+    return this.http.post<ApiResponse<Organization>>(`${this.API}/organizations`, data);
   }
 
-  updateSACCO(id: string, data: Record<string, unknown>): Observable<ApiResponse<SACCO>> {
-    return this.http.put<ApiResponse<SACCO>>(`${this.API}/saccos/${id}`, data);
+  updateOrganization(id: string, data: Record<string, unknown>): Observable<ApiResponse<Organization>> {
+    return this.http.put<ApiResponse<Organization>>(`${this.API}/organizations/${id}`, data);
   }
 
-  deleteSACCO(id: string): Observable<unknown> {
-    return this.http.delete(`${this.API}/saccos/${id}`);
+  deleteOrganization(id: string): Observable<unknown> {
+    return this.http.delete(`${this.API}/organizations/${id}`);
   }
 
   getSACCOMembers(saccoId: string, params?: Record<string, string>): Observable<ApiListResponse<SACCOMembership>> {
-    return this.http.get<ApiListResponse<SACCOMembership>>(`${this.API}/saccos/${saccoId}/members`, { params: this.buildParams(params) });
+    return this.http.get<ApiListResponse<SACCOMembership>>(`${this.API}/organizations/${saccoId}/members`, { params: this.buildParams(params) });
   }
 
   addSACCOMember(saccoId: string, data: { crew_member_id: string; role: string; joined_at?: string }): Observable<unknown> {
-    return this.http.post(`${this.API}/saccos/${saccoId}/members`, data);
+    return this.http.post(`${this.API}/organizations/${saccoId}/members`, data);
   }
 
-  updateSACCOMember(saccoId: string, membershipId: string, data: { role_in_sacco: string; joined_at?: string }): Observable<unknown> {
-    return this.http.put(`${this.API}/saccos/${saccoId}/members/${membershipId}`, data);
+  updateOrganizationMember(saccoId: string, membershipId: string, data: { role_in_sacco: string; joined_at?: string }): Observable<unknown> {
+    return this.http.put(`${this.API}/organizations/${saccoId}/members/${membershipId}`, data);
   }
 
   removeSACCOMember(saccoId: string, membershipId: string): Observable<unknown> {
-    return this.http.delete(`${this.API}/saccos/${saccoId}/members/${membershipId}`);
+    return this.http.delete(`${this.API}/organizations/${saccoId}/members/${membershipId}`);
   }
 
   getSACCOFloat(saccoId: string): Observable<ApiResponse<SACCOFloat>> {
-    return this.http.get<ApiResponse<SACCOFloat>>(`${this.API}/saccos/${saccoId}/float`);
+    return this.http.get<ApiResponse<SACCOFloat>>(`${this.API}/organizations/${saccoId}/float`);
   }
 
   creditSACCOFloat(saccoId: string, data: Record<string, unknown>): Observable<unknown> {
-    return this.http.post(`${this.API}/saccos/${saccoId}/float/credit`, data);
+    return this.http.post(`${this.API}/organizations/${saccoId}/float/credit`, data);
   }
 
   debitSACCOFloat(saccoId: string, data: Record<string, unknown>): Observable<unknown> {
-    return this.http.post(`${this.API}/saccos/${saccoId}/float/debit`, data);
+    return this.http.post(`${this.API}/organizations/${saccoId}/float/debit`, data);
   }
 
   getFloatTransactions(saccoId: string, params?: Record<string, string>): Observable<ApiListResponse<SACCOFloatTransaction>> {
-    return this.http.get<ApiListResponse<SACCOFloatTransaction>>(`${this.API}/saccos/${saccoId}/float/transactions`, { params: this.buildParams(params) });
+    return this.http.get<ApiListResponse<SACCOFloatTransaction>>(`${this.API}/organizations/${saccoId}/float/transactions`, { params: this.buildParams(params) });
   }
 
   // --- Vehicles ---
@@ -377,6 +378,86 @@ export class ApiService {
 
   deleteDocument(id: string): Observable<unknown> {
     return this.http.delete(`${this.API}/documents/${id}`);
+  }
+
+  // --- Tenant Config (Phase F3) ---
+  getJobTypes(saccoId: string): Observable<ApiListResponse<TenantJobType>> {
+    return this.http.get<ApiListResponse<TenantJobType>>(`${this.API}/organizations/${saccoId}/job-types`);
+  }
+
+  createJobType(saccoId: string, data: Partial<TenantJobType>): Observable<ApiResponse<TenantJobType>> {
+    return this.http.post<ApiResponse<TenantJobType>>(`${this.API}/organizations/${saccoId}/job-types`, data);
+  }
+
+  updateJobType(saccoId: string, id: string, data: Partial<TenantJobType>): Observable<ApiResponse<TenantJobType>> {
+    return this.http.put<ApiResponse<TenantJobType>>(`${this.API}/organizations/${saccoId}/job-types/${id}`, data);
+  }
+
+  deleteJobType(saccoId: string, id: string): Observable<unknown> {
+    return this.http.delete(`${this.API}/organizations/${saccoId}/job-types/${id}`);
+  }
+
+  // --- Pay Schedules (Phase F3) ---
+  getPaySchedules(saccoId: string): Observable<ApiListResponse<PaySchedule>> {
+    return this.http.get<ApiListResponse<PaySchedule>>(`${this.API}/organizations/${saccoId}/pay-schedules`);
+  }
+
+  createPaySchedule(saccoId: string, data: Partial<PaySchedule>): Observable<ApiResponse<PaySchedule>> {
+    return this.http.post<ApiResponse<PaySchedule>>(`${this.API}/organizations/${saccoId}/pay-schedules`, data);
+  }
+
+  updatePaySchedule(saccoId: string, id: string, data: Partial<PaySchedule>): Observable<ApiResponse<PaySchedule>> {
+    return this.http.put<ApiResponse<PaySchedule>>(`${this.API}/organizations/${saccoId}/pay-schedules/${id}`, data);
+  }
+
+  deletePaySchedule(saccoId: string, id: string): Observable<unknown> {
+    return this.http.delete(`${this.API}/organizations/${saccoId}/pay-schedules/${id}`);
+  }
+
+  // --- Industry Bootstrap (AD-13) ---
+  bootstrapIndustry(orgId: string, industry: string): Observable<ApiResponse<BootstrapResult>> {
+    return this.http.post<ApiResponse<BootstrapResult>>(`${this.API}/organizations/${orgId}/bootstrap`, { industry_type: industry });
+  }
+
+  // --- Pay Periods (Phase F3) ---
+  getPayPeriods(params?: Record<string, string>): Observable<ApiListResponse<PayPeriod>> {
+    return this.http.get<ApiListResponse<PayPeriod>>(`${this.API}/payroll/periods`, { params: this.buildParams(params) });
+  }
+
+  generatePayPeriod(scheduleId: string, data: { reference_date: string }): Observable<ApiResponse<PayPeriod>> {
+    return this.http.post<ApiResponse<PayPeriod>>(`${this.API}/payroll/schedule/${scheduleId}/generate-period`, data);
+  }
+
+  closePayPeriod(periodId: string): Observable<ApiResponse<PayPeriod>> {
+    return this.http.post<ApiResponse<PayPeriod>>(`${this.API}/payroll/periods/${periodId}/close`, {});
+  }
+
+  runScheduledPayroll(scheduleId: string, data: { reference_date: string; organization_id: string }): Observable<ApiResponse<PayrollRun>> {
+    return this.http.post<ApiResponse<PayrollRun>>(`${this.API}/payroll/schedule/${scheduleId}/run`, data);
+  }
+
+  // --- Financial Profile (Phase F3) ---
+  getFinancialProfile(crewMemberId: string): Observable<ApiResponse<FinancialProfile>> {
+    return this.http.get<ApiResponse<FinancialProfile>>(`${this.API}/financial-profile/${crewMemberId}`);
+  }
+
+  // --- Check-in/Check-out (Phase F3) ---
+  checkInAssignment(assignmentId: string): Observable<ApiResponse<Assignment>> {
+    return this.http.post<ApiResponse<Assignment>>(`${this.API}/assignments/${assignmentId}/check-in`, {});
+  }
+
+  checkOutAssignment(assignmentId: string, data?: { hours_worked?: number }): Observable<ApiResponse<Assignment>> {
+    return this.http.post<ApiResponse<Assignment>>(`${this.API}/assignments/${assignmentId}/check-out`, data || {});
+  }
+
+  // --- Bulk Assignments (Phase F3) ---
+  bulkCreateAssignments(data: { assignments: Array<Record<string, unknown>> }): Observable<unknown> {
+    return this.http.post(`${this.API}/assignments/bulk`, data);
+  }
+
+  // --- Tenant Config Update ---
+  updateTenantConfig(saccoId: string, config: Record<string, unknown>): Observable<ApiResponse<Organization>> {
+    return this.http.put<ApiResponse<Organization>>(`${this.API}/organizations/${saccoId}/config`, config);
   }
 
   // --- Helpers ---
