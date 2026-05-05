@@ -10,7 +10,7 @@ import (
 // Uses optimistic locking via Version field to prevent overdraw races.
 type Wallet struct {
 	ID                 uuid.UUID  `json:"id" gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
-	CrewMemberID       uuid.UUID  `json:"crew_member_id" gorm:"column:sacco_id;type:uuid;uniqueIndex;not null"`
+	CrewMemberID       uuid.UUID  `json:"crew_member_id" gorm:"column:crew_member_id;type:uuid;uniqueIndex;not null"`
 	BalanceCents       int64      `json:"balance_cents" gorm:"type:bigint;default:0"`
 	TotalCreditedCents int64      `json:"total_credited_cents" gorm:"type:bigint;default:0"`
 	TotalDebitedCents  int64      `json:"total_debited_cents" gorm:"type:bigint;default:0"`
@@ -58,7 +58,7 @@ const (
 // WalletTransaction is an immutable ledger entry.
 type WalletTransaction struct {
 	ID                uuid.UUID           `json:"id" gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
-	WalletID          uuid.UUID           `json:"wallet_id" gorm:"column:sacco_id;type:uuid;not null;index"`
+	WalletID          uuid.UUID           `json:"wallet_id" gorm:"column:wallet_id;type:uuid;not null;index"`
 	IdempotencyKey    string              `json:"idempotency_key,omitempty" gorm:"uniqueIndex"`
 	TransactionType   TransactionType     `json:"transaction_type" gorm:"not null"`
 	Category          TransactionCategory `json:"category" gorm:"not null"`
@@ -95,7 +95,7 @@ func (OrganizationFloat) TableName() string { return "sacco_floats" }
 // OrganizationFloatTransaction records SACCO float funding and payout events.
 type OrganizationFloatTransaction struct {
 	ID                uuid.UUID         `json:"id" gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
-	OrganizationFloatID      uuid.UUID         `json:"sacco_float_id" gorm:"column:sacco_id;type:uuid;not null;index"`
+	OrganizationFloatID      uuid.UUID         `json:"sacco_float_id" gorm:"column:sacco_float_id;type:uuid;not null;index"`
 	IdempotencyKey    string            `json:"idempotency_key,omitempty" gorm:"uniqueIndex"`
 	TransactionType   string            `json:"transaction_type" gorm:"not null"`
 	AmountCents       int64             `json:"amount_cents" gorm:"type:bigint;not null"`

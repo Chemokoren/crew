@@ -7,6 +7,7 @@ import { of } from 'rxjs';
 import { environment } from '../../../../environments/environment';
 import { ApiService } from '../../../core/services/api.service';
 import { ToastService } from '../../../core/services/toast.service';
+import { OrgContextService } from '../../../core/services/org-context.service';
 import { ConfirmDialogService } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { CurrencyKesPipe } from '../../../shared/pipes/currency-kes.pipe';
 import { CrewMember, Wallet } from '../../../core/models';
@@ -21,10 +22,10 @@ import { CrewMember, Wallet } from '../../../core/models';
       <div class="page-header">
         <div>
           <a routerLink="/crew" class="back-link">
-            <span class="material-icons-round">arrow_back</span> Back to Crew
+            <span class="material-icons-round">arrow_back</span> Back to {{ orgCtx.workersLabel() }}
           </a>
           <h1 class="page-title">{{ crew()?.full_name ?? 'Loading...' }}</h1>
-          <p class="page-subtitle">Crew ID: {{ crew()?.crew_id }}</p>
+          <p class="page-subtitle">{{ orgCtx.workerLabel() }} ID: {{ crew()?.crew_id }}</p>
         </div>
         <div class="page-actions">
           @if (crew()?.is_active) {
@@ -174,6 +175,7 @@ export class CrewDetailComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private toast = inject(ToastService);
   private dialog = inject(ConfirmDialogService);
+  readonly orgCtx = inject(OrgContextService);
   private readonly API = environment.apiUrl;
   private readonly silentHeaders = { 'X-Skip-Error-Toast': 'true' };
 

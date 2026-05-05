@@ -73,27 +73,27 @@ import { CrewMember, Organization, Vehicle } from '../../../core/models';
           <div class="form-grid">
             <div class="form-group">
               <label class="form-label">Organization</label>
-              <app-autocomplete [options]="saccoOptions()" [(ngModel)]="config.organization_id" placeholder="Select Organization..." inputId="bulk-sacco"></app-autocomplete>
+              <app-autocomplete [options]="saccoOptions()" [ngModel]="organizationId()" (ngModelChange)="organizationId.set($event)" placeholder="Select Organization..." inputId="bulk-sacco"></app-autocomplete>
             </div>
             <div class="form-group">
               <label class="form-label">Work Type</label>
               <select class="form-select" [(ngModel)]="config.work_type" id="bulk-work-type">
                 <option value="SHIFT">Shift</option><option value="DAILY">Daily</option>
-                <option value="HOURLY">Hourly</option><option value="PER_TRIP">Per Trip</option>
-                <option value="PROJECT">Project</option><option value="TASK">Task</option>
+                <option value="HOURLY">Hourly</option><option value="TASK">Task</option>
+                <option value="PROJECT">Project</option><option value="BOOKING">Booking</option>
               </select>
             </div>
             <div class="form-group">
               <label class="form-label">
                 <span class="material-icons-round form-label-icon">calendar_today</span> Start Date
               </label>
-              <input class="form-input" type="date" [(ngModel)]="config.start_date" id="bulk-start-date" />
+              <input class="form-input" type="date" [ngModel]="startDate()" (ngModelChange)="startDate.set($event)" id="bulk-start-date" />
             </div>
             <div class="form-group">
               <label class="form-label">
                 <span class="material-icons-round form-label-icon">event</span> End Date
               </label>
-              <input class="form-input" type="date" [(ngModel)]="config.end_date" id="bulk-end-date" />
+              <input class="form-input" type="date" [ngModel]="endDate()" (ngModelChange)="endDate.set($event)" id="bulk-end-date" />
             </div>
             <div class="form-group">
               <label class="form-label">Shift Start Time</label>
@@ -119,7 +119,7 @@ import { CrewMember, Organization, Vehicle } from '../../../core/models';
             }
             <div class="form-group" style="grid-column:1/-1;">
               <label class="form-label">
-                <input type="checkbox" [(ngModel)]="config.skip_weekends" id="bulk-skip-weekends" style="margin-right:6px;">
+                <input type="checkbox" [ngModel]="skipWeekends()" (ngModelChange)="skipWeekends.set($event)" id="bulk-skip-weekends" style="margin-right:6px;">
                 Skip weekends (Sat & Sun)
               </label>
             </div>
@@ -221,9 +221,16 @@ export class BulkAssignmentComponent implements OnInit {
   submitting = signal(false);
   tempCrewId = '';
 
+  /* Reactive fields used in computed() must be signals */
+  organizationId = signal('');
+  startDate = signal('');
+  endDate = signal('');
+  skipWeekends = signal(true);
+
+  /* Non-reactive config fields – only read on submit */
   config = {
-    organization_id: '', work_type: 'SHIFT', start_date: '', end_date: '', shift_time: '07:00',
-    earning_model: 'FIXED', fixed_amount: 0, commission_rate: 0, skip_weekends: true,
+    work_type: 'SHIFT', shift_time: '07:00',
+    earning_model: 'FIXED', fixed_amount: 0, commission_rate: 0,
   };
 
   crewOptions = computed<AutocompleteOption[]>(() =>
@@ -237,12 +244,15 @@ export class BulkAssignmentComponent implements OnInit {
   );
 
   dateCount = computed(() => {
-    if (!this.config.start_date || !this.config.end_date) return 0;
-    const start = new Date(this.config.start_date);
-    const end = new Date(this.config.end_date);
+    const sd = this.startDate();
+    const ed = this.endDate();
+    const skip = this.skipWeekends();
+    if (!sd || !ed) return 0;
+    const start = new Date(sd);
+    const end = new Date(ed);
     let count = 0;
     for (const d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      if (this.config.skip_weekends && (d.getDay() === 0 || d.getDay() === 6)) continue;
+      if (skip && (d.getDay() === 0 || d.getDay() === 6)) continue;
       count++;
     }
     return count;
@@ -274,23 +284,24 @@ export class BulkAssignmentComponent implements OnInit {
     this.selectedWorkers.update(list => list.filter(w => w.id !== id));
   }
 
-  canSubmit(): boolean {
-    return this.selectedWorkers().length > 0 && !!this.config.organization_id && this.dateCount() > 0;
-  }
+  canSubmit = computed(() =>
+    this.selectedWorkers().length > 0 && !!this.organizationId() && this.dateCount() > 0
+  );
 
   submit(): void {
     this.submitting.set(true);
     const assignments: Record<string, unknown>[] = [];
-    const start = new Date(this.config.start_date);
-    const end = new Date(this.config.end_date);
+    const start = new Date(this.startDate());
+    const end = new Date(this.endDate());
+    const skip = this.skipWeekends();
 
     for (const d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      if (this.config.skip_weekends && (d.getDay() === 0 || d.getDay() === 6)) continue;
+      if (skip && (d.getDay() === 0 || d.getDay() === 6)) continue;
       const dateStr = d.toISOString().slice(0, 10);
       for (const w of this.selectedWorkers()) {
         assignments.push({
           crew_member_id: w.id,
-          organization_id: this.config.organization_id,
+          organization_id: this.organizationId(),
           work_type: this.config.work_type,
           shift_date: dateStr,
           shift_start: new Date(`${dateStr}T${this.config.shift_time}:00`).toISOString(),
@@ -307,7 +318,11 @@ export class BulkAssignmentComponent implements OnInit {
         this.submitting.set(false);
         this.router.navigate(['/assignments']);
       },
-      error: () => this.submitting.set(false),
+      error: (err) => {
+        const msg = err?.error?.message || err?.error?.error || 'Failed to create assignments. Please check your inputs.';
+        this.toast.error(msg);
+        this.submitting.set(false);
+      },
     });
   }
 }

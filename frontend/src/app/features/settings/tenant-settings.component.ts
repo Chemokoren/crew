@@ -180,7 +180,7 @@ const JOB_CATEGORIES: { value: JobTypeCategory; label: string; desc: string }[] 
             <div class="ts-section-header">
               <div>
                 <h3 class="ts-section-title">Job Types</h3>
-                <p class="ts-section-desc">Define the worker roles available in your organization. Replaces the hardcoded DRIVER/CONDUCTOR/RIDER dropdown.</p>
+                <p class="ts-section-desc">Define the {{ orgCtx.label('worker').toLowerCase() }} roles available in your organization. These replace the default role dropdown on the {{ orgCtx.label('worker') }} creation form.</p>
               </div>
               <button class="btn btn-primary btn-sm" (click)="openJobModal()" id="btn-add-job-type">
                 <span class="material-icons-round" style="font-size:16px;">add</span> Add Job Type
@@ -415,7 +415,7 @@ export class TenantSettingsComponent implements OnInit {
   private auth = inject(AuthService);
   private toast = inject(ToastService);
   private confirm = inject(ConfirmDialogService);
-  private orgCtx = inject(OrgContextService);
+  readonly orgCtx = inject(OrgContextService);
 
   sacco = signal<Organization | null>(null);
   jobTypes = signal<TenantJobType[]>([]);
@@ -441,7 +441,7 @@ export class TenantSettingsComponent implements OnInit {
     this.saccoId = user?.organization_id || '';
     if (this.saccoId) {
       this.loadAll();
-    } else {
+    } else if (this.auth.isAdmin()) {
       // System admin — load first sacco or show selector
       this.api.getOrganizations({ per_page: '1' }).subscribe({
         next: r => {
@@ -454,6 +454,9 @@ export class TenantSettingsComponent implements OnInit {
         },
         error: () => this.loading.set(false),
       });
+    } else {
+      // SACCO_ADMIN without org — show empty state
+      this.loading.set(false);
     }
   }
 

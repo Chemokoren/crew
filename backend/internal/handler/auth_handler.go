@@ -42,6 +42,12 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		NationalID: req.NationalID,
 		CrewRole:   req.CrewRole,
 		JobTypeID:  req.JobTypeID,
+		// Organization fields (for SACCO_ADMIN registration)
+		OrganizationName:   req.OrganizationName,
+		OrganizationRegNo:  req.OrganizationRegNo,
+		OrganizationCounty: req.OrganizationCounty,
+		OrganizationPhone:  req.OrganizationPhone,
+		IndustryType:       req.IndustryType,
 	})
 	if err != nil {
 		MapServiceError(c, err)
@@ -347,6 +353,13 @@ func MapServiceError(c *gin.Context, err error) {
 		strings.Contains(err.Error(), "iprs verify"),
 		strings.Contains(err.Error(), "iprs verification failed"):
 		ErrorResponse(c, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", err.Error())
+	// Database constraint violations → 400 with user-friendly message
+	case strings.Contains(err.Error(), "violates check constraint"):
+		msg := extractConstraintMessage(err.Error())
+		BadRequest(c, msg)
+	case strings.Contains(err.Error(), "violates unique constraint"):
+		msg := extractConstraintMessage(err.Error())
+		Conflict(c, msg)
 	default:
 		// Log the actual error for debugging — this is what shows up in error.log
 		slog.Error("unhandled service error",
@@ -356,6 +369,23 @@ func MapServiceError(c *gin.Context, err error) {
 		)
 		InternalError(c, err.Error())
 	}
+}
+
+// extractConstraintMessage builds a user-friendly message from a Postgres constraint violation.
+func extractConstraintMessage(errMsg string) string {
+	// Known constraint → friendly message map
+	constraintMap := map[string]string{
+		"assignments_work_type_check":        "Invalid work type. Allowed values: SHIFT, DAILY, HOURLY, TASK, PROJECT, BOOKING",
+		"assignments_earning_model_check":    "Invalid earning model. Allowed values: FIXED, COMMISSION, HYBRID, HOURLY, DAILY_RATE, PER_TASK, PER_PIECE, SALARY",
+		"assignments_status_check":           "Invalid assignment status",
+		"assignments_commission_basis_check":  "Invalid commission basis. Allowed values: FARE_TOTAL, TRIP_COUNT, REVENUE",
+	}
+	for constraint, message := range constraintMap {
+		if strings.Contains(errMsg, constraint) {
+			return message
+		}
+	}
+	return "Data validation failed. Please check your input values."
 }
 
 // GetClaimsFromContext is a typed helper for handlers to get JWT claims.

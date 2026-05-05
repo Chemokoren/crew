@@ -18,11 +18,13 @@ import (
 
 // AuthService handles authentication and user registration.
 type AuthService struct {
-	userRepo repository.UserRepository
-	crewRepo repository.CrewRepository
-	jwt      *jwt.Manager
-	txMgr    *database.TxManager
-	logger   *slog.Logger
+	userRepo  repository.UserRepository
+	crewRepo  repository.CrewRepository
+	orgRepo   repository.OrganizationRepository
+	jwt       *jwt.Manager
+	txMgr     *database.TxManager
+	tenantSvc *TenantService
+	logger    *slog.Logger
 }
 
 // NewAuthService creates a new AuthService.
@@ -32,14 +34,32 @@ func NewAuthService(
 	jwtManager *jwt.Manager,
 	txMgr *database.TxManager,
 	logger *slog.Logger,
+	opts ...AuthServiceOption,
 ) *AuthService {
-	return &AuthService{
+	s := &AuthService{
 		userRepo: userRepo,
 		crewRepo: crewRepo,
 		jwt:      jwtManager,
 		txMgr:    txMgr,
 		logger:   logger,
 	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
+}
+
+// AuthServiceOption configures optional dependencies for AuthService.
+type AuthServiceOption func(*AuthService)
+
+// WithOrgRepo sets the organization repository (needed for SACCO_ADMIN registration).
+func WithOrgRepo(repo repository.OrganizationRepository) AuthServiceOption {
+	return func(s *AuthService) { s.orgRepo = repo }
+}
+
+// WithTenantSvc sets the tenant service (needed for industry bootstrap on registration).
+func WithTenantSvc(svc *TenantService) AuthServiceOption {
+	return func(s *AuthService) { s.tenantSvc = svc }
 }
 
 // RegisterInput holds the data required to register a new user.
@@ -55,6 +75,13 @@ type RegisterInput struct {
 	NationalID string          `json:"national_id" validate:"required_if=Role CREW"`
 	CrewRole   models.CrewRole `json:"crew_role" validate:"required_if=Role CREW,omitempty,oneof=DRIVER CONDUCTOR RIDER OTHER"`
 	JobTypeID  *uuid.UUID      `json:"job_type_id,omitempty"` // Tenant-specific job type (optional, overrides CrewRole display)
+
+	// Organization fields (required when role == SACCO_ADMIN)
+	OrganizationName   string              `json:"organization_name"`
+	OrganizationRegNo  string              `json:"organization_reg_no"`
+	OrganizationCounty string              `json:"organization_county"`
+	OrganizationPhone  string              `json:"organization_phone"`
+	IndustryType       models.IndustryType `json:"industry_type"`
 }
 
 // RegisterResult holds the output of a successful registration.
@@ -65,11 +92,34 @@ type RegisterResult struct {
 }
 
 // Register creates a new user account and optionally a crew member profile.
+// For SACCO_ADMIN role, it also creates an Organization and bootstraps industry defaults.
 // The entire operation runs inside a database transaction to prevent orphan records.
 func (s *AuthService) Register(ctx context.Context, input RegisterInput) (*RegisterResult, error) {
 	// 1. Validate role
 	if !input.Role.IsValid() {
 		return nil, fmt.Errorf("%w: invalid system role %q", ErrValidation, input.Role)
+	}
+
+	// 1b. Validate organization fields for SACCO_ADMIN
+	if input.Role == types.RoleSaccoAdmin {
+		if input.OrganizationName == "" {
+			return nil, fmt.Errorf("%w: organization name is required for Organization Admin", ErrValidation)
+		}
+		if input.OrganizationRegNo == "" {
+			return nil, fmt.Errorf("%w: organization registration number is required", ErrValidation)
+		}
+		if input.OrganizationCounty == "" {
+			return nil, fmt.Errorf("%w: organization county is required", ErrValidation)
+		}
+		if input.OrganizationPhone == "" {
+			return nil, fmt.Errorf("%w: organization contact phone is required", ErrValidation)
+		}
+		if input.IndustryType == "" {
+			input.IndustryType = models.IndustryGeneral
+		}
+		if s.orgRepo == nil {
+			return nil, fmt.Errorf("%w: organization registration is not configured", ErrValidation)
+		}
 	}
 
 	// 2. Check phone uniqueness
@@ -97,11 +147,39 @@ func (s *AuthService) Register(ctx context.Context, input RegisterInput) (*Regis
 	}
 
 	var crewMember *models.CrewMember
+	var org *models.Organization
 
-	// 5. Execute crew + user creation inside a single transaction.
+	// 5. Execute crew/org + user creation inside a single transaction.
 	// If txMgr is nil (e.g., in tests with mock repos), run without transaction.
 	createFn := func(txCtx context.Context) error {
-		// If CREW role, create crew member profile first
+		// If SACCO_ADMIN, create the Organization first
+		if input.Role == types.RoleSaccoAdmin && s.orgRepo != nil {
+			tmpl := models.GetIndustryTemplate(input.IndustryType)
+			org = &models.Organization{
+				Name:               input.OrganizationName,
+				RegistrationNumber: input.OrganizationRegNo,
+				County:             input.OrganizationCounty,
+				ContactPhone:       input.OrganizationPhone,
+				ContactEmail:       input.Email,
+				Currency:           "KES",
+				IsActive:           true,
+				IndustryType:       input.IndustryType,
+				OrganizationType:   tmpl.OrgType,
+				DisplayName:        input.OrganizationName,
+			}
+			// Set UI labels from template
+			if tmpl.UILabels != nil {
+				cfg := &models.TenantConfig{UILabels: tmpl.UILabels}
+				_ = org.SetTenantConfig(cfg)
+			}
+
+			if err := s.orgRepo.Create(txCtx, org); err != nil {
+				return fmt.Errorf("create organization: %w", err)
+			}
+			user.OrganizationID = &org.ID
+		}
+
+		// If CREW role, create crew member profile
 		if input.Role == types.RoleCrewUser {
 			crewID, err := s.crewRepo.NextCrewID(txCtx)
 			if err != nil {
@@ -145,7 +223,18 @@ func (s *AuthService) Register(ctx context.Context, input RegisterInput) (*Regis
 		}
 	}
 
-	// 6. Generate tokens (outside transaction — not a DB operation)
+	// 6. Bootstrap industry defaults (outside transaction — non-fatal if it fails)
+	if org != nil && s.tenantSvc != nil {
+		if _, err := s.tenantSvc.BootstrapIndustry(ctx, org.ID, input.IndustryType); err != nil {
+			s.logger.Warn("failed to bootstrap industry for new org",
+				slog.String("org_id", org.ID.String()),
+				slog.String("industry", string(input.IndustryType)),
+				slog.String("error", err.Error()),
+			)
+		}
+	}
+
+	// 7. Generate tokens (outside transaction — not a DB operation)
 	tokens, err := s.jwt.GenerateTokenPair(user.ID, user.Phone, user.SystemRole, user.CrewMemberID, user.OrganizationID)
 	if err != nil {
 		return nil, fmt.Errorf("generate tokens: %w", err)

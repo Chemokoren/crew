@@ -348,39 +348,72 @@ export class SidebarComponent {
   mobileOpen = model(false);
   mobileClose = output<void>();
 
-  private navItems: NavItem[] = [
-    { label: 'Dashboard', icon: 'dashboard', route: '/dashboard', section: 'Overview' },
-    { label: 'Crew', icon: 'groups', route: '/crew', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Operations' },
-    { label: 'Assignments', icon: 'assignment', route: '/assignments', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Operations' },
-    { label: 'Bulk Assign', icon: 'playlist_add', route: '/assignments-bulk', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Operations' },
-    { label: 'Earnings', icon: 'trending_up', route: '/earnings', section: 'Operations' },
-    { label: 'Wallets', icon: 'account_balance_wallet', route: '/wallets', section: 'Finance' },
-    { label: 'Organizations', icon: 'business', route: '/saccos', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Organization' },
-    { label: 'Vehicles', icon: 'directions_bus', route: '/vehicles', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Organization', feature: 'vehicles' },
-    { label: 'Routes', icon: 'route', route: '/routes', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Organization', feature: 'routes' },
-    { label: 'Work Sites', icon: 'location_on', route: '/work-sites', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Organization', feature: 'work-sites' },
-    { label: 'Facilitators', icon: 'support_agent', route: '/facilitators', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Operations', feature: 'facilitators' },
-    { label: 'Payroll', icon: 'receipt_long', route: '/payroll', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Finance' },
-    { label: 'Pay Schedules', icon: 'event_repeat', route: '/pay-schedules', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Finance' },
-    { label: 'Loans', icon: 'savings', route: '/loans', section: 'Finance' },
-    { label: 'Credit Score', icon: 'credit_score', route: '/credit', section: 'Finance' },
-    { label: 'Insurance', icon: 'health_and_safety', route: '/insurance', section: 'Finance' },
-    { label: 'Documents', icon: 'folder', route: '/documents', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'System' },
-    { label: 'Notifications', icon: 'notifications', route: '/notifications', section: 'System' },
-    { label: 'Admin', icon: 'admin_panel_settings', route: '/admin', roles: ['SYSTEM_ADMIN'], section: 'System' },
-    { label: 'Tenant Settings', icon: 'tune', route: '/settings/tenant', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'System' },
+  private baseNavItems: Omit<NavItem, 'label'>[] = [
+    { icon: 'dashboard', route: '/dashboard', section: 'Overview' },
+    { icon: 'groups', route: '/crew', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Operations' },
+    { icon: 'assignment', route: '/assignments', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Operations' },
+    { icon: 'playlist_add', route: '/assignments-bulk', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Operations' },
+    { icon: 'trending_up', route: '/earnings', section: 'Operations' },
+    { icon: 'account_balance_wallet', route: '/wallets', section: 'Finance' },
+    { icon: 'business', route: '/saccos', roles: ['SYSTEM_ADMIN'], section: 'Organization' },
+    { icon: 'business', route: '/settings/tenant', roles: ['SACCO_ADMIN'], section: 'Organization' },
+    { icon: 'directions_bus', route: '/vehicles', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Organization', feature: 'vehicles' },
+    { icon: 'route', route: '/routes', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Organization', feature: 'routes' },
+    { icon: 'location_on', route: '/work-sites', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Organization', feature: 'work-sites' },
+    { icon: 'support_agent', route: '/facilitators', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Operations', feature: 'facilitators' },
+    { icon: 'receipt_long', route: '/payroll', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Finance' },
+    { icon: 'event_repeat', route: '/pay-schedules', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Finance' },
+    { icon: 'savings', route: '/loans', section: 'Finance' },
+    { icon: 'credit_score', route: '/credit', section: 'Finance' },
+    { icon: 'health_and_safety', route: '/insurance', section: 'Finance' },
+    { icon: 'folder', route: '/documents', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'System' },
+    { icon: 'notifications', route: '/notifications', section: 'System' },
+    { icon: 'admin_panel_settings', route: '/admin', roles: ['SYSTEM_ADMIN'], section: 'System' },
+    { icon: 'tune', route: '/settings/tenant', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'System' },
   ];
+
+  /** Dynamic nav label mapping — adapts based on industry context */
+  private navLabel(route: string): string {
+    const labels = this.orgCtx.template().ui_labels;
+    const worker = this.orgCtx.workersLabel();
+    const assignment = labels['assignment'] || 'Assignment';
+    switch (route) {
+      case '/dashboard':        return 'Dashboard';
+      case '/crew':             return worker;
+      case '/assignments':      return assignment + 's';
+      case '/assignments-bulk': return 'Bulk ' + assignment;
+      case '/earnings':         return 'Earnings';
+      case '/wallets':          return 'Wallets';
+      case '/saccos':           return 'Organizations';
+      case '/settings/tenant':  return this.auth.isSaccoAdmin() ? ('My ' + (labels['organization'] || 'Organization')) : 'Tenant Settings';
+      case '/vehicles':         return labels['vehicle'] ? labels['vehicle'] + 's' : 'Vehicles';
+      case '/routes':           return 'Routes';
+      case '/work-sites':       return labels['work_site'] ? labels['work_site'] + 's' : 'Work Sites';
+      case '/facilitators':     return 'Facilitators';
+      case '/payroll':          return 'Payroll';
+      case '/pay-schedules':    return 'Pay Schedules';
+      case '/loans':            return 'Loans';
+      case '/credit':           return 'Credit Score';
+      case '/insurance':        return 'Insurance';
+      case '/documents':        return 'Documents';
+      case '/notifications':    return 'Notifications';
+      case '/admin':            return 'Admin';
+      default:                  return route;
+    }
+  }
 
   filteredNavItems(): NavItem[] {
     const role = this.auth.userRole();
     if (!role) return [];
-    return this.navItems.filter(item => {
-      // Role check
-      if (item.roles && !item.roles.includes(role)) return false;
-      // Industry-adaptive visibility
-      if (item.feature && !this.orgCtx.isFeatureVisible(item.feature)) return false;
-      return true;
-    });
+    return this.baseNavItems
+      .filter(item => {
+        // Role check
+        if (item.roles && !item.roles.includes(role)) return false;
+        // Industry-adaptive visibility
+        if (item.feature && !this.orgCtx.isFeatureVisible(item.feature)) return false;
+        return true;
+      })
+      .map(item => ({ ...item, label: this.navLabel(item.route) }));
   }
 
   toggle(): void {

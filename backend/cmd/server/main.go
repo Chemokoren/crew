@@ -173,8 +173,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	// --- 6. Connect to MinIO (optional — non-fatal if unavailable) ---
-	var minioClient *storage.MinIOClient
+	// --- 6. Initialize Storage (MinIO with Local Fallback) ---
+	var fileStorage storage.Storage
 	if cfg.MinIOEndpoint != "" {
 		mc, err := storage.NewMinIOClient(
 			cfg.MinIOEndpoint,
@@ -184,15 +184,24 @@ func main() {
 			cfg.MinIOUseSSL,
 		)
 		if err != nil {
-			slog.Warn("MinIO unavailable — document upload/download disabled",
+			slog.Warn("MinIO unavailable — falling back to local filesystem storage",
 				slog.String("endpoint", cfg.MinIOEndpoint),
 				slog.String("error", err.Error()),
 			)
+			// Fallback to local storage in dev/test
+			ls, lerr := storage.NewLocalStorageClient("./storage", "")
+			if lerr != nil {
+				slog.Error("failed to initialize local storage fallback", slog.String("error", lerr.Error()))
+			} else {
+				fileStorage = ls
+			}
 		} else {
-			minioClient = mc
+			fileStorage = mc
 		}
 	} else {
-		slog.Warn("MinIO not configured — document upload/download disabled")
+		slog.Warn("MinIO not configured — falling back to local filesystem storage")
+		ls, _ := storage.NewLocalStorageClient("./storage", "")
+		fileStorage = ls
 	}
 
 
@@ -289,7 +298,11 @@ func main() {
 	// --- 12. Initialize services ---
 	auditSvc := service.NewAuditService(auditRepo, logger)
 	notifSvc := service.NewNotificationService(notificationRepo, notificationPrefRepo, userRepo, smsMgr, logger)
-	authSvc := service.NewAuthService(userRepo, crewRepo, jwtManager, txMgr, logger)
+	tenantSvc := service.NewTenantService(orgRepo, jobTypeRepo, payScheduleRepo, logger)
+	authSvc := service.NewAuthService(userRepo, crewRepo, jwtManager, txMgr, logger,
+		service.WithOrgRepo(orgRepo),
+		service.WithTenantSvc(tenantSvc),
+	)
 
 	// --- 12a. Email Provider Strategy ---
 	var emailProviders []email.Provider
@@ -369,12 +382,12 @@ func main() {
 	} else {
 		slog.Warn("no identity providers configured — identity verification disabled")
 	}
-	crewSvc := service.NewCrewService(crewRepo, crewIdProvider, logger)
+	crewSvc := service.NewCrewService(crewRepo, membershipRepo, crewIdProvider, logger)
 
 	walletSvc := service.NewWalletService(walletRepo, crewRepo, auditSvc, logger)
 	assignmentSvc := service.NewAssignmentService(assignmentRepo, earningRepo, walletSvc, notifSvc, txMgr, logger)
 	saccoSvc := service.NewOrganizationService(orgRepo, membershipRepo, floatRepo, auditSvc, logger)
-	tenantSvc := service.NewTenantService(orgRepo, jobTypeRepo, payScheduleRepo, logger)
+
 	vehicleSvc := service.NewVehicleService(vehicleRepo, logger)
 	routeSvc := service.NewRouteService(routeRepo, logger)
 	docSvc := service.NewDocumentService(documentRepo, logger)
@@ -401,7 +414,7 @@ func main() {
 	vehicleHandler := handler.NewVehicleHandler(vehicleSvc)
 	routeHandler := handler.NewRouteHandler(routeSvc)
 	notifHandler := handler.NewNotificationHandler(notifSvc)
-	docHandler := handler.NewDocumentHandler(docSvc, minioClient)
+	docHandler := handler.NewDocumentHandler(docSvc, fileStorage)
 	earningHandler := handler.NewEarningHandler(earningRepo)
 	creditHandler := handler.NewCreditHandler(creditSvc)
 	loanHandler := handler.NewLoanHandler(loanSvc)
@@ -523,6 +536,9 @@ func main() {
 	router.Use(middleware.Logger(logger))
 	router.Use(middleware.Recovery(logger))
 
+	// Serve local uploads if they exist
+	router.Static("/uploads", "./storage")
+
 	// --- 14. Register routes ---
 
 	// Root redirect → Swagger docs
@@ -598,6 +614,8 @@ func main() {
 			adminAssignments.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin))
 			{
 				adminAssignments.POST("", assignmentHandler.Create)
+			adminAssignments.POST("/bulk", assignmentHandler.BulkCreate)
+				adminAssignments.PUT("/:id", assignmentHandler.Update)
 				adminAssignments.POST("/:id/complete", assignmentHandler.Complete)
 				adminAssignments.POST("/:id/cancel", assignmentHandler.Cancel)
 				adminAssignments.POST("/:id/reassign", assignmentHandler.Reassign)
@@ -724,6 +742,8 @@ func main() {
 		{
 			payrollRoutes.POST("", payrollHandler.Create)
 			payrollRoutes.GET("", payrollHandler.List)
+			// Static paths MUST be registered before /:id to avoid Gin matching "periods" as a UUID
+			payrollRoutes.GET("/periods", payrollHandler.ListPeriods)
 			payrollRoutes.GET("/:id", payrollHandler.GetByID)
 			payrollRoutes.GET("/:id/entries", payrollHandler.GetEntries)
 			payrollRoutes.POST("/:id/process", payrollHandler.Process)

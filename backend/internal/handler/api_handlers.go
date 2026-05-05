@@ -55,12 +55,17 @@ func (h *AssignmentHandler) Create(c *gin.Context) {
 
 	claims := middleware.GetClaims(c)
 
+	// Auto-populate org ID from JWT claims if not provided in body
+	if req.OrganizationID == uuid.Nil && claims.OrganizationID != nil {
+		req.OrganizationID = *claims.OrganizationID
+	}
+	if req.OrganizationID == uuid.Nil {
+		BadRequest(c, "organization_id (sacco_id) is required")
+		return
+	}
+
 	// Gap 4: SACCO_ADMIN can only create assignments within their own SACCO
-	if claims.SystemRole == types.RoleSaccoAdmin {
-		if claims.OrganizationID == nil {
-			Forbidden(c, "SACCO admin has no SACCO assigned")
-			return
-		}
+	if claims.SystemRole == types.RoleSaccoAdmin && claims.OrganizationID != nil {
 		if req.OrganizationID != *claims.OrganizationID {
 			Forbidden(c, "Cannot create assignments for a different SACCO")
 			return
@@ -171,6 +176,63 @@ func (h *AssignmentHandler) GetByID(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, dto.AssignmentToResponse(assignment))
 }
 
+// Update godoc
+// @Summary Update
+// @Description Update an existing assignment
+// @Tags Assignment
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/assignments/{id} [put]
+func (h *AssignmentHandler) Update(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		BadRequest(c, "Invalid assignment ID")
+		return
+	}
+
+	var req dto.UpdateAssignmentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		BadRequest(c, err.Error())
+		return
+	}
+
+	input := service.UpdateAssignmentInput{
+		VehicleID:        req.VehicleID,
+		EarningModel:     req.EarningModel,
+		FixedAmountCents: req.FixedAmountCents,
+		CommissionRate:   req.CommissionRate,
+		WorkType:         req.WorkType,
+		WorkSite:         req.WorkSite,
+		ProjectRef:       req.ProjectRef,
+		HourlyRateCents:  req.HourlyRateCents,
+		Notes:            req.Notes,
+	}
+
+	if req.ShiftDate != nil {
+		d, err := time.Parse("2006-01-02", *req.ShiftDate)
+		if err != nil {
+			BadRequest(c, "shift_date must be YYYY-MM-DD format")
+			return
+		}
+		input.ShiftDate = &d
+	}
+	if req.ShiftStart != nil {
+		t, err := time.Parse(time.RFC3339, *req.ShiftStart)
+		if err != nil {
+			BadRequest(c, "shift_start must be RFC3339 format")
+			return
+		}
+		input.ShiftStart = &t
+	}
+
+	updated, err := h.assignmentSvc.UpdateAssignment(c.Request.Context(), id, input)
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, dto.AssignmentToResponse(updated))
+}
 // List godoc
 // @Summary List
 // @Description List AssignmentHandler
@@ -317,6 +379,75 @@ func (h *AssignmentHandler) CheckOut(c *gin.Context) {
 		return
 	}
 	SuccessResponse(c, http.StatusOK, dto.AssignmentToResponse(result))
+}
+
+// BulkCreate godoc
+// @Summary Bulk-create assignments
+// @Description Create multiple assignments in a single request
+// @Tags Assignment
+// @Accept json
+// @Produce json
+// @Success 201 {object} map[string]interface{}
+// @Router /api/v1/assignments/bulk [post]
+func (h *AssignmentHandler) BulkCreate(c *gin.Context) {
+	var req dto.BulkCreateAssignmentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		BadRequest(c, err.Error())
+		return
+	}
+
+	if len(req.Assignments) == 0 {
+		BadRequest(c, "assignments array cannot be empty")
+		return
+	}
+
+	claims := middleware.GetClaims(c)
+
+	inputs := make([]service.CreateAssignmentInput, 0, len(req.Assignments))
+	for i, item := range req.Assignments {
+		shiftDate, err := time.Parse("2006-01-02", item.ShiftDate)
+		if err != nil {
+			BadRequest(c, fmt.Sprintf("assignments[%d].shift_date must be YYYY-MM-DD format", i))
+			return
+		}
+		shiftStart, err := time.Parse(time.RFC3339, item.ShiftStart)
+		if err != nil {
+			BadRequest(c, fmt.Sprintf("assignments[%d].shift_start must be RFC3339 format", i))
+			return
+		}
+
+		// SACCO_ADMIN can only create within their own org (if org is assigned)
+		if claims.SystemRole == types.RoleSaccoAdmin && claims.OrganizationID != nil {
+			if item.OrganizationID != *claims.OrganizationID {
+				Forbidden(c, "Cannot create assignments for a different SACCO")
+				return
+			}
+		}
+
+		inputs = append(inputs, service.CreateAssignmentInput{
+			CrewMemberID:     item.CrewMemberID,
+			OrganizationID:   item.OrganizationID,
+			WorkType:         item.WorkType,
+			ShiftDate:        shiftDate,
+			ShiftStart:       shiftStart,
+			EarningModel:     item.EarningModel,
+			FixedAmountCents: item.FixedAmountCents,
+			CommissionRate:   item.CommissionRate,
+			CreatedByID:      claims.UserID,
+		})
+	}
+
+	created, bulkErrors, err := h.assignmentSvc.BulkCreateAssignments(c.Request.Context(), inputs)
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+
+	SuccessResponse(c, http.StatusCreated, gin.H{
+		"created": created,
+		"errors":  bulkErrors,
+		"total":   len(req.Assignments),
+	})
 }
 
 // --- Wallet Handler ---
@@ -694,13 +825,17 @@ func (h *CrewHandler) Create(c *gin.Context) {
 		return
 	}
 
+	// Extract org ID from JWT claims so the new member is auto-linked
+	claims := middleware.GetClaims(c)
+
 	crew, err := h.crewSvc.CreateCrewMember(c.Request.Context(), service.CreateCrewInput{
-		NationalID: req.NationalID,
-		FirstName:  req.FirstName,
-		LastName:   req.LastName,
-		Role:       req.Role,
-		JobTypeID:  req.JobTypeID,
-		JobTitle:   req.JobTitle,
+		NationalID:     req.NationalID,
+		FirstName:      req.FirstName,
+		LastName:       req.LastName,
+		Role:           req.Role,
+		JobTypeID:      req.JobTypeID,
+		JobTitle:       req.JobTitle,
+		OrganizationID: claims.OrganizationID,
 	})
 	if err != nil {
 		MapServiceError(c, err)
@@ -882,15 +1017,19 @@ func (h *CrewHandler) BulkImport(c *gin.Context) {
 		return
 	}
 
+	// Extract org ID from JWT claims
+	claims := middleware.GetClaims(c)
+
 	inputs := make([]service.CreateCrewInput, len(req.Members))
 	for i, m := range req.Members {
 		inputs[i] = service.CreateCrewInput{
-			NationalID: m.NationalID,
-			FirstName:  m.FirstName,
-			LastName:   m.LastName,
-			Role:       m.Role,
-			JobTypeID:  m.JobTypeID,
-			JobTitle:   m.JobTitle,
+			NationalID:     m.NationalID,
+			FirstName:      m.FirstName,
+			LastName:       m.LastName,
+			Role:           m.Role,
+			JobTypeID:      m.JobTypeID,
+			JobTitle:       m.JobTitle,
+			OrganizationID: claims.OrganizationID,
 		}
 	}
 

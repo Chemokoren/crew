@@ -16,20 +16,15 @@ import (
 )
 
 type DocumentHandler struct {
-	docSvc      *service.DocumentService
-	minioClient *storage.MinIOClient
+	docSvc  *service.DocumentService
+	storage storage.Storage
 }
 
-func NewDocumentHandler(svc *service.DocumentService, minioClient *storage.MinIOClient) *DocumentHandler {
-	return &DocumentHandler{docSvc: svc, minioClient: minioClient}
+func NewDocumentHandler(svc *service.DocumentService, store storage.Storage) *DocumentHandler {
+	return &DocumentHandler{docSvc: svc, storage: store}
 }
 
 func (h *DocumentHandler) Upload(c *gin.Context) {
-	if h.minioClient == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "File storage (MinIO) is not available"})
-		return
-	}
-
 	claims := middleware.GetClaims(c)
 	if claims == nil {
 		Unauthorized(c, "Authentication required")
@@ -79,8 +74,8 @@ func (h *DocumentHandler) Upload(c *gin.Context) {
 	contentType := file.Header.Get("Content-Type")
 	objectName := fmt.Sprintf("%s/%s", uuid.New().String(), file.Filename)
 
-	// Upload to MinIO
-	path, err := h.minioClient.UploadFile(c.Request.Context(), objectName, f, file.Size, contentType)
+	// Upload to storage
+	path, err := h.storage.UploadFile(c.Request.Context(), objectName, f, file.Size, contentType)
 	if err != nil {
 		MapServiceError(c, fmt.Errorf("upload to storage: %w", err))
 		return
@@ -108,11 +103,6 @@ func (h *DocumentHandler) Upload(c *gin.Context) {
 }
 
 func (h *DocumentHandler) Download(c *gin.Context) {
-	if h.minioClient == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "File storage (MinIO) is not available"})
-		return
-	}
-
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		BadRequest(c, "Invalid document ID")
@@ -125,7 +115,7 @@ func (h *DocumentHandler) Download(c *gin.Context) {
 		return
 	}
 
-	url, err := h.minioClient.PresignedDownloadURL(c.Request.Context(), doc.StoragePath, time.Hour)
+	url, err := h.storage.PresignedDownloadURL(c.Request.Context(), doc.StoragePath, time.Hour)
 	if err != nil {
 		MapServiceError(c, fmt.Errorf("generate download link: %w", err))
 		return

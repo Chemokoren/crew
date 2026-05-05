@@ -19,17 +19,18 @@ import { ConfirmDialogService } from '../../../shared/components/confirm-dialog/
       </div>
 
       <!-- Filters -->
-      <div class="filters-bar">
-        <select class="form-select" [(ngModel)]="filterSacco" (ngModelChange)="load()" id="filter-sacco" style="max-width:220px;">
-          <option value="">All Organizations</option>
-          @for (s of saccos(); track s.id) { <option [value]="s.id">{{ s.name }}</option> }
-        </select>
-        <select class="form-select" [(ngModel)]="filterType" (ngModelChange)="applyLocalFilter()" id="filter-type" style="max-width:180px;">
-          <option value="">All Types</option>
-          <option value="MATATU">Matatu</option>
-          <option value="BODA">Boda Boda</option>
-          <option value="TUK_TUK">Tuk Tuk</option>
-        </select>
+      <div class="filters-bar" style="display:flex;gap:var(--space-md);flex-wrap:wrap;align-items:center;">
+        <div style="min-width:220px;max-width:280px;flex:1;position:relative;z-index:52;">
+          <app-autocomplete [options]="filterSaccoOptions()" [ngModel]="filterSacco" (ngModelChange)="filterSacco=$event;load()" placeholder="All Organizations" inputId="filter-sacco"></app-autocomplete>
+        </div>
+        <div style="min-width:180px;max-width:240px;flex:1;position:relative;z-index:51;">
+          <app-autocomplete [options]="filterTypeOptions()" [ngModel]="filterType" (ngModelChange)="filterType=$event;applyLocalFilter()" placeholder="All Types" inputId="filter-type"></app-autocomplete>
+        </div>
+        @if (filterSacco || filterType) {
+          <button class="btn btn-ghost btn-sm" (click)="filterSacco='';filterType='';load()" style="white-space:nowrap;">
+            <span class="material-icons-round" style="font-size:16px;">clear</span> Clear Filters
+          </button>
+        }
       </div>
 
       @if (loading()) { @for(i of [1,2,3];track i){<div class="skeleton" style="height:56px;margin:4px 0;"></div>} }
@@ -75,6 +76,19 @@ export class VehicleListComponent implements OnInit {
   form = { registration_no: '', organization_id: '', vehicle_type: 'MATATU', capacity: 14 };
 
   saccoOptions = computed<AutocompleteOption[]>(() => this.saccos().map(s => ({ value: s.id, label: s.name, sublabel: `Reg: ${s.registration_number||'N/A'}`, searchText: `${s.name} ${s.registration_number||''}` })));
+
+  // Filter autocomplete options (include 'All' as empty value)
+  filterSaccoOptions = computed<AutocompleteOption[]>(() => [
+    { value: '', label: 'All Organizations', searchText: 'All Organizations' },
+    ...this.saccos().map(s => ({ value: s.id, label: s.name, sublabel: s.county || '', searchText: `${s.name} ${s.registration_number||''} ${s.county||''}` })),
+  ]);
+  filterTypeOptions = signal<AutocompleteOption[]>([
+    { value: '', label: 'All Types', searchText: 'All Types' },
+    { value: 'MATATU', label: 'Matatu', searchText: 'Matatu MATATU' },
+    { value: 'BODA', label: 'Boda Boda', searchText: 'Boda Boda BODA' },
+    { value: 'TUK_TUK', label: 'Tuk Tuk', searchText: 'Tuk Tuk TUK_TUK' },
+  ]);
+
   typeOptions = signal<AutocompleteOption[]>([
     { value: 'MATATU', label: 'Matatu', searchText: 'Matatu MATATU' },
     { value: 'BODA', label: 'Boda Boda', searchText: 'Boda Boda BODA' },

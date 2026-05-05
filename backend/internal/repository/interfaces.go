@@ -174,6 +174,7 @@ type PayrollRepository interface {
 	GetPayPeriodByID(ctx context.Context, id uuid.UUID) (*models.PayPeriod, error)
 	UpdatePayPeriod(ctx context.Context, period *models.PayPeriod) error
 	ListPayPeriods(ctx context.Context, scheduleID uuid.UUID, page, perPage int) ([]models.PayPeriod, int64, error)
+	ListPayPeriodsByOrg(ctx context.Context, orgID uuid.UUID, page, perPage int) ([]models.PayPeriod, int64, error)
 }
 
 // MembershipRepository handles crew-SACCO membership data access.

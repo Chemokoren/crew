@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/kibsoft/amy-mis/internal/database"
 	"github.com/kibsoft/amy-mis/internal/models"
 	"github.com/kibsoft/amy-mis/pkg/errs"
 	"gorm.io/gorm"
@@ -20,8 +21,16 @@ func NewSACCORepo(db *gorm.DB) *SACCORepo {
 	return &SACCORepo{db: db}
 }
 
+// getDB returns the transaction from context if present, otherwise the default DB.
+func (r *SACCORepo) getDB(ctx context.Context) *gorm.DB {
+	if tx := database.ExtractTx(ctx); tx != nil {
+		return tx.WithContext(ctx)
+	}
+	return r.db.WithContext(ctx)
+}
+
 func (r *SACCORepo) Create(ctx context.Context, sacco *models.SACCO) error {
-	if err := r.db.WithContext(ctx).Create(sacco).Error; err != nil {
+	if err := r.getDB(ctx).Create(sacco).Error; err != nil {
 		return fmt.Errorf("create sacco: %w", err)
 	}
 	return nil
@@ -29,7 +38,7 @@ func (r *SACCORepo) Create(ctx context.Context, sacco *models.SACCO) error {
 
 func (r *SACCORepo) GetByID(ctx context.Context, id uuid.UUID) (*models.SACCO, error) {
 	var sacco models.SACCO
-	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&sacco).Error; err != nil {
+	if err := r.getDB(ctx).Where("id = ?", id).First(&sacco).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errs.ErrNotFound
 		}
@@ -39,14 +48,14 @@ func (r *SACCORepo) GetByID(ctx context.Context, id uuid.UUID) (*models.SACCO, e
 }
 
 func (r *SACCORepo) Update(ctx context.Context, sacco *models.SACCO) error {
-	if err := r.db.WithContext(ctx).Save(sacco).Error; err != nil {
+	if err := r.getDB(ctx).Save(sacco).Error; err != nil {
 		return fmt.Errorf("update sacco: %w", err)
 	}
 	return nil
 }
 
 func (r *SACCORepo) Delete(ctx context.Context, id uuid.UUID) error {
-	if err := r.db.WithContext(ctx).Where("id = ?", id).Delete(&models.SACCO{}).Error; err != nil {
+	if err := r.getDB(ctx).Where("id = ?", id).Delete(&models.SACCO{}).Error; err != nil {
 		return fmt.Errorf("delete sacco: %w", err)
 	}
 	return nil
@@ -56,7 +65,7 @@ func (r *SACCORepo) List(ctx context.Context, page, perPage int, search string) 
 	var saccos []models.SACCO
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&models.SACCO{})
+	query := r.getDB(ctx).Model(&models.SACCO{})
 	if search != "" {
 		s := "%" + search + "%"
 		query = query.Where("(name ILIKE ? OR registration_number ILIKE ? OR county ILIKE ?)", s, s, s)

@@ -39,6 +39,7 @@ func GetIndustryTemplate(industry IndustryType) IndustryTemplate {
 				{Code: "BOOKING_AGENT", DisplayName: "Booking Agent", Category: JobCategoryFacilitator},
 				{Code: "DISPATCHER", DisplayName: "Dispatcher", Category: JobCategoryFacilitator},
 				{Code: "SUPERVISOR", DisplayName: "Fleet Supervisor", Category: JobCategorySupervisor},
+				{Code: "OFFICE_ADMIN", DisplayName: "Office Administrator", Category: JobCategorySupport},
 			},
 			UILabels: map[string]string{
 				"assignment": "Shift", "work_site": "Route", "worker": "Crew Member",

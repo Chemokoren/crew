@@ -21,7 +21,7 @@ func NewVehicleService(vehicleRepo repository.VehicleRepository, logger *slog.Lo
 }
 
 type CreateVehicleInput struct {
-	OrganizationID        uuid.UUID          `json:"sacco_id" binding:"required"`
+	OrganizationID        uuid.UUID          `json:"sacco_id"`
 	RegistrationNo string             `json:"registration_no" binding:"required"`
 	VehicleType    models.VehicleType `json:"vehicle_type" binding:"required"`
 	RouteID        *uuid.UUID         `json:"route_id"`

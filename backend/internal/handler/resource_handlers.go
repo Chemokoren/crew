@@ -83,6 +83,18 @@ func (h *OrganizationHandler) Delete(c *gin.Context) {
 }
 
 func (h *OrganizationHandler) List(c *gin.Context) {
+	// SACCO_ADMIN: only return their own organization
+	claims := middleware.GetClaims(c)
+	if claims != nil && claims.SystemRole == "SACCO_ADMIN" && claims.OrganizationID != nil {
+		sacco, err := h.saccoSvc.GetSACCO(c.Request.Context(), *claims.OrganizationID)
+		if err != nil {
+			MapServiceError(c, err)
+			return
+		}
+		ListResponse(c, []models.SACCO{*sacco}, buildMeta(1, 1, 1))
+		return
+	}
+
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "20"))
 	search := c.Query("search")
@@ -264,6 +276,17 @@ func (h *VehicleHandler) Create(c *gin.Context) {
 		BadRequest(c, err.Error())
 		return
 	}
+	// Auto-populate org ID from JWT claims if not provided in body
+	if req.OrganizationID == uuid.Nil {
+		claims := middleware.GetClaims(c)
+		if claims != nil && claims.OrganizationID != nil {
+			req.OrganizationID = *claims.OrganizationID
+		}
+	}
+	if req.OrganizationID == uuid.Nil {
+		BadRequest(c, "organization_id (sacco_id) is required")
+		return
+	}
 	vehicle, err := h.vehicleSvc.CreateVehicle(c.Request.Context(), req)
 	if err != nil {
 		MapServiceError(c, err)
@@ -354,7 +377,11 @@ func (h *VehicleHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "20"))
 	var orgID *uuid.UUID
-	if s := c.Query("sacco_id"); s != "" {
+	// SACCO_ADMIN: auto-scope to their own organization
+	claims := middleware.GetClaims(c)
+	if claims != nil && claims.SystemRole == "SACCO_ADMIN" && claims.OrganizationID != nil {
+		orgID = claims.OrganizationID
+	} else if s := c.Query("sacco_id"); s != "" {
 		id, _ := uuid.Parse(s)
 		orgID = &id
 	}
@@ -509,8 +536,26 @@ func NewPayrollHandler(svc *service.PayrollService) *PayrollHandler {
 func (h *PayrollHandler) Create(c *gin.Context) {
 	var req service.CreatePayrollRunInput
 	if err := c.ShouldBindJSON(&req); err != nil {
-		BadRequest(c, err.Error())
-		return
+		// Auto-inject organization_id from JWT for SACCO_ADMIN users
+		claims := GetClaimsFromContext(c)
+		if claims != nil && claims.OrganizationID != nil && req.OrganizationID == uuid.Nil {
+			req.OrganizationID = *claims.OrganizationID
+			// Re-validate remaining fields
+			if req.PeriodStart == "" || req.PeriodEnd == "" {
+				BadRequest(c, err.Error())
+				return
+			}
+		} else {
+			BadRequest(c, err.Error())
+			return
+		}
+	}
+	// Fallback: inject from JWT if still empty
+	if req.OrganizationID == uuid.Nil {
+		claims := GetClaimsFromContext(c)
+		if claims != nil && claims.OrganizationID != nil {
+			req.OrganizationID = *claims.OrganizationID
+		}
 	}
 	run, err := h.payrollSvc.CreatePayrollRun(c.Request.Context(), req)
 	if err != nil {
@@ -554,7 +599,11 @@ func (h *PayrollHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "20"))
 	var orgID *uuid.UUID
-	if s := c.Query("sacco_id"); s != "" {
+	// SACCO_ADMIN: auto-scope to their own organization
+	claims := middleware.GetClaims(c)
+	if claims != nil && claims.SystemRole == "SACCO_ADMIN" && claims.OrganizationID != nil {
+		orgID = claims.OrganizationID
+	} else if s := c.Query("sacco_id"); s != "" {
 		id, _ := uuid.Parse(s)
 		orgID = &id
 	}
@@ -662,6 +711,39 @@ func (h *PayrollHandler) Submit(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, run)
 }
 
+// ListPeriods godoc
+// @Summary ListPeriods
+// @Description List pay periods for an organization
+// @Tags Payroll
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/payroll/periods [get]
+func (h *PayrollHandler) ListPeriods(c *gin.Context) {
+	orgIDStr := c.Query("organization_id")
+	if orgIDStr == "" {
+		claims := GetClaimsFromContext(c)
+		if claims != nil && claims.OrganizationID != nil {
+			orgIDStr = claims.OrganizationID.String()
+		}
+	}
+	if orgIDStr == "" {
+		BadRequest(c, "organization_id is required")
+		return
+	}
+	orgID, err := uuid.Parse(orgIDStr)
+	if err != nil {
+		BadRequest(c, "Invalid organization_id")
+		return
+	}
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "100"))
+	periods, total, err := h.payrollSvc.ListPayPeriodsByOrg(c.Request.Context(), orgID, page, perPage)
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+	ListResponse(c, periods, buildMeta(page, perPage, total))
+}
 // --- Notification Handler ---
 
 type NotificationHandler struct {

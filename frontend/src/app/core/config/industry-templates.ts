@@ -23,6 +23,7 @@ export const INDUSTRY_TEMPLATES: Record<string, IndustryTemplate> = {
       { code: 'BOOKING_AGENT', display_name: 'Booking Agent', category: 'FACILITATOR' },
       { code: 'DISPATCHER', display_name: 'Dispatcher', category: 'FACILITATOR' },
       { code: 'SUPERVISOR', display_name: 'Fleet Supervisor', category: 'SUPERVISOR' },
+      { code: 'OFFICE_ADMIN', display_name: 'Office Administrator', category: 'SUPPORT' },
     ],
     ui_labels: {
       assignment: 'Shift', work_site: 'Route', worker: 'Crew Member',

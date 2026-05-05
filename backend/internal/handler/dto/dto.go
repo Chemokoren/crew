@@ -23,6 +23,12 @@ type RegisterRequest struct {
 	NationalID string           `json:"national_id"`
 	CrewRole   models.CrewRole  `json:"crew_role"`
 	JobTypeID  *uuid.UUID       `json:"job_type_id,omitempty"`
+	// Organization fields (required when role == SACCO_ADMIN)
+	OrganizationName  string              `json:"organization_name"`
+	OrganizationRegNo string              `json:"organization_reg_no"`
+	OrganizationCounty string             `json:"organization_county"`
+	OrganizationPhone string              `json:"organization_phone"`
+	IndustryType      models.IndustryType `json:"industry_type"`
 }
 
 type LoginRequest struct {
@@ -52,7 +58,7 @@ type UserResponse struct {
 	Email        string           `json:"email,omitempty"`
 	SystemRole   types.SystemRole `json:"system_role"`
 	CrewMemberID *uuid.UUID       `json:"crew_member_id,omitempty"`
-	OrganizationID      *uuid.UUID       `json:"sacco_id,omitempty"`
+	OrganizationID      *uuid.UUID       `json:"organization_id,omitempty"`
 	IsActive     bool             `json:"is_active"`
 	LastLoginAt  *time.Time       `json:"last_login_at,omitempty"`
 	CreatedAt    time.Time        `json:"created_at"`
@@ -128,7 +134,7 @@ type CreateCrewRequest struct {
 	NationalID string          `json:"national_id" binding:"required"`
 	FirstName  string          `json:"first_name" binding:"required"`
 	LastName   string          `json:"last_name" binding:"required"`
-	Role       models.CrewRole `json:"role" binding:"required,oneof=DRIVER CONDUCTOR RIDER OTHER"`
+	Role       models.CrewRole `json:"role" binding:"required"`
 	JobTypeID  *uuid.UUID      `json:"job_type_id,omitempty"`
 	JobTitle   string          `json:"job_title,omitempty"`
 }
@@ -247,8 +253,8 @@ type AssignmentResponse struct {
 	CrewMemberName        string                 `json:"crew_member_name"`
 	VehicleID             *uuid.UUID             `json:"vehicle_id,omitempty"`
 	VehicleRegistrationNo string                 `json:"vehicle_registration_no,omitempty"`
-	OrganizationID               uuid.UUID              `json:"sacco_id"`
-	SaccoName             string                 `json:"sacco_name"`
+	OrganizationID               uuid.UUID              `json:"organization_id"`
+	OrganizationName             string                 `json:"organization_name"`
 	RouteID               *uuid.UUID             `json:"route_id,omitempty"`
 	RouteName             string                 `json:"route_name,omitempty"`
 	ShiftDate             time.Time              `json:"shift_date"`
@@ -319,7 +325,7 @@ func AssignmentToResponse(a *models.Assignment) AssignmentResponse {
 		resp.VehicleRegistrationNo = a.Vehicle.RegistrationNo
 	}
 	if a.Organization.ID != (uuid.UUID{}) {
-		resp.SaccoName = a.Organization.Name
+		resp.OrganizationName = a.Organization.Name
 	}
 	if a.Route != nil && a.Route.ID != (uuid.UUID{}) {
 		resp.RouteName = a.Route.Name
@@ -339,7 +345,7 @@ func AssignmentListToResponse(assignments []models.Assignment) []AssignmentRespo
 type CreateAssignmentRequest struct {
 	CrewMemberID      uuid.UUID              `json:"crew_member_id" binding:"required"`
 	VehicleID         *uuid.UUID             `json:"vehicle_id"`
-	OrganizationID           uuid.UUID              `json:"sacco_id" binding:"required"`
+	OrganizationID           uuid.UUID              `json:"organization_id"`
 	RouteID           *uuid.UUID             `json:"route_id"`
 	ShiftDate         string                 `json:"shift_date" binding:"required"`
 	ShiftStart        string                 `json:"shift_start" binding:"required"`
@@ -364,6 +370,38 @@ type CompleteAssignmentRequest struct {
 	HoursWorked       *float64 `json:"hours_worked"`
 	UnitsCompleted    *int     `json:"units_completed"`
 	OvertimeHours     *float64 `json:"overtime_hours"`
+}
+
+// UpdateAssignmentRequest supports partial updates to a scheduled/active assignment.
+type UpdateAssignmentRequest struct {
+	VehicleID         *uuid.UUID          `json:"vehicle_id"`
+	ShiftDate         *string             `json:"shift_date"`
+	ShiftStart        *string             `json:"shift_start"`
+	EarningModel      *models.EarningModel `json:"earning_model"`
+	FixedAmountCents  *int64              `json:"fixed_amount_cents"`
+	CommissionRate    *float64            `json:"commission_rate"`
+	WorkType          *models.WorkType    `json:"work_type"`
+	WorkSite          *string             `json:"work_site"`
+	ProjectRef        *string             `json:"project_ref"`
+	HourlyRateCents   *int64              `json:"hourly_rate_cents"`
+	Notes             *string             `json:"notes"`
+}
+
+// BulkCreateAssignmentItem represents a single assignment within a bulk-create request.
+type BulkCreateAssignmentItem struct {
+	CrewMemberID      uuid.UUID              `json:"crew_member_id" binding:"required"`
+	OrganizationID    uuid.UUID              `json:"organization_id" binding:"required"`
+	WorkType          models.WorkType        `json:"work_type"`
+	ShiftDate         string                 `json:"shift_date" binding:"required"`
+	ShiftStart        string                 `json:"shift_start" binding:"required"`
+	EarningModel      models.EarningModel    `json:"earning_model" binding:"required"`
+	FixedAmountCents  int64                  `json:"fixed_amount_cents"`
+	CommissionRate    float64                `json:"commission_rate"`
+}
+
+// BulkCreateAssignmentRequest is the top-level request body for POST /assignments/bulk.
+type BulkCreateAssignmentRequest struct {
+	Assignments []BulkCreateAssignmentItem `json:"assignments" binding:"required,min=1"`
 }
 
 // --- Wallet DTOs ---

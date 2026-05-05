@@ -66,7 +66,7 @@ func (r *TenantJobTypeRepo) ListByOrganization(ctx context.Context, orgID uuid.U
 func (r *TenantJobTypeRepo) GetByCode(ctx context.Context, orgID uuid.UUID, code string) (*models.TenantJobType, error) {
 	var jt models.TenantJobType
 	if err := r.db.WithContext(ctx).
-		Where("sacco_id = ? AND code = ? AND is_active = true", orgID, code).
+		Where("sacco_id = ? AND code = ?", orgID, code).
 		First(&jt).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errs.ErrNotFound

@@ -131,27 +131,52 @@ func (s *TenantService) BootstrapIndustry(ctx context.Context, orgID uuid.UUID, 
 	}
 	result.IndustrySet = true
 
-	// Seed job types (only if none exist — respect customization)
+	// Seed job types: deactivate existing ones and seed the new template's defaults.
+	// This ensures switching industries replaces the old roles with the correct ones.
 	existingJobs, err := s.jobTypeRepo.ListByOrganization(ctx, orgID)
-	if err == nil && len(existingJobs) == 0 {
-		for i, dj := range template.DefaultJobTypes {
-			jt := &models.TenantJobType{
-				OrganizationID: orgID,
-				Code:           dj.Code,
-				DisplayName:    dj.DisplayName,
-				Category:       dj.Category,
-				IsActive:       true,
-				SortOrder:      i,
+	if err == nil && len(existingJobs) > 0 {
+		for _, jt := range existingJobs {
+			jt := jt // copy for pointer
+			jt.IsActive = false
+			if err := s.jobTypeRepo.Update(ctx, &jt); err != nil {
+				s.logger.Warn("bootstrap: failed to deactivate old job type",
+					slog.String("code", jt.Code), slog.Any("err", err))
 			}
+		}
+		s.logger.Info("bootstrap: deactivated old job types",
+			slog.String("org_id", orgID.String()),
+			slog.Int("count", len(existingJobs)),
+		)
+	}
+	for i, dj := range template.DefaultJobTypes {
+		jt := &models.TenantJobType{
+			OrganizationID: orgID,
+			Code:           dj.Code,
+			DisplayName:    dj.DisplayName,
+			Category:       dj.Category,
+			IsActive:       true,
+			SortOrder:      i,
+		}
+		// Check if a deactivated one with the same code exists — reactivate instead of creating duplicate
+		existing, existErr := s.jobTypeRepo.GetByCode(ctx, orgID, dj.Code)
+		if existErr == nil && existing != nil {
+			existing.DisplayName = dj.DisplayName
+			existing.Category = dj.Category
+			existing.IsActive = true
+			existing.SortOrder = i
+			if err := s.jobTypeRepo.Update(ctx, existing); err != nil {
+				s.logger.Warn("bootstrap: failed to reactivate job type",
+					slog.String("code", dj.Code), slog.Any("err", err))
+				continue
+			}
+		} else {
 			if err := s.jobTypeRepo.Create(ctx, jt); err != nil {
 				s.logger.Warn("bootstrap: failed to seed job type",
 					slog.String("code", dj.Code), slog.Any("err", err))
 				continue
 			}
-			result.JobTypesSeeded = append(result.JobTypesSeeded, dj.Code)
 		}
-	} else if len(existingJobs) > 0 {
-		result.JobTypesSkipped = true
+		result.JobTypesSeeded = append(result.JobTypesSeeded, dj.Code)
 	}
 
 	// Seed pay schedules (only if none exist)

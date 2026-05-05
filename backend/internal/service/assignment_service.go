@@ -302,7 +302,12 @@ func (s *AssignmentService) CompleteAssignment(ctx context.Context, assignmentID
 func (s *AssignmentService) calculateEarnings(a *models.Assignment, input CompleteAssignmentInput) (int64, models.EarningType, error) {
 	switch a.EarningModel {
 	case models.EarningFixed:
-		return a.FixedAmountCents, models.EarningTypeShiftPay, nil
+		amount := a.FixedAmountCents
+		if amount <= 0 && input.TotalRevenueCents > 0 {
+			// Admin can override at completion time if not pre-set
+			amount = input.TotalRevenueCents
+		}
+		return amount, models.EarningTypeShiftPay, nil
 
 	case models.EarningCommission:
 		amount := int64(float64(input.TotalRevenueCents) * a.CommissionRate)
@@ -346,7 +351,11 @@ func (s *AssignmentService) calculateEarnings(a *models.Assignment, input Comple
 		return int64(units) * a.PerUnitRateCents, models.EarningTypeTaskPay, nil
 
 	case models.EarningSalary:
-		return a.FixedAmountCents, models.EarningTypeSalary, nil
+		amount := a.FixedAmountCents
+		if amount <= 0 && input.TotalRevenueCents > 0 {
+			amount = input.TotalRevenueCents
+		}
+		return amount, models.EarningTypeSalary, nil
 
 	default:
 		return 0, "", fmt.Errorf("%w: unknown earning model %q", ErrValidation, a.EarningModel)
@@ -449,6 +458,73 @@ func (s *AssignmentService) ListAssignments(ctx context.Context, filter reposito
 	return s.assignmentRepo.List(ctx, filter, page, perPage)
 }
 
+// UpdateAssignmentInput holds partial update data for an assignment.
+type UpdateAssignmentInput struct {
+	VehicleID        *uuid.UUID
+	ShiftDate        *time.Time
+	ShiftStart       *time.Time
+	EarningModel     *models.EarningModel
+	FixedAmountCents *int64
+	CommissionRate   *float64
+	WorkType         *models.WorkType
+	WorkSite         *string
+	ProjectRef       *string
+	HourlyRateCents  *int64
+	Notes            *string
+}
+
+// UpdateAssignment applies partial updates to a SCHEDULED or ACTIVE assignment.
+func (s *AssignmentService) UpdateAssignment(ctx context.Context, id uuid.UUID, input UpdateAssignmentInput) (*models.Assignment, error) {
+	assignment, err := s.assignmentRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if assignment.Status == models.AssignmentCompleted || assignment.Status == models.AssignmentCancelled {
+		return nil, fmt.Errorf("%w: cannot edit %s assignments", ErrValidation, assignment.Status)
+	}
+
+	if input.VehicleID != nil {
+		assignment.VehicleID = input.VehicleID
+	}
+	if input.ShiftDate != nil {
+		assignment.ShiftDate = *input.ShiftDate
+	}
+	if input.ShiftStart != nil {
+		assignment.ShiftStart = *input.ShiftStart
+	}
+	if input.EarningModel != nil {
+		assignment.EarningModel = *input.EarningModel
+	}
+	if input.FixedAmountCents != nil {
+		assignment.FixedAmountCents = *input.FixedAmountCents
+	}
+	if input.CommissionRate != nil {
+		assignment.CommissionRate = *input.CommissionRate
+	}
+	if input.WorkType != nil {
+		assignment.WorkType = *input.WorkType
+	}
+	if input.WorkSite != nil {
+		assignment.WorkSite = *input.WorkSite
+	}
+	if input.ProjectRef != nil {
+		assignment.ProjectRef = *input.ProjectRef
+	}
+	if input.HourlyRateCents != nil {
+		assignment.HourlyRateCents = *input.HourlyRateCents
+	}
+	if input.Notes != nil {
+		assignment.Notes = *input.Notes
+	}
+
+	if err := s.assignmentRepo.Update(ctx, assignment); err != nil {
+		return nil, fmt.Errorf("update assignment: %w", err)
+	}
+
+	s.logger.Info("assignment updated", slog.String("assignment_id", id.String()))
+	return assignment, nil
+}
+
 // GetAssignment retrieves a single assignment by ID.
 func (s *AssignmentService) GetAssignment(ctx context.Context, id uuid.UUID) (*models.Assignment, error) {
 	return s.assignmentRepo.GetByID(ctx, id)
@@ -496,4 +572,50 @@ func (s *AssignmentService) ReassignAssignment(ctx context.Context, assignmentID
 		slog.String("to", newCrewMemberID.String()),
 	)
 	return assignment, nil
+}
+
+// BulkCreateAssignments creates many assignments in a single operation.
+func (s *AssignmentService) BulkCreateAssignments(ctx context.Context, inputs []CreateAssignmentInput) (int, []repository.BulkError, error) {
+	assignments := make([]models.Assignment, 0, len(inputs))
+	for _, input := range inputs {
+		if input.WorkType == "" {
+			input.WorkType = models.WorkTypeShift
+		}
+		assignments = append(assignments, models.Assignment{
+			CrewMemberID:      input.CrewMemberID,
+			VehicleID:         input.VehicleID,
+			OrganizationID:    input.OrganizationID,
+			RouteID:           input.RouteID,
+			ShiftDate:         input.ShiftDate,
+			ShiftStart:        input.ShiftStart,
+			Status:            models.AssignmentScheduled,
+			EarningModel:      input.EarningModel,
+			FixedAmountCents:  input.FixedAmountCents,
+			CommissionRate:    input.CommissionRate,
+			HybridBaseCents:   input.HybridBaseCents,
+			CommissionBasis:   input.CommissionBasis,
+			Notes:             input.Notes,
+			CreatedByID:       input.CreatedByID,
+			WorkType:          input.WorkType,
+			WorkSite:          input.WorkSite,
+			ProjectRef:        input.ProjectRef,
+			HourlyRateCents:   input.HourlyRateCents,
+			DailyRateCents:    input.DailyRateCents,
+			PerUnitRateCents:  input.PerUnitRateCents,
+			OvertimeRateCents: input.OvertimeRateCents,
+			PayScheduleID:     input.PayScheduleID,
+		})
+	}
+
+	created, bulkErrors, err := s.assignmentRepo.BulkCreate(ctx, assignments)
+	if err != nil {
+		return 0, nil, fmt.Errorf("bulk create assignments: %w", err)
+	}
+
+	s.logger.Info("bulk assignments created",
+		slog.Int("created", created),
+		slog.Int("errors", len(bulkErrors)),
+	)
+
+	return created, bulkErrors, nil
 }

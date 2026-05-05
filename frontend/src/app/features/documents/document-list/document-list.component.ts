@@ -27,9 +27,20 @@ import { AutocompleteComponent, AutocompleteOption } from '../../../shared/compo
           <option value="">All Types</option>
           @for (t of docTypes; track t.value) { <option [value]="t.value">{{ t.label }}</option> }
         </select>
-        @if (filterType) {
-          <button class="btn btn-ghost btn-sm" (click)="filterType='';applyFilter()" style="color:var(--color-text-muted);">
-            <span class="material-icons-round" style="font-size:16px;">close</span> Clear
+
+        <div style="width:240px;position:relative;z-index:10;">
+          <app-autocomplete
+            [ngModel]="filterCrewMemberId()"
+            (ngModelChange)="filterCrewMemberId.set($event); applyFilter()"
+            [options]="crewOptions()"
+            placeholder="Filter by owner..."
+            inputId="filter-doc-owner"
+          ></app-autocomplete>
+        </div>
+
+        @if (filterType || filterCrewMemberId()) {
+          <button class="btn btn-ghost btn-sm" (click)="filterType=''; filterCrewMemberId.set(''); applyFilter()" style="color:var(--color-text-muted);">
+            <span class="material-icons-round" style="font-size:16px;">close</span> Clear Filters
           </button>
         }
       </div>
@@ -140,6 +151,7 @@ export class DocumentListComponent implements OnInit {
   downloading = signal(false);
   uploadProgress = signal(0);
   filterType = '';
+  filterCrewMemberId = signal('');
   selectedFile: File | null = null;
 
   uploadForm = { document_type: 'OTHER' as DocumentType, crew_member_id: '' };
@@ -170,8 +182,10 @@ export class DocumentListComponent implements OnInit {
 
   load(): void {
     this.loading.set(true);
-    const params: Record<string, string> = {};
+    const params: Record<string, string> = { per_page: '200' };
     if (this.filterType) params['document_type'] = this.filterType;
+    if (this.filterCrewMemberId()) params['crew_member_id'] = this.filterCrewMemberId();
+
     this.api.getDocuments(params).subscribe({
       next: r => { this.items.set(r.data); this.loading.set(false); },
       error: () => this.loading.set(false),
@@ -180,7 +194,11 @@ export class DocumentListComponent implements OnInit {
 
   filtered = computed(() => {
     const t = this.filterType;
-    return t ? this.items().filter(d => d.document_type === t) : this.items();
+    const crewId = this.filterCrewMemberId();
+    let list = this.items();
+    if (t) list = list.filter(d => d.document_type === t);
+    if (crewId) list = list.filter(d => d.crew_member_id === crewId);
+    return list;
   });
 
   totalSize = computed(() => this.formatSize(this.items().reduce((s, d) => s + d.file_size, 0)));

@@ -17,7 +17,7 @@ import (
 func TestCrewService_CreateWithJobType(t *testing.T) {
 	crewRepo := mock.NewCrewRepo()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	svc := NewCrewService(crewRepo, nil, logger)
+	svc := NewCrewService(crewRepo, nil, nil, logger)
 	ctx := context.Background()
 
 	jtID := uuid.New()
@@ -45,7 +45,7 @@ func TestCrewService_CreateWithJobType(t *testing.T) {
 func TestCrewService_CreateWithoutJobType(t *testing.T) {
 	crewRepo := mock.NewCrewRepo()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	svc := NewCrewService(crewRepo, nil, logger)
+	svc := NewCrewService(crewRepo, nil, nil, logger)
 	ctx := context.Background()
 
 	crew, err := svc.CreateCrewMember(ctx, CreateCrewInput{
@@ -69,7 +69,7 @@ func TestCrewService_CreateWithoutJobType(t *testing.T) {
 func TestCrewService_BulkImportWithJobType(t *testing.T) {
 	crewRepo := mock.NewCrewRepo()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	svc := NewCrewService(crewRepo, nil, logger)
+	svc := NewCrewService(crewRepo, nil, nil, logger)
 	ctx := context.Background()
 
 	jtID := uuid.New()

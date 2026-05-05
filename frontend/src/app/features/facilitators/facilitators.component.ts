@@ -23,16 +23,16 @@ import { CrewMember, Organization, TenantJobType, JobTypeCategory } from '../../
 
       <!-- Category Tabs -->
       <div class="category-tabs">
-        <button class="tab-btn" [class.active]="activeCategory === 'ALL'" (click)="activeCategory = 'ALL'" id="tab-all">
+        <button class="tab-btn" [class.active]="activeCategory() === 'ALL'" (click)="activeCategory.set('ALL')" id="tab-all">
           <span class="material-icons-round" style="font-size:16px;">people</span> All ({{ allStaff().length }})
         </button>
-        <button class="tab-btn" [class.active]="activeCategory === 'FACILITATOR'" (click)="activeCategory = 'FACILITATOR'" id="tab-facilitator">
+        <button class="tab-btn" [class.active]="activeCategory() === 'FACILITATOR'" (click)="activeCategory.set('FACILITATOR')" id="tab-facilitator">
           <span class="material-icons-round" style="font-size:16px;">support_agent</span> Facilitators ({{ facilitatorCount() }})
         </button>
-        <button class="tab-btn" [class.active]="activeCategory === 'SUPERVISOR'" (click)="activeCategory = 'SUPERVISOR'" id="tab-supervisor">
+        <button class="tab-btn" [class.active]="activeCategory() === 'SUPERVISOR'" (click)="activeCategory.set('SUPERVISOR')" id="tab-supervisor">
           <span class="material-icons-round" style="font-size:16px;">manage_accounts</span> Supervisors ({{ supervisorCount() }})
         </button>
-        <button class="tab-btn" [class.active]="activeCategory === 'SUPPORT'" (click)="activeCategory = 'SUPPORT'" id="tab-support">
+        <button class="tab-btn" [class.active]="activeCategory() === 'SUPPORT'" (click)="activeCategory.set('SUPPORT')" id="tab-support">
           <span class="material-icons-round" style="font-size:16px;">handyman</span> Support ({{ supportCount() }})
         </button>
       </div>
@@ -41,10 +41,10 @@ import { CrewMember, Organization, TenantJobType, JobTypeCategory } from '../../
       <div class="filters-bar" style="margin-bottom:var(--space-lg);">
         <div class="search-input-wrapper">
           <span class="material-icons-round search-icon">search</span>
-          <input class="form-input" placeholder="Search by name..." [(ngModel)]="searchQuery" id="facilitator-search" />
+          <input class="form-input" placeholder="Search by name..." [ngModel]="searchQuery()" (ngModelChange)="searchQuery.set($event)" id="facilitator-search" />
         </div>
         <div style="position:relative;z-index:55;flex:1;min-width:180px;max-width:220px;">
-          <app-autocomplete [(ngModel)]="saccoFilter" (ngModelChange)="load()" [options]="saccoOptions()" placeholder="— All Orgs —" inputId="fac-sacco-filter"></app-autocomplete>
+          <app-autocomplete [ngModel]="saccoFilter()" (ngModelChange)="saccoFilter.set($event); load()" [options]="saccoOptions()" placeholder="— All Orgs —" inputId="fac-sacco-filter"></app-autocomplete>
         </div>
       </div>
 
@@ -130,9 +130,9 @@ export class FacilitatorsComponent implements OnInit {
   jobTypes = signal<TenantJobType[]>([]);
   saccos = signal<Organization[]>([]);
   loading = signal(true);
-  searchQuery = '';
-  saccoFilter = '';
-  activeCategory: 'ALL' | JobTypeCategory = 'ALL';
+  searchQuery = signal('');
+  saccoFilter = signal('');
+  activeCategory = signal<'ALL' | JobTypeCategory>('ALL');
 
   saccoOptions = computed<AutocompleteOption[]>(() =>
     this.saccos().map(s => ({ value: s.id, label: s.name, searchText: s.name }))
@@ -149,6 +149,7 @@ export class FacilitatorsComponent implements OnInit {
       SUPERVISOR: 'SUPERVISOR', FACILITATOR: 'FACILITATOR', SUPPORT: 'SUPPORT',
       BOOKING_AGENT: 'FACILITATOR', DISPATCHER: 'FACILITATOR', FOREMAN: 'SUPERVISOR',
       SITE_MANAGER: 'SUPERVISOR', NURSE: 'SUPPORT', CLEANER: 'SUPPORT',
+      OFFICE_ADMIN: 'SUPPORT',
     };
     for (const [code, cat] of Object.entries(defaults)) {
       if (!map.has(code)) map.set(code, cat);
@@ -163,10 +164,11 @@ export class FacilitatorsComponent implements OnInit {
 
   filteredStaff = computed<CrewMember[]>(() => {
     let list = this.allStaff();
-    if (this.activeCategory !== 'ALL') {
-      list = list.filter(c => this.getRoleCategory(c.role) === this.activeCategory);
+    const category = this.activeCategory();
+    if (category !== 'ALL') {
+      list = list.filter(c => this.getRoleCategory(c.role) === category);
     }
-    const q = this.searchQuery.toLowerCase();
+    const q = this.searchQuery().toLowerCase();
     if (q) list = list.filter(c => c.full_name.toLowerCase().includes(q));
     return list;
   });
@@ -203,7 +205,7 @@ export class FacilitatorsComponent implements OnInit {
   load(): void {
     this.loading.set(true);
     const params: Record<string, string> = { per_page: '500' };
-    if (this.saccoFilter) params['organization_id'] = this.saccoFilter;
+    if (this.saccoFilter()) params['organization_id'] = this.saccoFilter();
     this.api.getCrewMembers(params).subscribe({
       next: r => { this.crewMembers.set(r.data); this.loading.set(false); },
       error: () => this.loading.set(false),

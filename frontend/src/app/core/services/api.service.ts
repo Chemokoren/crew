@@ -66,6 +66,10 @@ export class ApiService {
     return this.http.post<ApiResponse<Assignment>>(`${this.API}/assignments`, data);
   }
 
+  updateAssignment(id: string, data: Record<string, unknown>): Observable<ApiResponse<Assignment>> {
+    return this.http.put<ApiResponse<Assignment>>(`${this.API}/assignments/${id}`, data);
+  }
+
   completeAssignment(id: string, totalRevenueCents: number): Observable<unknown> {
     return this.http.post(`${this.API}/assignments/${id}/complete`, { total_revenue_cents: totalRevenueCents });
   }

@@ -68,6 +68,12 @@ export class AuthService {
     last_name?: string;
     national_id?: string;
     crew_role?: string;
+    // Organization fields (for SACCO_ADMIN)
+    organization_name?: string;
+    organization_reg_no?: string;
+    organization_county?: string;
+    organization_phone?: string;
+    industry_type?: string;
   }): Observable<ApiResponse<AuthResponse>> {
     return this.http.post<ApiResponse<AuthResponse>>(`${this.API}/auth/register`, payload).pipe(
       tap(res => this.handleAuthSuccess(res.data)),

@@ -43,7 +43,7 @@ func setupTestEnv() *testEnv {
 	walletRepo := mock.NewWalletRepo()
 
 	authSvc := service.NewAuthService(userRepo, crewRepo, jwtMgr, nil, logger)
-	crewSvc := service.NewCrewService(crewRepo, nil, logger) // Passing nil for identity.Provider in tests
+	crewSvc := service.NewCrewService(crewRepo, nil, nil, logger) // Passing nil for identity.Provider in tests
 	auditRepo := mock.NewAuditRepo()
 	auditSvc := service.NewAuditService(auditRepo, logger)
 	walletSvc := service.NewWalletService(walletRepo, crewRepo, auditSvc, logger)

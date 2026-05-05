@@ -28,7 +28,7 @@ const (
 type CrewOrganizationMembership struct {
 	ID             uuid.UUID        `json:"id" gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
 	CrewMemberID   uuid.UUID        `json:"crew_member_id" gorm:"type:uuid;not null;index"`
-	OrganizationID uuid.UUID        `json:"organization_id" gorm:"type:uuid;not null;index"`
+	OrganizationID uuid.UUID        `json:"organization_id" gorm:"column:sacco_id;type:uuid;not null;index"`
 	RoleInOrg      OrganizationRole `json:"role_in_org" gorm:"column:role_in_sacco;default:'MEMBER'"`
 	JoinedAt       time.Time        `json:"joined_at" gorm:"not null"`
 	LeftAt         *time.Time       `json:"left_at,omitempty"`

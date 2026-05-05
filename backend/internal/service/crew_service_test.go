@@ -37,7 +37,7 @@ func (m *MockIPRSProvider) VerifyCitizen(ctx context.Context, req identity.Verif
 func TestCrewService_CreateCrewMember(t *testing.T) {
 	repo := mock.NewCrewRepo()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	svc := service.NewCrewService(repo, nil, logger)
+	svc := service.NewCrewService(repo, nil, nil, logger)
 
 	input := service.CreateCrewInput{
 		NationalID: "12345678",
@@ -62,7 +62,7 @@ func TestCrewService_VerifyNationalID(t *testing.T) {
 	repo := mock.NewCrewRepo()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	mockIDP := &MockIPRSProvider{ShouldFail: false}
-	svc := service.NewCrewService(repo, mockIDP, logger)
+	svc := service.NewCrewService(repo, nil, mockIDP, logger)
 
 	crew, _ := svc.CreateCrewMember(context.Background(), service.CreateCrewInput{
 		NationalID: "87654321",
@@ -87,7 +87,7 @@ func TestCrewService_VerifyNationalID_Failure(t *testing.T) {
 	repo := mock.NewCrewRepo()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	mockIDP := &MockIPRSProvider{ShouldFail: true}
-	svc := service.NewCrewService(repo, mockIDP, logger)
+	svc := service.NewCrewService(repo, nil, mockIDP, logger)
 
 	crew, _ := svc.CreateCrewMember(context.Background(), service.CreateCrewInput{
 		NationalID: "87654321",
@@ -105,7 +105,7 @@ func TestCrewService_VerifyNationalID_Failure(t *testing.T) {
 func TestCrewService_DeactivateCrewMember(t *testing.T) {
 	repo := mock.NewCrewRepo()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	svc := service.NewCrewService(repo, nil, logger)
+	svc := service.NewCrewService(repo, nil, nil, logger)
 
 	crew, _ := svc.CreateCrewMember(context.Background(), service.CreateCrewInput{
 		NationalID: "111",
@@ -127,7 +127,7 @@ func TestCrewService_UpdateKYCStatus_WithIPRS(t *testing.T) {
 	repo := mock.NewCrewRepo()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	mockIDP := &MockIPRSProvider{ShouldFail: false}
-	svc := service.NewCrewService(repo, mockIDP, logger)
+	svc := service.NewCrewService(repo, nil, mockIDP, logger)
 
 	crew, _ := svc.CreateCrewMember(context.Background(), service.CreateCrewInput{
 		NationalID: "87654321",
@@ -159,7 +159,7 @@ func TestCrewService_VerifyNationalID_NilProvider(t *testing.T) {
 	repo := mock.NewCrewRepo()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	// IDP is nil — simulates IDENTITY_IPRS_ENABLED=false
-	svc := service.NewCrewService(repo, nil, logger)
+	svc := service.NewCrewService(repo, nil, nil, logger)
 
 	crew, _ := svc.CreateCrewMember(context.Background(), service.CreateCrewInput{
 		NationalID: "99998888",
@@ -183,7 +183,7 @@ func TestCrewService_UpdateKYCStatus_NilProvider_SkipsIPRS(t *testing.T) {
 	repo := mock.NewCrewRepo()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	// IDP is nil — system should still allow KYC status updates
-	svc := service.NewCrewService(repo, nil, logger)
+	svc := service.NewCrewService(repo, nil, nil, logger)
 
 	crew, _ := svc.CreateCrewMember(context.Background(), service.CreateCrewInput{
 		NationalID: "77776666",
@@ -215,7 +215,7 @@ func TestCrewService_CRUD_WorksWithoutIPRS(t *testing.T) {
 	repo := mock.NewCrewRepo()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	// All CRUD operations should work perfectly without IPRS
-	svc := service.NewCrewService(repo, nil, logger)
+	svc := service.NewCrewService(repo, nil, nil, logger)
 
 	// Create
 	crew, err := svc.CreateCrewMember(context.Background(), service.CreateCrewInput{

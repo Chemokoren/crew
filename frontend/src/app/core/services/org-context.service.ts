@@ -1,8 +1,8 @@
-import { Injectable, signal, inject } from '@angular/core';
+import { Injectable, signal, computed, inject } from '@angular/core';
 import { ApiService } from './api.service';
 import { AuthService } from './auth.service';
-import { IndustryType } from '../models';
-import { getIndustryTemplate } from '../config/industry-templates';
+import { IndustryType, IndustryTemplate } from '../models';
+import { getIndustryTemplate, INDUSTRY_ICONS } from '../config/industry-templates';
 
 /**
  * Reactive service that tracks the authenticated user's organization
@@ -20,6 +20,24 @@ export class OrgContextService {
 
   /** Whether the org context has been loaded. */
   readonly loaded = signal(false);
+
+  /** Full industry template for the current org — reactively derived. */
+  readonly template = computed<IndustryTemplate>(() => getIndustryTemplate(this.industryType()));
+
+  /** Singular worker label (e.g. "Worker", "Staff", "Crew Member"). */
+  readonly workerLabel = computed(() => this.template().ui_labels['worker'] || 'Worker');
+
+  /** Plural workers label (e.g. "Workers", "Staff", "Crew Members"). */
+  readonly workersLabel = computed(() => {
+    const singular = this.workerLabel();
+    // Simple pluralisation — handles most industry labels
+    if (singular.endsWith('ff') || singular.endsWith('f')) return singular;
+    if (singular.endsWith('s')) return singular;
+    return singular + 's';
+  });
+
+  /** Material icon for the current industry. */
+  readonly industryIcon = computed(() => INDUSTRY_ICONS[this.industryType()] || 'business');
 
   /**
    * Loads the organization for the current user.

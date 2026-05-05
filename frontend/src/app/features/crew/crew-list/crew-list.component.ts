@@ -4,6 +4,8 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink, Router } from '@angular/router';
 import { ApiService } from '../../../core/services/api.service';
 import { ToastService } from '../../../core/services/toast.service';
+import { AuthService } from '../../../core/services/auth.service';
+import { OrgContextService } from '../../../core/services/org-context.service';
 import { AutocompleteComponent, AutocompleteOption } from '../../../shared/components/autocomplete/autocomplete.component';
 import { CrewMember, PaginationMeta, Organization, TenantJobType } from '../../../core/models';
 
@@ -16,15 +18,15 @@ import { CrewMember, PaginationMeta, Organization, TenantJobType } from '../../.
     <div class="animate-fade-in">
       <div class="page-header">
         <div>
-          <h1 class="page-title">Crew Management</h1>
-          <p class="page-subtitle">Manage your workforce — drivers, conductors, and riders</p>
+          <h1 class="page-title">{{ orgCtx.workersLabel() }} Management</h1>
+          <p class="page-subtitle">Manage your workforce — {{ templateRoleSummary() }}</p>
         </div>
         <div class="page-actions">
           <button class="btn btn-secondary btn-sm" (click)="showBulkModal.set(true)" id="btn-bulk-import">
             <span class="material-icons-round">upload_file</span> Bulk Import
           </button>
           <button class="btn btn-primary" (click)="showCreateModal.set(true)" id="btn-add-crew">
-            <span class="material-icons-round">person_add</span> Add Crew
+            <span class="material-icons-round">person_add</span> Add {{ orgCtx.workerLabel() }}
           </button>
         </div>
       </div>
@@ -45,7 +47,7 @@ import { CrewMember, PaginationMeta, Organization, TenantJobType } from '../../.
           }
         </div>
         <div style="position: relative; z-index: 55; flex: 1; min-width: 140px; max-width: 180px;">
-          <app-autocomplete [(ngModel)]="roleFilter" (ngModelChange)="loadCrew()" [options]="roleOptions" placeholder="— All Roles —" id="crew-role-filter"></app-autocomplete>
+          <app-autocomplete [(ngModel)]="roleFilter" (ngModelChange)="loadCrew()" [options]="activeRoleOptions()" placeholder="— All Roles —" id="crew-role-filter"></app-autocomplete>
         </div>
         <div style="position: relative; z-index: 54; flex: 1; min-width: 140px; max-width: 180px;">
           <app-autocomplete [(ngModel)]="kycFilter" (ngModelChange)="loadCrew()" [options]="kycOptions" placeholder="— All KYC —" id="crew-kyc-filter"></app-autocomplete>
@@ -65,15 +67,15 @@ import { CrewMember, PaginationMeta, Organization, TenantJobType } from '../../.
       } @else if (crewMembers().length === 0) {
         <div class="empty-state">
           <span class="material-icons-round empty-icon">groups</span>
-          <div class="empty-title">No crew members found</div>
-          <div class="empty-description">Add your first crew member to get started with workforce management.</div>
+          <div class="empty-title">No {{ orgCtx.workersLabel().toLowerCase() }} found</div>
+          <div class="empty-description">Add your first {{ orgCtx.workerLabel().toLowerCase() }} to get started with workforce management.</div>
         </div>
       } @else {
         <div class="data-table-wrapper">
           <table class="data-table">
             <thead>
               <tr>
-                <th>Crew ID</th>
+                <th>{{ orgCtx.workerLabel() }} ID</th>
                 <th>Name</th>
                 <th>Role</th>
                 <th>KYC Status</th>
@@ -128,12 +130,12 @@ import { CrewMember, PaginationMeta, Organization, TenantJobType } from '../../.
         }
       }
 
-      <!-- Create Crew Modal -->
+      <!-- Create Worker Modal -->
       @if (showCreateModal()) {
         <div class="modal-backdrop" (click)="showCreateModal.set(false)">
           <div class="modal-content" (click)="$event.stopPropagation()">
             <div class="modal-header">
-              <h3>Add Crew Member</h3>
+              <h3>Add {{ orgCtx.workerLabel() }}</h3>
               <button class="btn btn-ghost btn-icon" (click)="showCreateModal.set(false)">
                 <span class="material-icons-round">close</span>
               </button>
@@ -151,19 +153,15 @@ import { CrewMember, PaginationMeta, Organization, TenantJobType } from '../../.
                 <label class="form-label">Last Name</label>
                 <input class="form-input" [(ngModel)]="newCrew.last_name" name="lastName" required placeholder="Doe" />
               </div>
-              <div class="form-group">
+              <div class="form-group" style="position: relative; z-index: 60;">
                 <label class="form-label">Role / Job Type</label>
-                <select class="form-select" [(ngModel)]="newCrew.role" name="role" required>
-                  @for (jt of dynamicRoleOptions(); track jt.value) {
-                    <option [value]="jt.value">{{ jt.label }}</option>
-                  }
-                </select>
+                <app-autocomplete [(ngModel)]="newCrew.role" [options]="dynamicRoleOptions()" placeholder="Search role..." name="role" id="create-crew-role"></app-autocomplete>
               </div>
             </form>
             <div class="modal-footer">
               <button class="btn btn-secondary" (click)="showCreateModal.set(false)">Cancel</button>
               <button class="btn btn-primary" (click)="createCrew()" [disabled]="creating()" id="submit-create-crew">
-                @if (creating()) { Creating... } @else { Add Crew Member }
+                @if (creating()) { Creating... } @else { Add {{ orgCtx.workerLabel() }} }
               </button>
             </div>
           </div>
@@ -175,15 +173,19 @@ import { CrewMember, PaginationMeta, Organization, TenantJobType } from '../../.
         <div class="modal-backdrop" (click)="showBulkModal.set(false)">
           <div class="modal-content modal-lg" (click)="$event.stopPropagation()">
             <div class="modal-header">
-              <h3>Bulk Import Crew</h3>
+              <h3>Bulk Import {{ orgCtx.workersLabel() }}</h3>
               <button class="btn btn-ghost btn-icon" (click)="closeBulkModal()">
                 <span class="material-icons-round">close</span>
               </button>
             </div>
             <div class="modal-body">
-              <p class="text-muted" style="margin-bottom: var(--space-md);">
+              <p class="text-muted" style="margin-bottom: var(--space-sm);">
                 Upload a CSV file or paste data below. Each row: <code>national_id, first_name, last_name, role</code>
               </p>
+              <button class="template-download-btn" (click)="downloadBulkTemplate()" id="btn-download-template">
+                <span class="material-icons-round" style="font-size:16px;">download</span>
+                Download CSV Template (5 sample rows)
+              </button>
 
               <!-- File upload -->
               <div class="upload-zone" (click)="fileInput.click()" (dragover)="$event.preventDefault()" (drop)="onFileDrop($event)">
@@ -237,7 +239,7 @@ import { CrewMember, PaginationMeta, Organization, TenantJobType } from '../../.
               <button class="btn btn-secondary" (click)="closeBulkModal()">Cancel</button>
               <button class="btn btn-primary" (click)="submitBulkImport()" [disabled]="bulkImporting() || bulkRows().length === 0" id="submit-bulk-import">
                 @if (bulkImporting()) { Importing... } @else {
-                  <span class="material-icons-round">upload</span> Import {{ bulkRows().length }} Members
+                  <span class="material-icons-round">upload</span> Import {{ bulkRows().length }} {{ orgCtx.workersLabel() }}
                 }
               </button>
             </div>
@@ -284,12 +286,23 @@ import { CrewMember, PaginationMeta, Organization, TenantJobType } from '../../.
     .bulk-preview { margin-top: var(--space-md); }
     .modal-lg { max-width: 700px; }
     .btn-xs { padding: 0; width: 20px; height: 20px; }
+    .template-download-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 14px; margin-bottom: var(--space-md);
+      border-radius: var(--radius-md); border: 1px dashed var(--color-accent);
+      background: rgba(0,210,255,0.06); color: var(--color-accent);
+      font-size: 0.8125rem; font-weight: 500; cursor: pointer;
+      transition: background 200ms, border-color 200ms;
+      &:hover { background: rgba(0,210,255,0.12); border-style: solid; }
+    }
   `]
 })
 export class CrewListComponent implements OnInit {
   private api = inject(ApiService);
+  private auth = inject(AuthService);
   private toast = inject(ToastService);
   private router = inject(Router);
+  readonly orgCtx = inject(OrgContextService);
 
   crewMembers = signal<CrewMember[]>([]);
   meta = signal<PaginationMeta | null>(null);
@@ -302,7 +315,7 @@ export class CrewListComponent implements OnInit {
   saccoFilter = '';
   showCreateModal = signal(false);
   creating = signal(false);
-  newCrew = { national_id: '', first_name: '', last_name: '', role: 'DRIVER' };
+  newCrew = { national_id: '', first_name: '', last_name: '', role: '' };
 
   // #68: NID search
   searchingNID = signal(false);
@@ -322,12 +335,35 @@ export class CrewListComponent implements OnInit {
     searchText: s.name
   })));
 
-  roleOptions: AutocompleteOption[] = [
+  /** Fallback roles — only used when no tenant job types are loaded */
+  private fallbackRoles: AutocompleteOption[] = [
     { value: 'DRIVER', label: 'Driver', searchText: 'driver' },
     { value: 'CONDUCTOR', label: 'Conductor', searchText: 'conductor' },
     { value: 'RIDER', label: 'Rider', searchText: 'rider' },
     { value: 'OTHER', label: 'Other', searchText: 'other' },
   ];
+
+  /** Active role filter options — derived from tenant job types or industry template defaults */
+  activeRoleOptions = computed<AutocompleteOption[]>(() => {
+    const custom = this.tenantJobTypes();
+    if (custom.length > 0) {
+      return custom.map(jt => ({ value: jt.code, label: jt.display_name, searchText: `${jt.display_name} ${jt.code} ${jt.category}` }));
+    }
+    // Fall back to industry template defaults
+    const tmpl = this.orgCtx.template();
+    if (tmpl.default_job_types?.length) {
+      return tmpl.default_job_types.map(jt => ({ value: jt.code, label: jt.display_name, searchText: `${jt.display_name} ${jt.code} ${jt.category}` }));
+    }
+    return this.fallbackRoles;
+  });
+
+  /** Summary of role types for the subtitle */
+  templateRoleSummary = computed(() => {
+    const tmpl = this.orgCtx.template();
+    const names = tmpl.default_job_types.slice(0, 3).map(j => j.display_name.toLowerCase());
+    if (names.length === 0) return 'your workforce';
+    return names.join(', ') + (tmpl.default_job_types.length > 3 ? ' & more' : '');
+  });
 
   kycOptions: AutocompleteOption[] = [
     { value: 'PENDING', label: 'Pending', searchText: 'pending' },
@@ -336,9 +372,18 @@ export class CrewListComponent implements OnInit {
   ];
 
   ngOnInit(): void {
+    // Set default role from industry template
+    const tmpl = this.orgCtx.template();
+    if (tmpl.default_job_types?.length) {
+      this.newCrew.role = tmpl.default_job_types[0].code;
+    } else {
+      this.newCrew.role = 'OTHER';
+    }
     this.loadCrew();
     this.loadOrganizations();
-    this.loadJobTypes();
+    // Load job types scoped to the user's own org
+    const userOrgId = this.auth.currentUser()?.organization_id;
+    this.loadJobTypes(userOrgId);
   }
 
   loadCrew(): void {
@@ -363,8 +408,6 @@ export class CrewListComponent implements OnInit {
     this.api.getOrganizations({ per_page: '100' }).subscribe({
       next: (res) => {
         this.saccos.set(res.data ?? []);
-        // Load job types from first Organization (F8: Dynamic registration)
-        if (res.data?.length) this.loadJobTypes(res.data[0].id);
       },
     });
   }
@@ -376,14 +419,18 @@ export class CrewListComponent implements OnInit {
     if (custom.length > 0) {
       return custom.map(jt => ({ value: jt.code, label: jt.display_name, searchText: `${jt.display_name} ${jt.code} ${jt.category}` }));
     }
-    return this.roleOptions;
+    // Fall back to industry template defaults
+    const tmpl = this.orgCtx.template();
+    if (tmpl.default_job_types?.length) {
+      return tmpl.default_job_types.map(jt => ({ value: jt.code, label: jt.display_name, searchText: `${jt.display_name} ${jt.code} ${jt.category}` }));
+    }
+    return this.fallbackRoles;
   });
 
   private loadJobTypes(saccoId?: string): void {
     if (!saccoId) {
-      this.api.getOrganizations({ per_page: '1' }).subscribe({
-        next: r => { if (r.data?.length) this.fetchJobTypes(r.data[0].id); },
-      });
+      // No org ID available — tenant job types won't load,
+      // but dynamicRoleOptions falls back to industry template defaults.
       return;
     }
     this.fetchJobTypes(saccoId);
@@ -423,10 +470,11 @@ export class CrewListComponent implements OnInit {
     this.creating.set(true);
     this.api.createCrewMember(this.newCrew).subscribe({
       next: () => {
-        this.toast.success('Crew member added successfully');
+        this.toast.success(this.orgCtx.workerLabel() + ' added successfully');
         this.showCreateModal.set(false);
         this.creating.set(false);
-        this.newCrew = { national_id: '', first_name: '', last_name: '', role: 'DRIVER' };
+        const defaultRole = this.orgCtx.template().default_job_types?.[0]?.code || 'OTHER';
+        this.newCrew = { national_id: '', first_name: '', last_name: '', role: defaultRole };
         this.loadCrew();
       },
       error: () => this.creating.set(false),
@@ -474,6 +522,34 @@ export class CrewListComponent implements OnInit {
   closeBulkModal(): void {
     this.showBulkModal.set(false);
     this.clearBulkFile();
+  }
+
+  /** Generate and download a CSV template with 5 sample rows using industry-specific roles */
+  downloadBulkTemplate(): void {
+    const roles = this.dynamicRoleOptions();
+    const sampleNames = [
+      { first: 'John', last: 'Kamau', nid: '12345678' },
+      { first: 'Jane', last: 'Wanjiku', nid: '23456789' },
+      { first: 'Peter', last: 'Otieno', nid: '34567890' },
+      { first: 'Mary', last: 'Njeri', nid: '45678901' },
+      { first: 'David', last: 'Kipchoge', nid: '56789012' },
+    ];
+
+    const header = 'national_id,first_name,last_name,role';
+    const rows = sampleNames.map((s, i) => {
+      const role = roles[i % roles.length]?.value || 'OTHER';
+      return `${s.nid},${s.first},${s.last},${role}`;
+    });
+
+    const csv = [header, ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `bulk_import_${this.orgCtx.workersLabel().toLowerCase().replace(/\s+/g, '_')}_template.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    this.toast.success('Template downloaded — fill it out and upload!');
   }
 
   submitBulkImport(): void {

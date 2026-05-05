@@ -133,3 +133,22 @@ func (r *PayrollRepo) ListPayPeriods(ctx context.Context, scheduleID uuid.UUID, 
 
 	return periods, total, nil
 }
+
+func (r *PayrollRepo) ListPayPeriodsByOrg(ctx context.Context, orgID uuid.UUID, page, perPage int) ([]models.PayPeriod, int64, error) {
+	var periods []models.PayPeriod
+	var total int64
+
+	query := r.db.WithContext(ctx).Model(&models.PayPeriod{}).Where("sacco_id = ?", orgID)
+	query.Count(&total)
+
+	offset := (page - 1) * perPage
+	if err := query.
+		Preload("PaySchedule").
+		Offset(offset).Limit(perPage).
+		Order("period_start DESC").
+		Find(&periods).Error; err != nil {
+		return nil, 0, fmt.Errorf("list pay periods by org: %w", err)
+	}
+
+	return periods, total, nil
+}

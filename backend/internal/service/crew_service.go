@@ -14,24 +14,26 @@ import (
 
 // CrewService manages crew member business logic.
 type CrewService struct {
-	crewRepo repository.CrewRepository
-	idp      identity.Provider
-	logger   *slog.Logger
+	crewRepo       repository.CrewRepository
+	membershipRepo repository.MembershipRepository
+	idp            identity.Provider
+	logger         *slog.Logger
 }
 
 // NewCrewService creates a new CrewService.
-func NewCrewService(crewRepo repository.CrewRepository, idp identity.Provider, logger *slog.Logger) *CrewService {
-	return &CrewService{crewRepo: crewRepo, idp: idp, logger: logger}
+func NewCrewService(crewRepo repository.CrewRepository, membershipRepo repository.MembershipRepository, idp identity.Provider, logger *slog.Logger) *CrewService {
+	return &CrewService{crewRepo: crewRepo, membershipRepo: membershipRepo, idp: idp, logger: logger}
 }
 
 // CreateCrewInput holds the data for creating a crew member.
 type CreateCrewInput struct {
-	NationalID string          `json:"national_id" validate:"required"`
-	FirstName  string          `json:"first_name" validate:"required"`
-	LastName   string          `json:"last_name" validate:"required"`
-	Role       models.CrewRole `json:"role" validate:"required,oneof=DRIVER CONDUCTOR RIDER OTHER"`
-	JobTypeID  *uuid.UUID      `json:"job_type_id,omitempty"`
-	JobTitle   string          `json:"job_title,omitempty"`
+	NationalID     string          `json:"national_id" validate:"required"`
+	FirstName      string          `json:"first_name" validate:"required"`
+	LastName       string          `json:"last_name" validate:"required"`
+	Role           models.CrewRole `json:"role" validate:"required"`
+	JobTypeID      *uuid.UUID      `json:"job_type_id,omitempty"`
+	JobTitle       string          `json:"job_title,omitempty"`
+	OrganizationID *uuid.UUID      `json:"organization_id,omitempty"` // Auto-populated from JWT claims
 }
 
 // CreateCrewMember creates a new crew member with an auto-generated crew ID.
@@ -55,6 +57,24 @@ func (s *CrewService) CreateCrewMember(ctx context.Context, input CreateCrewInpu
 
 	if err := s.crewRepo.Create(ctx, crew); err != nil {
 		return nil, fmt.Errorf("create crew member: %w", err)
+	}
+
+	// Auto-create org membership if an org ID is provided (from JWT claims)
+	if input.OrganizationID != nil {
+		membership := &models.CrewSACCOMembership{
+			CrewMemberID:   crew.ID,
+			OrganizationID: *input.OrganizationID,
+			RoleInOrg:      models.OrgRoleMember,
+			JoinedAt:       time.Now(),
+			IsActive:       true,
+		}
+		if err := s.membershipRepo.Create(ctx, membership); err != nil {
+			s.logger.Warn("failed to create org membership for new crew member",
+				slog.String("crew_id", crew.CrewID),
+				slog.String("org_id", input.OrganizationID.String()),
+				slog.Any("err", err),
+			)
+		}
 	}
 
 	s.logger.Info("crew member created",
@@ -182,6 +202,12 @@ type BulkImportResult struct {
 // BulkImport creates multiple crew members in a single operation.
 func (s *CrewService) BulkImport(ctx context.Context, inputs []CreateCrewInput) (*BulkImportResult, error) {
 	var crewMembers []models.CrewMember
+	// Capture the org ID from the first input (all share the same org from JWT)
+	var orgID *uuid.UUID
+	if len(inputs) > 0 && inputs[0].OrganizationID != nil {
+		orgID = inputs[0].OrganizationID
+	}
+
 	for _, input := range inputs {
 		crewID, err := s.crewRepo.NextCrewID(ctx)
 		if err != nil {
@@ -204,6 +230,34 @@ func (s *CrewService) BulkImport(ctx context.Context, inputs []CreateCrewInput) 
 	bulkErrors, err := s.crewRepo.BulkCreate(ctx, crewMembers)
 	if err != nil {
 		return nil, fmt.Errorf("bulk create: %w", err)
+	}
+
+	// Build a set of failed indices for quick lookup
+	failedIndices := make(map[int]bool, len(bulkErrors))
+	for _, be := range bulkErrors {
+		failedIndices[be.Index] = true
+	}
+
+	// Create org memberships for each successfully imported member
+	if orgID != nil && s.membershipRepo != nil {
+		for i, cm := range crewMembers {
+			if failedIndices[i] {
+				continue
+			}
+			membership := &models.CrewSACCOMembership{
+				CrewMemberID:   cm.ID,
+				OrganizationID: *orgID,
+				RoleInOrg:      models.OrgRoleMember,
+				JoinedAt:       time.Now(),
+				IsActive:       true,
+			}
+			if err := s.membershipRepo.Create(ctx, membership); err != nil {
+				s.logger.Warn("bulk import: failed to create org membership",
+					slog.String("crew_id", cm.CrewID),
+					slog.Any("err", err),
+				)
+			}
+		}
 	}
 
 	imported := len(crewMembers) - len(bulkErrors)

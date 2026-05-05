@@ -29,7 +29,7 @@ const (
 // PayPeriod represents a discrete pay window within a schedule (e.g., Mon-Fri for weekly).
 type PayPeriod struct {
 	ID            uuid.UUID    `json:"id" gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
-	PayScheduleID uuid.UUID   `json:"pay_schedule_id" gorm:"column:sacco_id;type:uuid;not null;index"`
+	PayScheduleID uuid.UUID   `json:"pay_schedule_id" gorm:"column:pay_schedule_id;type:uuid;not null;index"`
 	OrganizationID       uuid.UUID   `json:"organization_id" gorm:"column:sacco_id;type:uuid;not null;index"`
 	PeriodStart   time.Time   `json:"period_start" gorm:"type:date;not null"`
 	PeriodEnd     time.Time   `json:"period_end" gorm:"type:date;not null"`
@@ -76,7 +76,7 @@ func (PayrollRun) TableName() string { return "payroll_runs" }
 // PayrollEntry is a single crew member's payroll calculation within a run.
 type PayrollEntry struct {
 	ID                        uuid.UUID `json:"id" gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
-	PayrollRunID              uuid.UUID `json:"payroll_run_id" gorm:"column:sacco_id;type:uuid;not null;index"`
+	PayrollRunID              uuid.UUID `json:"payroll_run_id" gorm:"column:payroll_run_id;type:uuid;not null;index"`
 	CrewMemberID              uuid.UUID `json:"crew_member_id" gorm:"type:uuid;not null"`
 	GrossEarningsCents        int64     `json:"gross_earnings_cents" gorm:"type:bigint"`
 	SHADeductionCents         int64     `json:"sha_deduction_cents" gorm:"type:bigint"`

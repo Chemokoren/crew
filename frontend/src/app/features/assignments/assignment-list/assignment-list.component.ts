@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { ApiService } from '../../../core/services/api.service';
+import { AuthService } from '../../../core/services/auth.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { ConfirmDialogService } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { TooltipDirective } from '../../../shared/directives/tooltip.directive';
@@ -99,6 +100,10 @@ import { Assignment, PaginationMeta, CrewMember, Vehicle, Organization, Industry
                         <span class="material-icons-round" style="font-size:16px;">visibility</span>
                       </button>
                       @if (a.status === 'ACTIVE' || a.status === 'SCHEDULED') {
+                        <button class="btn btn-sm btn-ghost" (click)="openEditModal(a)" id="edit-{{a.id}}"
+                                appTooltip="Edit assignment details" tooltipPosition="top">
+                          <span class="material-icons-round" style="font-size:16px;">edit</span>
+                        </button>
                         <button class="btn btn-sm btn-primary" (click)="completeAssignment(a)" id="complete-{{a.id}}"
                                 appTooltip="Record revenue and mark assignment as completed" tooltipPosition="top">
                           Complete
@@ -149,13 +154,16 @@ import { Assignment, PaginationMeta, CrewMember, Vehicle, Organization, Industry
 
               <!-- Organization Autocomplete -->
               <div class="form-group">
-                <label class="form-label">Organization (Organization)</label>
+                <label class="form-label">Organization</label>
                 <app-autocomplete
                   [options]="saccoOptions()"
                   placeholder="Search by Organization name..."
                   inputId="create-sacco-select"
                   [(ngModel)]="newAssignment.organization_id"
                 ></app-autocomplete>
+                @if (userOrgId && newAssignment.organization_id === userOrgId) {
+                  <small style="color:var(--color-text-muted);font-size:0.75rem;">Auto-selected from your profile</small>
+                }
               </div>
 
               <!-- Shift Date -->
@@ -184,9 +192,8 @@ import { Assignment, PaginationMeta, CrewMember, Vehicle, Organization, Industry
                 </label>
                 <select class="form-select" [(ngModel)]="newAssignment.work_type" id="create-work-type">
                   <option value="SHIFT">Shift</option><option value="DAILY">Daily</option>
-                  <option value="HOURLY">Hourly</option><option value="PER_TRIP">Per Trip</option>
-                  <option value="PROJECT">Project</option><option value="VISIT">Visit</option>
-                  <option value="CONTRACT">Contract</option><option value="TASK">Task</option>
+                  <option value="HOURLY">Hourly</option><option value="TASK">Task</option>
+                  <option value="PROJECT">Project</option><option value="BOOKING">Booking</option>
                 </select>
               </div>
 
@@ -242,6 +249,60 @@ import { Assignment, PaginationMeta, CrewMember, Vehicle, Organization, Industry
             <div class="modal-footer">
               <button class="btn btn-secondary" (click)="showCreateModal.set(false)">Cancel</button>
               <button class="btn btn-primary" (click)="createAssignment()" [disabled]="creating() || !canCreate()">{{ creating() ? 'Creating...' : 'Create' }}</button>
+            </div>
+          </div>
+        </div>
+      }
+      <!-- Edit Modal -->
+      @if (showEditModal()) {
+        <div class="modal-backdrop" (click)="showEditModal.set(false)">
+          <div class="modal-content modal-content-lg" (click)="$event.stopPropagation()">
+            <div class="modal-header"><h3>Edit Assignment</h3><button class="btn btn-ghost btn-icon" (click)="showEditModal.set(false)"><span class="material-icons-round">close</span></button></div>
+            <div class="modal-body">
+              <div class="form-group">
+                <label class="form-label"><span class="material-icons-round form-label-icon">calendar_today</span> Shift Date</label>
+                <input class="form-input" type="date" [(ngModel)]="editData.shift_date" id="edit-shift-date" />
+              </div>
+              <div class="form-group">
+                <label class="form-label"><span class="material-icons-round form-label-icon">schedule</span> Shift Start</label>
+                <input class="form-input" type="datetime-local" [(ngModel)]="editData.shift_start" id="edit-shift-start" step="60" />
+              </div>
+              <div class="form-group">
+                <label class="form-label"><span class="material-icons-round form-label-icon">work</span> Work Type</label>
+                <select class="form-select" [(ngModel)]="editData.work_type" id="edit-work-type">
+                  <option value="SHIFT">Shift</option><option value="DAILY">Daily</option>
+                  <option value="HOURLY">Hourly</option><option value="TASK">Task</option>
+                  <option value="PROJECT">Project</option><option value="BOOKING">Booking</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Earning Model</label>
+                <select class="form-select" [(ngModel)]="editData.earning_model" id="edit-earning-model">
+                  <option value="FIXED">Fixed</option><option value="COMMISSION">Commission</option><option value="HYBRID">Hybrid</option>
+                </select>
+              </div>
+              @if (editData.earning_model === 'FIXED' || editData.earning_model === 'HYBRID') {
+                <div class="form-group"><label class="form-label">Fixed Amount (KES)</label><input class="form-input" type="number" [(ngModel)]="editFixedAmount" id="edit-fixed-amount" /></div>
+              }
+              @if (editData.earning_model === 'COMMISSION' || editData.earning_model === 'HYBRID') {
+                <div class="form-group"><label class="form-label">Commission Rate (%)</label><input class="form-input" type="number" [(ngModel)]="editCommissionRate" step="0.01" id="edit-commission-rate" /></div>
+              }
+              @if (editData.work_type === 'HOURLY') {
+                <div class="form-group"><label class="form-label">Hourly Rate (KES)</label><input class="form-input" type="number" [(ngModel)]="editHourlyRate" id="edit-hourly-rate" /></div>
+              }
+              <div class="form-group">
+                <label class="form-label">Work Site / Location</label>
+                <input class="form-input" [(ngModel)]="editData.work_site" id="edit-work-site" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Project Reference</label>
+                <input class="form-input" [(ngModel)]="editData.project_ref" id="edit-project-ref" />
+              </div>
+              <div class="form-group"><label class="form-label">Notes</label><input class="form-input" [(ngModel)]="editData.notes" id="edit-notes" /></div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-secondary" (click)="showEditModal.set(false)">Cancel</button>
+              <button class="btn btn-primary" (click)="saveEdit()" [disabled]="saving()" id="btn-save-edit">{{ saving() ? 'Saving...' : 'Save Changes' }}</button>
             </div>
           </div>
         </div>
@@ -331,9 +392,13 @@ import { Assignment, PaginationMeta, CrewMember, Vehicle, Organization, Industry
 })
 export class AssignmentListComponent implements OnInit {
   private api = inject(ApiService);
+  private auth = inject(AuthService);
   private toast = inject(ToastService);
   private router = inject(Router);
   private dialog = inject(ConfirmDialogService);
+
+  /** The logged-in user's org ID (for auto-selection) */
+  userOrgId: string = '';
 
   items = signal<Assignment[]>([]);
   meta = signal<PaginationMeta | null>(null);
@@ -390,6 +455,15 @@ export class AssignmentListComponent implements OnInit {
   commissionRate = 0;
   hourlyRate = 0;
 
+  // Edit modal
+  showEditModal = signal(false);
+  saving = signal(false);
+  editAssignmentId = '';
+  editData = { shift_date: '', shift_start: '', earning_model: 'FIXED', work_type: 'SHIFT', work_site: '', project_ref: '', notes: '' };
+  editFixedAmount = 0;
+  editCommissionRate = 0;
+  editHourlyRate = 0;
+
   // Industry detection from selected Organization (Phase F4)
   selectedIndustry = computed<IndustryType | ''>(() => {
     const saccoId = this.newAssignment.organization_id;
@@ -399,6 +473,8 @@ export class AssignmentListComponent implements OnInit {
   });
 
   ngOnInit(): void {
+    // Capture the user's org ID for auto-selection
+    this.userOrgId = this.auth.currentUser()?.organization_id || '';
     this.loadDropdownData();
     this.load();
   }
@@ -460,7 +536,7 @@ export class AssignmentListComponent implements OnInit {
   }
 
   openCreateModal(): void {
-    this.newAssignment = { crew_member_id: '', vehicle_id: '', organization_id: '', shift_date: '', shift_start: '', earning_model: 'FIXED', work_type: 'SHIFT', work_site: '', project_ref: '', notes: '' };
+    this.newAssignment = { crew_member_id: '', vehicle_id: '', organization_id: this.userOrgId, shift_date: '', shift_start: '', earning_model: 'FIXED', work_type: 'SHIFT', work_site: '', project_ref: '', notes: '' };
     this.fixedAmount = 0;
     this.commissionRate = 0;
     this.hourlyRate = 0;
@@ -469,7 +545,8 @@ export class AssignmentListComponent implements OnInit {
 
   canCreate(): boolean {
     const a = this.newAssignment;
-    const baseValid = !!(a.crew_member_id && a.organization_id && a.shift_date && a.shift_start);
+    // org_id is optional in UI since backend auto-injects from JWT
+    const baseValid = !!(a.crew_member_id && a.shift_date && a.shift_start);
     const ind = this.selectedIndustry();
     if (ind === 'TRANSPORT' || !ind) {
       return baseValid && !!a.vehicle_id;
@@ -492,31 +569,87 @@ export class AssignmentListComponent implements OnInit {
     if (!data['project_ref']) delete data['project_ref'];
     this.api.createAssignment(data).subscribe({
       next: () => { this.toast.success('Assignment created'); this.showCreateModal.set(false); this.creating.set(false); this.load(); },
-      error: () => this.creating.set(false),
+      error: (err: any) => { this.toast.error(err?.error?.message || 'Failed to create assignment'); this.creating.set(false); },
+    });
+  }
+
+  openEditModal(a: Assignment): void {
+    this.editAssignmentId = a.id;
+    // Convert ISO date to input-compatible formats
+    const shiftDate = a.shift_date ? a.shift_date.substring(0, 10) : '';
+    const shiftStart = a.shift_start ? a.shift_start.substring(0, 16) : '';
+    this.editData = {
+      shift_date: shiftDate,
+      shift_start: shiftStart,
+      earning_model: a.earning_model || 'FIXED',
+      work_type: a.work_type || 'SHIFT',
+      work_site: a.work_site || '',
+      project_ref: a.project_ref || '',
+      notes: a.notes || '',
+    };
+    this.editFixedAmount = (a.fixed_amount_cents || 0) / 100;
+    this.editCommissionRate = (a.commission_rate || 0) * 100;
+    this.editHourlyRate = (a.hourly_rate_cents || 0) / 100;
+    this.showEditModal.set(true);
+  }
+
+  saveEdit(): void {
+    this.saving.set(true);
+    const d = this.editData;
+    const payload: Record<string, unknown> = {
+      shift_date: d.shift_date,
+      shift_start: d.shift_start ? new Date(d.shift_start).toISOString() : undefined,
+      earning_model: d.earning_model,
+      work_type: d.work_type,
+      work_site: d.work_site || undefined,
+      project_ref: d.project_ref || undefined,
+      notes: d.notes,
+      fixed_amount_cents: Math.round(this.editFixedAmount * 100),
+      commission_rate: this.editCommissionRate / 100,
+      hourly_rate_cents: this.editHourlyRate > 0 ? Math.round(this.editHourlyRate * 100) : undefined,
+    };
+    this.api.updateAssignment(this.editAssignmentId, payload).subscribe({
+      next: () => {
+        this.toast.success('Assignment updated');
+        this.showEditModal.set(false);
+        this.saving.set(false);
+        this.load();
+      },
+      error: (err: any) => { this.toast.error(err?.error?.message || 'Failed to update assignment'); this.saving.set(false); },
     });
   }
 
   completeAssignment(a: Assignment): void {
+    const labels: Record<string, string> = {
+      FIXED: 'Earned Amount',
+      COMMISSION: 'Total Revenue Collected',
+      HYBRID: 'Total Revenue Collected',
+      HOURLY: 'Total Revenue (or leave 0)',
+      DAILY_RATE: 'Total Revenue (or leave 0)',
+    };
+    const promptLabel = labels[a.earning_model] || 'Total Revenue Collected';
+    const prefillAmount = a.earning_model === 'FIXED' && a.fixed_amount_cents ? (a.fixed_amount_cents / 100).toString() : '';
     this.dialog.prompt(
       'Complete Assignment',
-      `Record the total revenue collected for this shift by ${a.crew_member_name || 'this crew member'}.`,
+      `Record the ${promptLabel.toLowerCase()} for this ${a.work_type?.toLowerCase() || 'shift'} by ${a.crew_member_name || 'this crew member'}.`,
       {
         confirmText: 'Complete & Credit',
-        promptLabel: 'Total Revenue Collected',
-        promptPlaceholder: '0.00',
+        promptLabel,
+        promptPlaceholder: prefillAmount || '0.00',
         promptType: 'number',
         promptPrefix: 'KES',
         icon: 'payments',
       }
     ).subscribe(result => {
       if (!result.confirmed) return;
-      const amount = parseFloat(result.value || '');
+      const amount = parseFloat(result.value || prefillAmount || '0');
       if (isNaN(amount) || amount <= 0) {
-        this.toast.warning('Please enter a valid revenue amount');
+        this.toast.warning('Please enter a valid amount');
         return;
       }
       this.api.completeAssignment(a.id, Math.round(amount * 100)).subscribe({
         next: () => { this.toast.success('Assignment completed & earnings credited'); this.load(); },
+        error: (err: any) => { this.toast.error(err?.error?.message || 'Failed to complete assignment. Please try again.'); },
       });
     });
   }

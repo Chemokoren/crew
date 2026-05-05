@@ -253,6 +253,18 @@ func (r *PayrollRepo) ListPayPeriods(_ context.Context, scheduleID uuid.UUID, pa
 	return all, int64(len(all)), nil
 }
 
+func (r *PayrollRepo) ListPayPeriodsByOrg(_ context.Context, orgID uuid.UUID, page, perPage int) ([]models.PayPeriod, int64, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var all []models.PayPeriod
+	for _, p := range r.periods {
+		if p.OrganizationID == orgID {
+			all = append(all, *p)
+		}
+	}
+	return all, int64(len(all)), nil
+}
+
 // --- StatutoryRateRepo Mock ---
 
 type StatutoryRateRepo struct {

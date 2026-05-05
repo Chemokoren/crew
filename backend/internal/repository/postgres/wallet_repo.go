@@ -74,7 +74,7 @@ func (r *WalletRepo) CreditWallet(
 ) (*models.WalletTransaction, error) {
 	var tx *models.WalletTransaction
 
-	err := r.db.WithContext(ctx).Transaction(func(dbTx *gorm.DB) error {
+	err := r.getDB(ctx).Transaction(func(dbTx *gorm.DB) error {
 		// 1. Check idempotency (fast path)
 		if idempotencyKey != "" {
 			var existing models.WalletTransaction
@@ -147,7 +147,7 @@ func (r *WalletRepo) DebitWallet(
 ) (*models.WalletTransaction, error) {
 	var tx *models.WalletTransaction
 
-	err := r.db.WithContext(ctx).Transaction(func(dbTx *gorm.DB) error {
+	err := r.getDB(ctx).Transaction(func(dbTx *gorm.DB) error {
 		// 1. Check idempotency (fast path)
 		if idempotencyKey != "" {
 			var existing models.WalletTransaction

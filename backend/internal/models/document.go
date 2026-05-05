@@ -21,9 +21,9 @@ const (
 // Files are stored in MinIO; this model tracks metadata.
 type Document struct {
 	ID           uuid.UUID    `json:"id" gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
-	CrewMemberID *uuid.UUID   `json:"crew_member_id,omitempty" gorm:"column:sacco_id;type:uuid;index"`
+	CrewMemberID *uuid.UUID   `json:"crew_member_id,omitempty" gorm:"column:crew_member_id;type:uuid;index"`
 	OrganizationID      *uuid.UUID   `json:"organization_id,omitempty" gorm:"column:sacco_id;type:uuid;index"`
-	VehicleID    *uuid.UUID   `json:"vehicle_id,omitempty" gorm:"column:sacco_id;type:uuid;index"`
+	VehicleID    *uuid.UUID   `json:"vehicle_id,omitempty" gorm:"column:vehicle_id;type:uuid;index"`
 	DocumentType DocumentType `json:"document_type" gorm:"not null"`
 	FileName     string       `json:"file_name" gorm:"not null"`
 	FileSize     int64        `json:"file_size"`

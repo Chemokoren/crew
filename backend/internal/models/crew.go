@@ -35,7 +35,7 @@ type CrewMember struct {
 	KYCStatus     KYCStatus      `json:"kyc_status" gorm:"default:'PENDING'"`
 	KYCVerifiedAt *time.Time     `json:"kyc_verified_at,omitempty"`
 	PhotoURL      string         `json:"photo_url,omitempty"`
-	Role          CrewRole       `json:"role" gorm:"not null" validate:"required,oneof=DRIVER CONDUCTOR RIDER OTHER"`
+	Role          CrewRole       `json:"role" gorm:"type:varchar(50);not null" validate:"required"`
 	JobTypeID     *uuid.UUID     `json:"job_type_id,omitempty" gorm:"type:uuid"`
 	JobTitle      string         `json:"job_title,omitempty" gorm:"type:varchar(100)"`
 	IsActive      bool           `json:"is_active" gorm:"default:true"`

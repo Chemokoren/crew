@@ -32,7 +32,11 @@ func (r *AssignmentRepo) getDB(ctx context.Context) *gorm.DB {
 }
 
 func (r *AssignmentRepo) Create(ctx context.Context, assignment *models.Assignment) error {
-	if err := r.getDB(ctx).Create(assignment).Error; err != nil {
+	q := r.getDB(ctx)
+	if assignment.CommissionBasis == "" {
+		q = q.Omit("CommissionBasis")
+	}
+	if err := q.Create(assignment).Error; err != nil {
 		return fmt.Errorf("create assignment: %w", err)
 	}
 	return nil
@@ -44,12 +48,19 @@ func (r *AssignmentRepo) BulkCreate(ctx context.Context, assignments []models.As
 
 	err := r.getDB(ctx).Transaction(func(tx *gorm.DB) error {
 		for i, a := range assignments {
-			if err := tx.Create(&a).Error; err != nil {
+			// CommissionBasis has a CHECK constraint — omit when empty to let DB use NULL.
+			q := tx
+			if a.CommissionBasis == "" {
+				q = tx.Omit("CommissionBasis")
+			}
+			if err := q.Create(&a).Error; err != nil {
 				bulkErrors = append(bulkErrors, repository.BulkError{
 					Index: i,
 					Error: err.Error(),
 				})
-				continue
+				// In PostgreSQL, a failed statement aborts the transaction.
+				// Return early with the error so the caller can decide.
+				return fmt.Errorf("row %d: %w", i, err)
 			}
 			assignments[i] = a
 			created++
@@ -57,8 +68,8 @@ func (r *AssignmentRepo) BulkCreate(ctx context.Context, assignments []models.As
 		return nil
 	})
 
-	if err != nil {
-		return 0, nil, fmt.Errorf("bulk create assignments: %w", err)
+	if err != nil && created == 0 {
+		return 0, bulkErrors, fmt.Errorf("bulk create assignments: %w", err)
 	}
 
 	return created, bulkErrors, nil
