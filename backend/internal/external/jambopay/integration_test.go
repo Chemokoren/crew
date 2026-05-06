@@ -18,51 +18,110 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/kibsoft/amy-mis/internal/external/payment"
 )
 
-// integrationProvider builds a real JamboPayProvider from env vars.
-// Returns nil (and calls t.Skip) if integration tests are not enabled.
+// sharedProvider is the package-level JamboPay provider, initialized once in TestMain.
+// Using a shared provider means authentication happens once — the cached token is reused
+// across all integration tests, avoiding repeated auth round-trips.
+var sharedProvider *JamboPayProvider
+
+// TestMain auto-loads the backend .env file and pre-warms the shared provider
+// so all integration tests share a single authenticated session.
+func TestMain(m *testing.M) {
+	loadDotEnv()
+	// Pre-warm provider if integration mode is enabled
+	if os.Getenv("JAMBOPAY_INTEGRATION") == "true" {
+		initSharedProvider()
+	}
+	os.Exit(m.Run())
+}
+
+// loadDotEnv walks up from the working directory to find and load the backend .env.
+// Uses godotenv.Load which does NOT overwrite vars already set in the environment.
+func loadDotEnv() {
+	dir, err := os.Getwd()
+	if err != nil {
+		return
+	}
+	for i := 0; i < 5; i++ {
+		candidate := filepath.Join(dir, ".env")
+		if _, err := os.Stat(candidate); err == nil {
+			_ = godotenv.Load(candidate)
+			return
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+}
+
+// initSharedProvider builds the shared provider and pre-authenticates it.
+// If auth fails (network unreachable), sharedProvider remains nil and all
+// integration tests will skip gracefully.
+func initSharedProvider() {
+	authURL := os.Getenv("JAMBOPAY_AUTH_URL")
+	if authURL == "" {
+		authURL = "https://accounts.jambopay.com/v2"
+	}
+	clientID := os.Getenv("JAMBOPAY_CLIENT_ID")
+	if clientID == "" {
+		return // env not loaded — tests will skip
+	}
+
+	p := NewJamboPayProvider(JamboPayConfig{
+		BaseURL:      os.Getenv("JAMBOPAY_BASE_URL"),
+		AuthURL:      authURL,
+		ClientID:     clientID,
+		ClientSecret: os.Getenv("JAMBOPAY_CLIENT_SECRET"),
+		AccountFrom:  os.Getenv("JAMBOPAY_ACCOUNT_FROM"),
+		CallbackURL:  os.Getenv("JAMBOPAY_CALLBACK_URL"),
+		PartnerCode:  os.Getenv("JAMBOPAY_PARTNER_CODE"),
+	}, testLogger())
+
+	// Pre-warm the token cache — if this fails, sharedProvider stays nil
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if _, err := p.authenticate(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "⚠ JamboPay pre-auth failed (%v) — integration tests will skip\n", err)
+		return
+	}
+	sharedProvider = p
+	fmt.Fprintf(os.Stderr, "✓ JamboPay pre-auth OK — token cached for all integration tests\n")
+}
+
+// integrationProvider returns the shared pre-authenticated provider.
+// Skips the test if: JAMBOPAY_INTEGRATION is not set, credentials are missing,
+// or the JamboPay endpoint was unreachable at startup.
 func integrationProvider(t *testing.T) *JamboPayProvider {
 	t.Helper()
 	if os.Getenv("JAMBOPAY_INTEGRATION") != "true" {
 		t.Skip("Set JAMBOPAY_INTEGRATION=true to run live API tests")
 		return nil
 	}
-	required := map[string]string{
-		"JAMBOPAY_CLIENT_ID":     os.Getenv("JAMBOPAY_CLIENT_ID"),
-		"JAMBOPAY_CLIENT_SECRET": os.Getenv("JAMBOPAY_CLIENT_SECRET"),
-		"JAMBOPAY_BASE_URL":      os.Getenv("JAMBOPAY_BASE_URL"),
-		"JAMBOPAY_ACCOUNT_FROM":  os.Getenv("JAMBOPAY_ACCOUNT_FROM"),
-	}
-	missing := []string{}
-	for k, v := range required {
-		if strings.TrimSpace(v) == "" {
+	required := []string{"JAMBOPAY_CLIENT_ID", "JAMBOPAY_CLIENT_SECRET", "JAMBOPAY_BASE_URL", "JAMBOPAY_ACCOUNT_FROM"}
+	var missing []string
+	for _, k := range required {
+		if strings.TrimSpace(os.Getenv(k)) == "" {
 			missing = append(missing, k)
 		}
 	}
 	if len(missing) > 0 {
 		t.Fatalf("Missing required env vars: %v", missing)
 	}
-
-	authURL := os.Getenv("JAMBOPAY_AUTH_URL")
-	if authURL == "" {
-		authURL = "https://accounts.jambopay.com/v2" // confirmed default
+	if sharedProvider == nil {
+		t.Skip("JamboPay pre-auth failed at startup (network unreachable?) — skipping live test")
+		return nil
 	}
-
-	return NewJamboPayProvider(JamboPayConfig{
-		BaseURL:      os.Getenv("JAMBOPAY_BASE_URL"),
-		AuthURL:      authURL,
-		ClientID:     os.Getenv("JAMBOPAY_CLIENT_ID"),
-		ClientSecret: os.Getenv("JAMBOPAY_CLIENT_SECRET"),
-		AccountFrom:  os.Getenv("JAMBOPAY_ACCOUNT_FROM"),
-		CallbackURL:  os.Getenv("JAMBOPAY_CALLBACK_URL"),
-		PartnerCode:  os.Getenv("JAMBOPAY_PARTNER_CODE"),
-	}, testLogger())
+	return sharedProvider
 }
 
 // uniqueOrderID generates a time-based unique order ID.

@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -52,9 +54,23 @@ type JamboPayProvider struct {
 }
 
 func NewJamboPayProvider(cfg JamboPayConfig, logger *slog.Logger) *JamboPayProvider {
+	// Use HTTP/1.1 explicitly to avoid HTTP/2 multiplexing stalls on
+	// Cloudflare-hosted endpoints (accounts.jambopay.com).
+	transport := &http.Transport{
+		ForceAttemptHTTP2: false,
+		TLSClientConfig:   &tls.Config{MinVersion: tls.VersionTLS12},
+		DialContext: (&net.Dialer{
+			Timeout:   5 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		TLSHandshakeTimeout:   8 * time.Second,
+		ResponseHeaderTimeout: 10 * time.Second,
+		IdleConnTimeout:       60 * time.Second,
+		MaxIdleConns:          10,
+	}
 	return &JamboPayProvider{
 		cfg:    cfg,
-		client: &http.Client{Timeout: 30 * time.Second},
+		client: &http.Client{Transport: transport, Timeout: 15 * time.Second},
 		logger: logger,
 	}
 }
