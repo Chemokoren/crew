@@ -439,6 +439,7 @@ func main() {
 	if cfg.PaymentJamboPayEnabled && cfg.JamboPayClientID != "" {
 		jamboPayProvider = jambopay.NewJamboPayProvider(jambopay.JamboPayConfig{
 			BaseURL:      cfg.JamboPayBaseURL,
+			AuthURL:      cfg.JamboPayAuthURL,
 			ClientID:     cfg.JamboPayClientID,
 			ClientSecret: cfg.JamboPayClientSecret,
 			AccountFrom:  cfg.JamboPayAccountFrom,

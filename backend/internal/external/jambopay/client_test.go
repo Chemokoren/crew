@@ -17,11 +17,30 @@ func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 }
 
+// walletAccountListResp returns the real JamboPay paginated account response shape.
+func walletAccountListResp(balance int64, currency string) map[string]interface{} {
+	return map[string]interface{}{
+		"pageIndex": 1,
+		"pageSize":  10,
+		"count":     1,
+		"data": []map[string]interface{}{
+			{
+				"accountNo":      "ACC-001",
+				"currentBalance": balance, // already in minor units
+				"bookBalance":    balance,
+				"currency":       currency,
+				"accountType":    "Business",
+				"isActive":       true,
+			},
+		},
+	}
+}
+
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
 
-	// Auth endpoint
+	// Auth endpoint — matches accounts.jambopay.com/v2/auth/token
 	mux.HandleFunc("/auth/token", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Errorf("auth method = %s, want POST", r.Method)
@@ -56,15 +75,24 @@ func newTestServer(t *testing.T) *httptest.Server {
 		json.NewEncoder(w).Encode(map[string]string{"status": "completed"})
 	})
 
-	// Balance
+	// Balance — paginated list (matches real API shape)
 	mux.HandleFunc("/wallet/account", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"currentBalance": 15000.50,
-			"currency":       "KES",
-		})
+		json.NewEncoder(w).Encode(walletAccountListResp(1502600, "KES")) // KES 15,026.00
 	})
 
 	return httptest.NewServer(mux)
+}
+
+// newMockProvider creates a provider pointing at both base URL and auth URL
+// to the same mock server (the mock handles /auth/token for both).
+func newMockProvider(t *testing.T, server *httptest.Server) *JamboPayProvider {
+	t.Helper()
+	return NewJamboPayProvider(JamboPayConfig{
+		BaseURL:      server.URL,
+		AuthURL:      server.URL, // same server handles /auth/token in tests
+		ClientID:     "test",
+		ClientSecret: "test",
+	}, testLogger())
 }
 
 func TestJamboPayName(t *testing.T) {
@@ -77,10 +105,7 @@ func TestJamboPayName(t *testing.T) {
 func TestJamboPayInitiatePayoutMobile(t *testing.T) {
 	server := newTestServer(t)
 	defer server.Close()
-
-	p := NewJamboPayProvider(JamboPayConfig{
-		BaseURL: server.URL, ClientID: "test", ClientSecret: "test",
-	}, testLogger())
+	p := newMockProvider(t, server)
 
 	result, err := p.InitiatePayout(context.Background(), payment.PayoutRequest{
 		AmountCents:    150000,
@@ -109,10 +134,7 @@ func TestJamboPayInitiatePayoutMobile(t *testing.T) {
 func TestJamboPayInitiatePayoutBank(t *testing.T) {
 	server := newTestServer(t)
 	defer server.Close()
-
-	p := NewJamboPayProvider(JamboPayConfig{
-		BaseURL: server.URL, ClientID: "test", ClientSecret: "test",
-	}, testLogger())
+	p := newMockProvider(t, server)
 
 	result, err := p.InitiatePayout(context.Background(), payment.PayoutRequest{
 		AmountCents: 500000,
@@ -134,10 +156,7 @@ func TestJamboPayInitiatePayoutBank(t *testing.T) {
 func TestJamboPayUnsupportedChannel(t *testing.T) {
 	server := newTestServer(t)
 	defer server.Close()
-
-	p := NewJamboPayProvider(JamboPayConfig{
-		BaseURL: server.URL, ClientID: "test", ClientSecret: "test",
-	}, testLogger())
+	p := newMockProvider(t, server)
 
 	_, err := p.InitiatePayout(context.Background(), payment.PayoutRequest{
 		Channel: "CRYPTO",
@@ -150,10 +169,7 @@ func TestJamboPayUnsupportedChannel(t *testing.T) {
 func TestJamboPayVerifyPayout(t *testing.T) {
 	server := newTestServer(t)
 	defer server.Close()
-
-	p := NewJamboPayProvider(JamboPayConfig{
-		BaseURL: server.URL, ClientID: "test", ClientSecret: "test",
-	}, testLogger())
+	p := newMockProvider(t, server)
 
 	result, err := p.VerifyPayout(context.Background(), payment.PayoutVerifyRequest{
 		Reference: "JP-REF-001",
@@ -170,17 +186,15 @@ func TestJamboPayVerifyPayout(t *testing.T) {
 func TestJamboPayCheckBalance(t *testing.T) {
 	server := newTestServer(t)
 	defer server.Close()
-
-	p := NewJamboPayProvider(JamboPayConfig{
-		BaseURL: server.URL, ClientID: "test", ClientSecret: "test",
-	}, testLogger())
+	p := newMockProvider(t, server)
 
 	result, err := p.CheckBalance(context.Background(), "ACC-001")
 	if err != nil {
 		t.Fatalf("CheckBalance: %v", err)
 	}
-	if result.Balance != 1500050 { // 15000.50 × 100
-		t.Errorf("Balance = %d, want 1500050", result.Balance)
+	// Mock returns 1502600 minor units = KES 15,026.00
+	if result.Balance != 1502600 {
+		t.Errorf("Balance = %d, want 1502600", result.Balance)
 	}
 	if result.Currency != "KES" {
 		t.Errorf("Currency = %q, want KES", result.Currency)
@@ -197,13 +211,16 @@ func TestJamboPayTokenCaching(t *testing.T) {
 		})
 	})
 	mux.HandleFunc("/wallet/account", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]interface{}{"currentBalance": 0.0, "currency": "KES"})
+		json.NewEncoder(w).Encode(walletAccountListResp(0, "KES"))
 	})
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
 	p := NewJamboPayProvider(JamboPayConfig{
-		BaseURL: server.URL, ClientID: "c", ClientSecret: "s",
+		BaseURL:      server.URL,
+		AuthURL:      server.URL, // same mock handles auth
+		ClientID:     "c",
+		ClientSecret: "s",
 	}, testLogger())
 
 	p.CheckBalance(context.Background(), "A")
@@ -221,7 +238,10 @@ func TestJamboPayAuthFailure(t *testing.T) {
 	defer server.Close()
 
 	p := NewJamboPayProvider(JamboPayConfig{
-		BaseURL: server.URL, ClientID: "bad", ClientSecret: "bad",
+		BaseURL:      server.URL,
+		AuthURL:      server.URL,
+		ClientID:     "bad",
+		ClientSecret: "bad",
 	}, testLogger())
 
 	_, err := p.CheckBalance(context.Background(), "ACC")

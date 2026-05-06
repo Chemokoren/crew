@@ -81,14 +81,24 @@ func newMockJPServer(t *testing.T) (*httptest.Server, *mockJPServer) {
 		}
 	})
 
-	// Create / Get account
+	// Get / Create account — POST returns single object, GET returns paginated list (real API shape)
 	mux.HandleFunc("/wallet/account", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
+			// CreateAccount response: single object
 			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"accountNo": "MBR-001", "currentBalance": 0, "bookBalance": 0,
+				"currency": "KES", "accountType": "Individual", "isActive": true,
+			})
+			return
 		}
+		// GET: CheckBalance / GetAccount — paginated list
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"accountNo": "MBR-001", "currentBalance": 5000.00,
-			"currency": "KES", "accountType": "Individual", "isActive": true,
+			"pageIndex": 1, "pageSize": 10, "count": 1,
+			"data": []map[string]interface{}{
+				{"accountNo": "MBR-001", "currentBalance": 500000, "bookBalance": 500000,
+					"currency": "KES", "accountType": "Individual", "isActive": true},
+			},
 		})
 	})
 
@@ -184,6 +194,7 @@ func newTestProvider(t *testing.T, server *httptest.Server) *JamboPayProvider {
 	t.Helper()
 	return NewJamboPayProvider(JamboPayConfig{
 		BaseURL:      server.URL,
+		AuthURL:      server.URL, // mock server handles /auth/token for both
 		ClientID:     "amy-client",
 		ClientSecret: "amy-secret",
 		AccountFrom:  "ORG-001", // AMY merchant / SACCO source account
@@ -207,8 +218,8 @@ func TestFlow1_OrgWalletTopup_CheckBalance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CheckBalance: %v", err)
 	}
-	if bal.Balance != 5000_00 { // 5000.00 KES
-		t.Errorf("Balance = %d, want 500000 cents", bal.Balance)
+	if bal.Balance != 500000 { // 500000 minor units = KES 5,000.00
+		t.Errorf("Balance = %d, want 500000", bal.Balance)
 	}
 	if bal.Currency != "KES" {
 		t.Errorf("Currency = %q, want KES", bal.Currency)
@@ -569,8 +580,8 @@ func TestCreateMemberWalletAccount(t *testing.T) {
 	if !account.IsActive {
 		t.Error("new account should be active")
 	}
-	t.Logf("✓ Member wallet account created: %s (balance: %.2f %s)",
-		account.AccountNo, account.CurrentBalance, account.Currency)
+	t.Logf("✓ Member wallet account created: %s (balance: KES %.2f)",
+		account.AccountNo, float64(account.CurrentBalance)/100)
 }
 
 func TestGetMemberBalance(t *testing.T) {

@@ -103,10 +103,11 @@ type Config struct {
 	// JamboPay (payment/payout)
 	JamboPayClientID     string // JamboPay OAuth2 client ID
 	JamboPayClientSecret string // JamboPay OAuth2 client secret
-	JamboPayBaseURL      string // JamboPay API base URL
-	JamboPayAccountFrom  string // Tenant source account number for debits (e.g. "1000001")
+	JamboPayBaseURL      string // JamboPay Wallet API base URL (e.g. https://api.jambopay.com)
+	JamboPayAuthURL      string // JamboPay OAuth2 token URL (e.g. https://accounts.jambopay.com/v2)
+	JamboPayAccountFrom  string // Tenant source account number for debits (e.g. "1002603")
 	JamboPayCallbackURL  string // Callback URL JamboPay sends payout/transfer results to
-	JamboPayPartnerCode  string // 3-digit partner code appended to OTP (e.g. "456")
+	JamboPayPartnerCode  string // 3-digit partner code appended to OTP (e.g. "349")
 
 	// M-Pesa Direct (alternative payment provider — future)
 	MpesaConsumerKey    string // M-Pesa consumer key
@@ -238,6 +239,7 @@ func Load() (*Config, error) {
 		JamboPayClientID:     os.Getenv("JAMBOPAY_CLIENT_ID"),
 		JamboPayClientSecret: os.Getenv("JAMBOPAY_CLIENT_SECRET"),
 		JamboPayBaseURL:      os.Getenv("JAMBOPAY_BASE_URL"),
+		JamboPayAuthURL:      os.Getenv("JAMBOPAY_AUTH_URL"),
 		JamboPayAccountFrom:  os.Getenv("JAMBOPAY_ACCOUNT_FROM"),
 		JamboPayCallbackURL:  os.Getenv("JAMBOPAY_CALLBACK_URL"),
 		JamboPayPartnerCode:  os.Getenv("JAMBOPAY_PARTNER_CODE"),

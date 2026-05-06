@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -20,12 +19,13 @@ import (
 
 // JamboPayConfig holds configuration for the JamboPay v2 Wallet API.
 type JamboPayConfig struct {
-	BaseURL      string // e.g. https://api.jambopay.co.ke
+	BaseURL      string // Wallet API base URL  e.g. https://api.jambopay.com
+	AuthURL      string // OAuth2 token URL     e.g. https://accounts.jambopay.com/v2
 	ClientID     string // OAuth2 client ID
-	ClientSecret string // OAuth2 client secret
+	ClientSecret string // OAuth2 client secret (raw, as provided in credentials)
 	AccountFrom  string // Tenant source account number (for payouts / transfers)
 	CallbackURL  string // Webhook URL JamboPay notifies on completion
-	PartnerCode  string // 3-digit code appended to OTP for tenant client transactions
+	PartnerCode  string // 3-digit code appended to OTP for tenant-client transactions
 }
 
 // JamboPayProvider implements the payment.Provider interface using JamboPay v2 Wallet API.
@@ -67,15 +67,13 @@ func (p *JamboPayProvider) Name() string { return "jambopay" }
 
 // authenticate retrieves or refreshes the JamboPay OAuth2 access token.
 //
-// The real JamboPay API at api.jambopay.com uses HTTP Basic authentication
-// (client credentials in the Authorization header, NOT in the POST body).
-// The `application` field (= ClientID) is also required.
-// The raw ClientSecret stored in config is base64-encoded; we decode it first.
+// JamboPay uses two separate base URLs:
+//   - Auth:  https://accounts.jambopay.com/v2/auth/token  (POST, client_credentials, form body)
+//   - API:   https://api.jambopay.com/...                 (Bearer token required)
 //
-// POST /auth/token
-// Authorization: Basic base64(client_id:decoded_client_secret)
+// POST {AuthURL}/auth/token
 // Content-Type: application/x-www-form-urlencoded
-// Body: grant_type=client_credentials&application={client_id}
+// Body: grant_type=client_credentials&client_id={id}&client_secret={secret}
 func (p *JamboPayProvider) authenticate(ctx context.Context) (string, error) {
 	p.mu.RLock()
 	if p.token != "" && time.Now().Before(p.expiresAt) {
@@ -85,30 +83,28 @@ func (p *JamboPayProvider) authenticate(ctx context.Context) (string, error) {
 	}
 	p.mu.RUnlock()
 
-	// Decode the base64-encoded client secret if necessary.
-	// JamboPay provides the secret already base64-encoded in credentials docs.
-	decodedSecret := p.cfg.ClientSecret
-	if decoded, err := base64Decode(p.cfg.ClientSecret); err == nil && decoded != "" {
-		decodedSecret = decoded
+	authURL := p.cfg.AuthURL
+	if authURL == "" {
+		// Sensible default — the official JamboPay accounts endpoint
+		authURL = "https://accounts.jambopay.com/v2"
 	}
 
 	form := url.Values{
-		"grant_type":  {"client_credentials"},
-		"application": {p.cfg.ClientID},
+		"grant_type":    {"client_credentials"},
+		"client_id":     {p.cfg.ClientID},
+		"client_secret": {p.cfg.ClientSecret},
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		p.cfg.BaseURL+"/auth/token", strings.NewReader(form.Encode()))
+		authURL+"/auth/token", strings.NewReader(form.Encode()))
 	if err != nil {
 		return "", fmt.Errorf("build auth request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	// Use HTTP Basic auth — JamboPay rejects client_secret in the POST body
-	req.SetBasicAuth(p.cfg.ClientID, decodedSecret)
 
 	resp, err := p.client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("jambopay auth failed: %w", err)
+		return "", fmt.Errorf("jambopay auth: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -133,21 +129,6 @@ func (p *JamboPayProvider) authenticate(ctx context.Context) (string, error) {
 	return tokenResp.AccessToken, nil
 }
 
-// base64Decode decodes a base64-encoded string, trimming whitespace/newlines.
-// Returns the decoded string and nil error only if decoding succeeds.
-func base64Decode(s string) (string, error) {
-	s = strings.TrimSpace(s)
-	// Try standard base64 first, then URL-safe
-	for _, enc := range []*base64.Encoding{base64.StdEncoding, base64.URLEncoding, base64.RawStdEncoding} {
-		b, err := enc.DecodeString(s)
-		if err == nil && len(b) > 0 {
-			return strings.TrimSpace(string(b)), nil
-		}
-	}
-	return "", fmt.Errorf("not base64")
-}
-
-// doRequest sends an authenticated JSON request to JamboPay.
 func (p *JamboPayProvider) doRequest(ctx context.Context, method, path string, body interface{}) ([]byte, int, error) {
 	token, err := p.authenticate(ctx)
 	if err != nil {
@@ -558,18 +539,31 @@ func (p *JamboPayProvider) CheckBalance(ctx context.Context, accountNo string) (
 		return nil, parseJamboPayError("check balance", status, body)
 	}
 
-	var acctResp struct {
-		CurrentBalance float64 `json:"currentBalance"`
-		Currency       string  `json:"currency"`
+	// Real API response: paginated list { pageIndex, pageSize, count, data: [...] }
+	// currentBalance is already in minor units (e.g. 12420168 = KES 124,201.68)
+	var listResp struct {
+		Count int `json:"count"`
+		Data  []struct {
+			AccountNo      string `json:"accountNo"`
+			CurrentBalance int64  `json:"currentBalance"`
+			BookBalance    int64  `json:"bookBalance"`
+			Currency       string `json:"currency"`
+			AccountType    string `json:"accountType"`
+			IsActive       bool   `json:"isActive"`
+		} `json:"data"`
 	}
-	if err := json.Unmarshal(body, &acctResp); err != nil {
+	if err := json.Unmarshal(body, &listResp); err != nil {
 		return nil, fmt.Errorf("decode balance response: %w", err)
 	}
+	if len(listResp.Data) == 0 {
+		return nil, fmt.Errorf("account %s not found", accountNo)
+	}
 
+	acct := listResp.Data[0]
 	return &payment.BalanceResult{
 		Provider: p.Name(),
-		Balance:  int64(acctResp.CurrentBalance * 100),
-		Currency: acctResp.Currency,
+		Balance:  acct.CurrentBalance, // already in minor units
+		Currency: acct.Currency,
 	}, nil
 }
 

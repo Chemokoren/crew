@@ -49,8 +49,14 @@ func integrationProvider(t *testing.T) *JamboPayProvider {
 		t.Fatalf("Missing required env vars: %v", missing)
 	}
 
+	authURL := os.Getenv("JAMBOPAY_AUTH_URL")
+	if authURL == "" {
+		authURL = "https://accounts.jambopay.com/v2" // confirmed default
+	}
+
 	return NewJamboPayProvider(JamboPayConfig{
 		BaseURL:      os.Getenv("JAMBOPAY_BASE_URL"),
+		AuthURL:      authURL,
 		ClientID:     os.Getenv("JAMBOPAY_CLIENT_ID"),
 		ClientSecret: os.Getenv("JAMBOPAY_CLIENT_SECRET"),
 		AccountFrom:  os.Getenv("JAMBOPAY_ACCOUNT_FROM"),
@@ -75,35 +81,15 @@ func buildTestChecksum(ref, amount, clientID, clientSecret string) string {
 // Integration: Authentication
 // ---------------------------------------------------------------------------
 
-// TestIntegration_Authenticate verifies token acquisition.
-//
-// FINDING (2026-05-06): The production JamboPay API at api.jambopay.com
-// requires AUTHORIZATION_CODE grant (OAuth2 browser redirect flow) —
-// client_credentials grant is NOT supported. The token endpoint always
-// requires 'code' and 'redirectUri' fields, which can only be obtained
-// after a user authorizes via the JamboPay portal.
-//
-// ACTION REQUIRED: Ask JamboPay to provision:
-//   (a) A server-to-server API key / long-lived service token, OR
-//   (b) The specific grant_type that works for machine-to-machine payouts, OR
-//   (c) A sandbox environment with client_credentials support.
-//
-// Until this is resolved, all live API tests that require auth are skipped.
+// TestIntegration_Authenticate verifies token acquisition against the real JamboPay
+// accounts endpoint (https://accounts.jambopay.com/v2/auth/token).
+// Auth is separate from the Wallet API endpoint (https://api.jambopay.com).
 func TestIntegration_Authenticate(t *testing.T) {
 	p := integrationProvider(t)
 	ctx := context.Background()
 
 	token, err := p.authenticate(ctx)
 	if err != nil {
-		// Check if this is the known auth_code blocker
-		if strings.Contains(err.Error(), "code should not be empty") {
-			t.Skipf(
-				"BLOCKER: JamboPay requires OAuth2 authorization_code grant (browser flow). "+
-					"client_credentials is not supported on the production API. "+
-					"Contact JamboPay to provision a machine-to-machine service token. "+
-					"Error: %v", err,
-			)
-		}
 		t.Fatalf("authenticate failed: %v", err)
 	}
 	if token == "" {
