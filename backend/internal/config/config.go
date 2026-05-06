@@ -105,8 +105,8 @@ type Config struct {
 	JamboPayClientSecret string // JamboPay OAuth2 client secret
 	JamboPayBaseURL      string // JamboPay Wallet API base URL (e.g. https://api.jambopay.com)
 	JamboPayAuthURL      string // JamboPay OAuth2 token URL (e.g. https://accounts.jambopay.com/v2)
-	JamboPayAccountFrom  string // Collection account — receives incoming funds (WALLET_COLLECTION_ACCOUNT=1002603)
-	JamboPayPayoutAccount string // Merchant wallet — source for disbursements to members (WALLET_MERCHANT_ACCOUNT=1002602)
+	JamboPayCollectionAccount string // Collection account — receives incoming funds (WALLET_COLLECTION_ACCOUNT=1002603)
+	JamboPayPayoutAccount     string // Merchant wallet — source for disbursements to members (WALLET_MERCHANT_ACCOUNT=1002602)
 	JamboPayCallbackURL  string // Callback URL JamboPay sends payout/transfer results to
 	JamboPayPartnerCode  string // 3-digit partner code appended to OTP (e.g. "349")
 
@@ -241,8 +241,8 @@ func Load() (*Config, error) {
 		JamboPayClientSecret:  os.Getenv("JAMBOPAY_CLIENT_SECRET"),
 		JamboPayBaseURL:       os.Getenv("JAMBOPAY_BASE_URL"),
 		JamboPayAuthURL:       os.Getenv("JAMBOPAY_AUTH_URL"),
-		JamboPayAccountFrom:   os.Getenv("JAMBOPAY_ACCOUNT_FROM"),
-		JamboPayPayoutAccount: os.Getenv("JAMBOPAY_PAYOUT_ACCOUNT"),
+		JamboPayCollectionAccount: os.Getenv("JAMBOPAY_COLLECTION_ACCOUNT"),
+		JamboPayPayoutAccount:     os.Getenv("JAMBOPAY_PAYOUT_ACCOUNT"),
 		JamboPayCallbackURL:   os.Getenv("JAMBOPAY_CALLBACK_URL"),
 		JamboPayPartnerCode:   os.Getenv("JAMBOPAY_PARTNER_CODE"),
 

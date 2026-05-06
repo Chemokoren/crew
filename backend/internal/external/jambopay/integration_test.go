@@ -11,7 +11,7 @@ package jambopay
 //   - AMY is the JamboPay Merchant account
 //   - Organizations (SACCOs) hold wallet accounts under AMY's merchant
 //   - Individual members (drivers, conductors) hold wallet accounts
-//   - AccountFrom (JAMBOPAY_ACCOUNT_FROM) is AMY's tenant source account
+//   - CollectionAccount (JAMBOPAY_COLLECTION_ACCOUNT) is AMY's incoming collection account
 
 import (
 	"context"
@@ -82,7 +82,7 @@ func initSharedProvider() {
 		AuthURL:       authURL,
 		ClientID:      clientID,
 		ClientSecret:  os.Getenv("JAMBOPAY_CLIENT_SECRET"),
-		AccountFrom:   os.Getenv("JAMBOPAY_ACCOUNT_FROM"),   // collection account: 1002603
+		CollectionAccount: os.Getenv("JAMBOPAY_COLLECTION_ACCOUNT"), // collection account: 1002603
 		PayoutAccount: os.Getenv("JAMBOPAY_PAYOUT_ACCOUNT"), // merchant wallet:    1002602
 		CallbackURL:   os.Getenv("JAMBOPAY_CALLBACK_URL"),
 		PartnerCode:   os.Getenv("JAMBOPAY_PARTNER_CODE"),
@@ -108,7 +108,7 @@ func integrationProvider(t *testing.T) *JamboPayProvider {
 		t.Skip("Set JAMBOPAY_INTEGRATION=true to run live API tests")
 		return nil
 	}
-	required := []string{"JAMBOPAY_CLIENT_ID", "JAMBOPAY_CLIENT_SECRET", "JAMBOPAY_BASE_URL", "JAMBOPAY_ACCOUNT_FROM"}
+	required := []string{"JAMBOPAY_CLIENT_ID", "JAMBOPAY_CLIENT_SECRET", "JAMBOPAY_BASE_URL", "JAMBOPAY_COLLECTION_ACCOUNT"}
 	var missing []string
 	for _, k := range required {
 		if strings.TrimSpace(os.Getenv(k)) == "" {
@@ -175,7 +175,7 @@ func TestIntegration_CheckMerchantBalance(t *testing.T) {
 	p := integrationProvider(t)
 	ctx := context.Background()
 
-	accountNo := p.cfg.AccountFrom
+	accountNo := p.cfg.CollectionAccount
 	bal, err := p.CheckBalance(ctx, accountNo)
 	if err != nil {
 		t.Fatalf("CheckBalance for merchant account %s failed: %v", accountNo, err)

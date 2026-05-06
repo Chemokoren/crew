@@ -25,8 +25,8 @@ type JamboPayConfig struct {
 	AuthURL       string // OAuth2 token URL     e.g. https://accounts.jambopay.com/v2
 	ClientID      string // OAuth2 client ID
 	ClientSecret  string // OAuth2 client secret (raw, as provided in credentials)
-	AccountFrom   string // Collection account — receives incoming funds (WALLET_COLLECTION_ACCOUNT=1002603)
-	PayoutAccount string // Merchant wallet — source for disbursements to members (WALLET_MERCHANT_ACCOUNT=1002602)
+	CollectionAccount string // Collection account — receives incoming funds (WALLET_COLLECTION_ACCOUNT=1002603)
+	PayoutAccount     string // Merchant wallet — source for disbursements to members (WALLET_MERCHANT_ACCOUNT=1002602)
 	CallbackURL   string // Webhook URL JamboPay notifies on completion
 	PartnerCode   string // 3-digit code appended to OTP for tenant-client transactions
 }
@@ -353,7 +353,7 @@ func (p *JamboPayProvider) InitiateTransfer(ctx context.Context, req TransferReq
 
 	// Use defaults from config when not overridden
 	if req.AccountFrom == "" {
-		req.AccountFrom = p.cfg.AccountFrom
+		req.AccountFrom = p.cfg.CollectionAccount
 	}
 	if req.CallbackURL == "" {
 		req.CallbackURL = p.cfg.CallbackURL
@@ -442,7 +442,7 @@ func (p *JamboPayProvider) InitiatePayout(ctx context.Context, req payment.Payou
 	// Use config defaults when not overridden by caller
 	accountFrom := req.AccountFrom
 	if accountFrom == "" {
-		accountFrom = p.cfg.AccountFrom
+		accountFrom = p.cfg.CollectionAccount
 	}
 	callbackURL := req.CallbackURL
 	if callbackURL == "" {

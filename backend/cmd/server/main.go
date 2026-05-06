@@ -438,19 +438,19 @@ func main() {
 	var jamboPayProvider *jambopay.JamboPayProvider // held for checksum verifier injection
 	if cfg.PaymentJamboPayEnabled && cfg.JamboPayClientID != "" {
 		jamboPayProvider = jambopay.NewJamboPayProvider(jambopay.JamboPayConfig{
-			BaseURL:       cfg.JamboPayBaseURL,
-			AuthURL:       cfg.JamboPayAuthURL,
-			ClientID:      cfg.JamboPayClientID,
-			ClientSecret:  cfg.JamboPayClientSecret,
-			AccountFrom:   cfg.JamboPayAccountFrom,
-			PayoutAccount: cfg.JamboPayPayoutAccount,
-			CallbackURL:   cfg.JamboPayCallbackURL,
-			PartnerCode:   cfg.JamboPayPartnerCode,
+			BaseURL:           cfg.JamboPayBaseURL,
+			AuthURL:           cfg.JamboPayAuthURL,
+			ClientID:          cfg.JamboPayClientID,
+			ClientSecret:      cfg.JamboPayClientSecret,
+			CollectionAccount: cfg.JamboPayCollectionAccount,
+			PayoutAccount:     cfg.JamboPayPayoutAccount,
+			CallbackURL:       cfg.JamboPayCallbackURL,
+			PartnerCode:       cfg.JamboPayPartnerCode,
 		}, logger)
 		paymentProviders = append(paymentProviders, jamboPayProvider)
 		slog.Info("JamboPay payment provider enabled",
 			slog.String("base_url", cfg.JamboPayBaseURL),
-			slog.String("collection_account", cfg.JamboPayAccountFrom),
+			slog.String("collection_account", cfg.JamboPayCollectionAccount),
 			slog.String("payout_account", cfg.JamboPayPayoutAccount),
 		)
 	}

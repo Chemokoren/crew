@@ -77,7 +77,7 @@ JAMBOPAY_BASE_URL=https://api.jambopay.com
 JAMBOPAY_AUTH_URL=https://accounts.jambopay.com/v2
 
 # Account configuration — two distinct accounts
-JAMBOPAY_ACCOUNT_FROM=1002603     # WALLET_COLLECTION_ACCOUNT — receives incoming payments / top-ups
+JAMBOPAY_COLLECTION_ACCOUNT=1002603     # WALLET_COLLECTION_ACCOUNT — receives incoming payments / top-ups
 JAMBOPAY_PAYOUT_ACCOUNT=1002602   # WALLET_MERCHANT_ACCOUNT  — source for disbursements to members
 
 JAMBOPAY_CALLBACK_URL=https://your-domain.com/api/v1/webhooks/jambopay
@@ -88,7 +88,7 @@ JAMBOPAY_PARTNER_CODE=349              # 3-digit code appended to OTP for member
 >
 > | Env Var | Account No | Purpose |
 > |---|---|---|
-> | `JAMBOPAY_ACCOUNT_FROM` | `1002603` | Collection account — receives money in (top-ups, payments) |
+> | `JAMBOPAY_COLLECTION_ACCOUNT` | `1002603` | Collection account — receives money in (top-ups, payments) |
 > | `JAMBOPAY_PAYOUT_ACCOUNT` | `1002602` | Merchant wallet — money goes **out** to members (wages, salaries, withdrawals) |
 
 ---
@@ -305,7 +305,7 @@ backend/cmd/server/main.go  # Wires JamboPayProvider into the dependency graph
 
 | Field | Collection Account | Merchant/Payout Account |
 |---|---|---|
-| **Env Var** | `JAMBOPAY_ACCOUNT_FROM` | `JAMBOPAY_PAYOUT_ACCOUNT` |
+| **Env Var** | `JAMBOPAY_COLLECTION_ACCOUNT` | `JAMBOPAY_PAYOUT_ACCOUNT` |
 | **JamboPay Name** | `WALLET_COLLECTION_ACCOUNT` | `WALLET_MERCHANT_ACCOUNT` |
 | **Account No** | `1002603` | `1002602` |
 | **Type** | Business | Business |

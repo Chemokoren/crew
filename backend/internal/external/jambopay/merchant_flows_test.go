@@ -197,8 +197,8 @@ func newTestProvider(t *testing.T, server *httptest.Server) *JamboPayProvider {
 		AuthURL:       server.URL, // mock server handles /auth/token for both
 		ClientID:      "amy-client",
 		ClientSecret:  "amy-secret",
-		AccountFrom:   "COLL-001",  // collection account (receives top-ups)
-		PayoutAccount: "PAY-001",   // merchant wallet (source for member disbursements)
+		CollectionAccount: "COLL-001",  // collection account (receives top-ups)
+		PayoutAccount:     "PAY-001",   // merchant wallet (source for member disbursements)
 		CallbackURL:   "https://amy.co.ke/api/v1/webhooks/jambopay",
 		PartnerCode:   "456",
 	}, testLogger())

@@ -92,8 +92,8 @@ func newMockProvider(t *testing.T, server *httptest.Server) *JamboPayProvider {
 		AuthURL:       server.URL,
 		ClientID:      "test",
 		ClientSecret:  "test",
-		AccountFrom:   "COLL-001", // collection account
-		PayoutAccount: "PAY-001",  // payout / merchant wallet
+		CollectionAccount: "COLL-001", // collection account
+		PayoutAccount:     "PAY-001",  // payout / merchant wallet
 	}, testLogger())
 }
 
@@ -223,8 +223,8 @@ func TestJamboPayTokenCaching(t *testing.T) {
 		AuthURL:       server.URL,
 		ClientID:      "c",
 		ClientSecret:  "s",
-		AccountFrom:   "COLL-001",
-		PayoutAccount: "PAY-001",
+		CollectionAccount: "COLL-001",
+		PayoutAccount:     "PAY-001",
 	}, testLogger())
 
 	p.CheckBalance(context.Background(), "A")
