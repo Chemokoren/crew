@@ -11,12 +11,12 @@ func TestTranslator_English(t *testing.T) {
 		key  string
 		want string
 	}{
-		{"menu.welcome", "Welcome to CrewPay"},
+		{"menu.welcome", "Welcome to AMY"},
 		{"menu.check_balance", "Check Balance"},
 		{"menu.withdraw", "Withdraw"},
 		{"menu.earnings", "My Earnings"},
 		{"menu.exit", "Exit"},
-		{"goodbye", "Thank you for using CrewPay.\nGoodbye!"},
+		{"goodbye", "Thank you for using AMY.\nGoodbye!"},
 	}
 
 	for _, tt := range tests {
@@ -33,8 +33,8 @@ func TestTranslator_Swahili(t *testing.T) {
 	tr := NewTranslator("en")
 
 	got := tr.T("sw", "menu.welcome")
-	if got != "Karibu CrewPay" {
-		t.Errorf("T('sw', 'menu.welcome') = %q, want %q", got, "Karibu CrewPay")
+	if got != "Karibu AMY" {
+		t.Errorf("T('sw', 'menu.welcome') = %q, want %q", got, "Karibu AMY")
 	}
 
 	got = tr.T("sw", "menu.check_balance")
@@ -48,7 +48,7 @@ func TestTranslator_Fallback(t *testing.T) {
 
 	// Unknown language should fall back to English
 	got := tr.T("fr", "menu.welcome")
-	if got != "Welcome to CrewPay" {
+	if got != "Welcome to AMY" {
 		t.Errorf("T('fr', 'menu.welcome') should fallback to English, got %q", got)
 	}
 }
@@ -66,7 +66,7 @@ func TestTranslator_EmptyLanguage(t *testing.T) {
 	tr := NewTranslator("en")
 
 	got := tr.T("", "menu.welcome")
-	if got != "Welcome to CrewPay" {
+	if got != "Welcome to AMY" {
 		t.Errorf("T('', key) should use default language, got %q", got)
 	}
 }
@@ -101,10 +101,10 @@ func TestTranslator_SetMessage(t *testing.T) {
 	}
 
 	// Add new language
-	tr.SetMessage("fr", "menu.welcome", "Bienvenue à CrewPay")
+	tr.SetMessage("fr", "menu.welcome", "Bienvenue à AMY")
 	got = tr.T("fr", "menu.welcome")
-	if got != "Bienvenue à CrewPay" {
-		t.Errorf("French message = %q, want %q", got, "Bienvenue à CrewPay")
+	if got != "Bienvenue à AMY" {
+		t.Errorf("French message = %q, want %q", got, "Bienvenue à AMY")
 	}
 }
 

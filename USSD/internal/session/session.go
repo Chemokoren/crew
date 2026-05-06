@@ -84,9 +84,10 @@ type Data struct {
 	Inputs map[string]string `json:"inputs,omitempty"`
 
 	// User identity (populated after authentication/lookup)
-	CrewMemberID string `json:"crew_id,omitempty"`
-	UserID       string `json:"user_id,omitempty"`
-	Language     string `json:"lang"`
+	CrewMemberID   string `json:"crew_id,omitempty"`
+	UserID         string `json:"user_id,omitempty"`
+	OrganizationID string `json:"org_id,omitempty"`
+	Language       string `json:"lang"`
 
 	// Tracking
 	StepCount   int       `json:"steps"`

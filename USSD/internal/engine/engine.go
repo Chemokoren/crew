@@ -18,6 +18,8 @@ import (
 
 	"github.com/kibsoft/amy-mis-ussd/internal/backend"
 	"github.com/kibsoft/amy-mis-ussd/internal/i18n"
+	"github.com/kibsoft/amy-mis-ussd/internal/rolecache"
+	"github.com/kibsoft/amy-mis-ussd/internal/routing"
 	"github.com/kibsoft/amy-mis-ussd/internal/session"
 )
 
@@ -32,15 +34,19 @@ type Engine struct {
 	backendClient *backend.Client
 	sessionStore  *session.Store
 	translator    *i18n.Translator
+	routingTable  *routing.Table
+	roleCache     *rolecache.Cache
 	logger        *slog.Logger
 }
 
 // NewEngine creates a new USSD processing engine.
-func NewEngine(client *backend.Client, store *session.Store, translator *i18n.Translator, logger *slog.Logger) *Engine {
+func NewEngine(client *backend.Client, store *session.Store, translator *i18n.Translator, routes *routing.Table, rc *rolecache.Cache, logger *slog.Logger) *Engine {
 	return &Engine{
 		backendClient: client,
 		sessionStore:  store,
 		translator:    translator,
+		routingTable:  routes,
+		roleCache:     rc,
 		logger:        logger,
 	}
 }
@@ -150,6 +156,7 @@ func (e *Engine) handleInit(ctx context.Context, sess *session.Data) (*Response,
 	if user != nil {
 		sess.UserID = user.ID
 		sess.CrewMemberID = user.CrewMemberID
+		sess.OrganizationID = user.OrganizationID
 	}
 
 	sess.CurrentState = session.StateMainMenu
@@ -846,25 +853,55 @@ func (e *Engine) handleRegisterNationalID(ctx context.Context, sess *session.Dat
 
 	sess.SetInput("national_id", cleaned)
 	sess.CurrentState = session.StateRegisterRole
-	return e.continueWithMessage(sess, e.t(sess, "register.select_role")), nil
+
+	// Build role menu from cache (sub-ms Redis read → hardcoded fallback).
+	// No API calls on this path — the user never waits.
+	menu := e.buildRoleMenu(ctx, sess)
+	return e.continueWithMessage(sess, menu), nil
+}
+
+// buildRoleMenu creates a numbered USSD role selection menu from cached roles.
+// Reads from Redis cache (populated by midnight cron) → hardcoded fallback.
+// This method NEVER blocks on an API call.
+func (e *Engine) buildRoleMenu(ctx context.Context, sess *session.Data) string {
+	roles := e.roleCache.GetRoles(ctx, sess.ServiceCode)
+
+	menu := e.t(sess, "register.select_role_header")
+	for i, role := range roles {
+		idx := i + 1
+		menu += fmt.Sprintf("\n%d. %s", idx, role.DisplayName)
+		sess.SetInput(fmt.Sprintf("jt_%d_id", idx), role.JobTypeID)
+		sess.SetInput(fmt.Sprintf("jt_%d_name", idx), role.DisplayName)
+		sess.SetInput(fmt.Sprintf("jt_%d_code", idx), role.Code)
+	}
+	menu += "\n0. " + e.t(sess, "menu.back")
+	sess.SetInput("job_type_count", fmt.Sprintf("%d", len(roles)))
+	sess.SetInput("job_type_menu", menu)
+	return menu
 }
 
 func (e *Engine) handleRegisterRole(ctx context.Context, sess *session.Data, input string) (*Response, error) {
-	var role string
-	switch strings.TrimSpace(input) {
-	case "1":
-		role = "DRIVER"
-	case "2":
-		role = "CONDUCTOR"
-	case "3":
-		role = "RIDER"
-	case "0":
+	if input == "0" {
 		return e.backToMainMenu(sess), nil
-	default:
-		return e.continueWithMessage(sess, e.t(sess, "error.invalid_input")+"\n"+e.t(sess, "register.select_role")), nil
 	}
 
-	sess.SetInput("role", role)
+	// job_type_count is always set by buildIndustryJobTypeMenu (embedded data, never fails)
+	jobTypeCount := 0
+	if c := sess.GetInput("job_type_count"); c != "" {
+		fmt.Sscanf(c, "%d", &jobTypeCount)
+	}
+
+	idx := 0
+	fmt.Sscanf(strings.TrimSpace(input), "%d", &idx)
+	if idx < 1 || idx > jobTypeCount {
+		return e.continueWithMessage(sess, e.t(sess, "error.invalid_input")+"\n"+sess.GetInput("job_type_menu")), nil
+	}
+
+	// Retrieve stored job type ID, display name, and code
+	sess.SetInput("job_type_id", sess.GetInput(fmt.Sprintf("jt_%d_id", idx)))
+	sess.SetInput("job_type_code", sess.GetInput(fmt.Sprintf("jt_%d_code", idx)))
+	sess.SetInput("role", sess.GetInput(fmt.Sprintf("jt_%d_name", idx))) // For display in confirmation
+
 	sess.CurrentState = session.StateRegisterPIN
 	return e.continueWithMessage(sess, e.t(sess, "register.enter_pin")), nil
 }
@@ -912,15 +949,25 @@ func (e *Engine) handleRegisterConfirm(ctx context.Context, sess *session.Data, 
 		nid := sess.GetInput("national_id")
 		tempPassword := generateTempPassword(phone, nid)
 
-		result, err := e.backendClient.RegisterCrew(ctx, backend.RegisterRequest{
+		req := backend.RegisterRequest{
 			Phone:      sess.MSISDN,
 			Password:   tempPassword,
 			FirstName:  sess.GetInput("first_name"),
 			LastName:   sess.GetInput("last_name"),
 			NationalID: sess.GetInput("national_id"),
-			Role:       "CREW",                    // SystemRole
-			CrewRole:   sess.GetInput("role"),      // DRIVER, CONDUCTOR, RIDER
-		})
+			Role:       "CREW", // SystemRole
+		}
+
+		// Resolve role: tenant job type ID → industry template code → legacy crew role
+		if jtID := sess.GetInput("job_type_id"); jtID != "" {
+			req.JobTypeID = jtID
+		} else if jtCode := sess.GetInput("job_type_code"); jtCode != "" {
+			req.CrewRole = jtCode // e.g. MASON, CHV from industry template
+		} else {
+			req.CrewRole = sess.GetInput("role") // Legacy: DRIVER, CONDUCTOR, RIDER
+		}
+
+		result, err := e.backendClient.RegisterCrew(ctx, req)
 		if err != nil {
 			e.logger.Error("registration failed",
 				slog.String("msisdn", sess.MSISDN),
@@ -1022,12 +1069,19 @@ func (e *Engine) handleMyProfile(ctx context.Context, sess *session.Data, input 
 	case "3": // View Profile
 		crew, err := e.backendClient.GetCrewMember(ctx, sess.CrewMemberID)
 		name := "N/A"
+		roleDisplay := ""
 		if err == nil && crew != nil {
 			name = crew.FullName
+			if crew.JobTypeName != "" {
+				roleDisplay = crew.JobTypeName
+			} else if crew.Role != "" {
+				roleDisplay = crew.Role
+			}
 		}
 		msg := fmt.Sprintf(e.t(sess, "profile.view"),
 			sess.MSISDN,
 			name,
+			roleDisplay,
 		)
 		return e.continueWithMessage(sess, msg+"\n0. "+e.t(sess, "menu.back")), nil
 	case "0": // Back

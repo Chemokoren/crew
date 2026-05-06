@@ -1,59 +1,86 @@
-# AmyMis
+# AMY MIS — Frontend
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 21.2.9.
+Angular-based admin dashboard and crew management UI for the AMY MIS platform.
 
-## Development server
-
-To start a local development server, run:
+## Development
 
 ```bash
-ng serve
+npm install
+ng serve          # http://localhost:4200
 ```
 
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
+## Key Features
 
-## Code scaffolding
+### System Administration
 
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
+The admin dashboard (`/admin`) provides platform-wide management:
+
+| Tab | Features |
+|-----|----------|
+| **Overview** | User/crew/wallet stats |
+| **Users** | Search, enable/disable, password reset |
+| **Audit Logs** | Filterable activity history |
+| **Templates** | Notification template CRUD |
+| **Statutory Rates** | Tax/levy rate display |
+| **USSD** | Gateway management (see below) |
+
+### USSD Gateway Management
+
+The USSD tab contains three sub-sections:
+
+#### Service Code Management
+- Add/edit/delete service code → industry mappings
+- Per-code role configuration with tenant override support
+- Activation toggles for operational control
+
+#### MNO Provisioning
+- Submit shortcode requests to Safaricom, Airtel, Telkom
+- Track provisioning status (PENDING → PROVISIONED → ACTIVE)
+- Summary cards for at-a-glance status
+
+#### A/B Testing
+- Create registration flow experiments with variant configuration
+- Adjustable traffic split (10-90%) via slider
+- Live conversion rate tracking with visual progress bars
+- Experiment lifecycle: DRAFT → RUNNING → PAUSED → COMPLETED
+
+#### Cache Management
+- One-click role cache refresh via `POST /admin/cache/refresh`
+- Success/error feedback with auto-dismissal
+
+> **Note:** Service codes, MNO provisioning, and A/B testing currently use in-memory seed data. They will connect to backend REST APIs when those endpoints are implemented. See the [USSD README](../USSD/README.md) for planned API contracts.
+
+## Proxy Configuration
+
+Frontend requests are proxied to the appropriate backends during development:
+
+| Path | Target | Service |
+|------|--------|---------|
+| `/api/` | `http://localhost:8080` | AMY MIS Backend |
+| `/ussd-admin/` | `http://localhost:8090/admin/` | USSD Gateway |
+
+Configuration: [`proxy.conf.json`](./proxy.conf.json)
+
+## Project Structure
+
+```
+src/app/
+├── core/
+│   ├── models/index.ts           # All DTO interfaces (incl. ServiceCodeRoute, ABTest)
+│   └── services/api.service.ts   # HTTP client (incl. refreshUSSDRoleCache)
+├── features/
+│   ├── admin/
+│   │   ├── admin-dashboard/      # Main admin tabs
+│   │   └── ussd-management/      # USSD sub-component (routes, MNO, A/B)
+│   ├── auth/                     # Login, password flows
+│   ├── crew/                     # Crew member management
+│   └── ...
+└── shared/                       # Pipes, directives, components
+```
+
+## Build
 
 ```bash
-ng generate component component-name
+ng build                          # Production bundle → dist/amy-mis
+ng test                           # Unit tests
 ```
-
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
-
-```bash
-ng generate --help
-```
-
-## Building
-
-To build the project run:
-
-```bash
-ng build
-```
-
-This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
-
-## Running unit tests
-
-To execute unit tests with the [Vitest](https://vitest.dev/) test runner, use the following command:
-
-```bash
-ng test
-```
-
-## Running end-to-end tests
-
-For end-to-end (e2e) testing, run:
-
-```bash
-ng e2e
-```
-
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
-
-## Additional Resources
-
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.

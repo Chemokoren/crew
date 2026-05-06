@@ -571,3 +571,50 @@ export interface FinancialProfile {
   suggestions?: string[];
 }
 
+// --- USSD Admin Models ---
+
+export type MNOProvider = 'SAFARICOM' | 'AIRTEL' | 'TELKOM';
+export type ShortcodeStatus = 'PENDING' | 'PROVISIONED' | 'ACTIVE' | 'SUSPENDED' | 'REJECTED';
+export type ABTestStatus = 'DRAFT' | 'RUNNING' | 'PAUSED' | 'COMPLETED';
+
+export interface ServiceCodeRoute {
+  id: string;
+  service_code: string;
+  industry_type: IndustryType;
+  organization_id?: string;
+  organization_name?: string;
+  is_active: boolean;
+  roles: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ShortcodeRequest {
+  id: string;
+  service_code: string;
+  mno: MNOProvider;
+  status: ShortcodeStatus;
+  submitted_at: string;
+  provisioned_at?: string;
+  rejected_reason?: string;
+  callback_url?: string;
+}
+
+export interface ABTest {
+  id: string;
+  name: string;
+  service_code: string;
+  variant_a_label: string;
+  variant_b_label: string;
+  variant_a_roles: string[];
+  variant_b_roles: string[];
+  traffic_split_pct: number;
+  status: ABTestStatus;
+  impressions_a: number;
+  impressions_b: number;
+  conversions_a: number;
+  conversions_b: number;
+  started_at?: string;
+  ended_at?: string;
+  created_at: string;
+}

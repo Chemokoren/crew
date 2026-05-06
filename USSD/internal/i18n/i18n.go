@@ -96,7 +96,7 @@ func (t *Translator) HasLanguage(lang string) bool {
 func (t *Translator) loadEnglish() {
 	en := map[string]string{
 		// Main menu
-		"menu.welcome":       "Welcome to CrewPay",
+		"menu.welcome":       "Welcome to AMY",
 		"menu.check_balance": "Check Balance",
 		"menu.withdraw":      "Withdraw",
 		"menu.earnings":      "My Earnings",
@@ -160,15 +160,17 @@ func (t *Translator) loadEnglish() {
 		"register.invalid_name":      "Enter first and last name\n0. Back",
 		"register.enter_national_id":  "Enter National ID number\n0. Back",
 		"register.invalid_national_id": "Invalid ID. Enter 5-12 digits\n0. Back",
-		"register.select_role":       "Select your role\n1. Driver\n2. Conductor\n3. Rider\n0. Back",
+		"register.select_role":        "Select your role\n1. Driver\n2. Conductor\n3. Rider\n0. Back",
+		"register.select_role_header": "Select your role",
 		"register.enter_pin":         "Create a 4-digit transaction PIN\nThis PIN secures your withdrawals",
 		"register.confirm_pin":       "Re-enter your PIN to confirm",
 		"register.invalid_pin":       "Invalid PIN. Enter 4-6 digits only",
 		"register.pin_mismatch":      "PINs do not match.\nPlease enter your PIN again",
 		"register.confirm":           "Register as:\nName: %s\nRole: %s\n1. Confirm\n2. Cancel",
 		"register.confirm_options":   "1. Confirm\n2. Cancel",
-		"register.success":           "Welcome to CrewPay!\nRegistration complete.\nDial *384*123# to:\n- Check Balance\n- Withdraw\n- View Earnings\n- Access Loans",
+		"register.success":           "Welcome to AMY!\nRegistration complete.\nDial *384*123# to:\n- Check Balance\n- Withdraw\n- View Earnings\n- Access Loans",
 		"register.already_registered": "You are already registered!\nDial *384*123# to access\nyour account.",
+
 
 		// Language
 		"language.menu":    "Select Language\n1. English\n2. Kiswahili\n0. Back",
@@ -182,7 +184,7 @@ func (t *Translator) loadEnglish() {
 		"profile.pin_set_success":    "Transaction PIN set successfully!\nYou can now make withdrawals.",
 		"profile.pin_changed_success": "PIN changed successfully!",
 		"profile.no_pin_redirect":    "You don't have a PIN yet.\nPlease create one now.\nEnter a 4-digit PIN",
-		"profile.view":               "Your Profile\nPhone: %s\nName: %s",
+		"profile.view":               "Your Profile\nPhone: %s\nName: %s\nRole: %s",
 
 		// Errors
 		"error.generic":             "Something went wrong. Please try again.",
@@ -193,7 +195,7 @@ func (t *Translator) loadEnglish() {
 		"error.rate_limited":        "Too many requests. Please wait and try again.",
 
 		// General
-		"goodbye": "Thank you for using CrewPay.\nGoodbye!",
+		"goodbye": "Thank you for using AMY.\nGoodbye!",
 	}
 
 	t.mu.Lock()
@@ -206,7 +208,7 @@ func (t *Translator) loadEnglish() {
 func (t *Translator) loadSwahili() {
 	sw := map[string]string{
 		// Main menu
-		"menu.welcome":       "Karibu CrewPay",
+		"menu.welcome":       "Karibu AMY",
 		"menu.check_balance": "Angalia Salio",
 		"menu.withdraw":      "Toa Pesa",
 		"menu.earnings":      "Mapato Yangu",
@@ -270,14 +272,15 @@ func (t *Translator) loadSwahili() {
 		"register.invalid_name":      "Ingiza jina la kwanza na la mwisho\n0. Rudi",
 		"register.enter_national_id":  "Ingiza nambari ya Kitambulisho\n0. Rudi",
 		"register.invalid_national_id": "ID batili. Ingiza tarakimu 5-12\n0. Rudi",
-		"register.select_role":       "Chagua kazi yako\n1. Dereva\n2. Kondakta\n3. Bodaboda\n0. Rudi",
+		"register.select_role":        "Chagua kazi yako\n1. Dereva\n2. Kondakta\n3. Bodaboda\n0. Rudi",
+		"register.select_role_header": "Chagua kazi yako",
 		"register.enter_pin":         "Unda PIN ya muamala ya tarakimu 4\nPIN hii inalinda fedha zako",
 		"register.confirm_pin":       "Ingiza PIN yako tena kuthibitisha",
 		"register.invalid_pin":       "PIN batili. Ingiza tarakimu 4-6 tu",
 		"register.pin_mismatch":      "PIN hazifanani.\nTafadhali ingiza PIN yako tena",
 		"register.confirm":           "Jisajili kama:\nJina: %s\nKazi: %s\n1. Thibitisha\n2. Ghairi",
 		"register.confirm_options":   "1. Thibitisha\n2. Ghairi",
-		"register.success":           "Karibu CrewPay!\nUsajili umekamilika.\nPiga *384*123# kufikia:\n- Angalia Salio\n- Toa Pesa\n- Mapato\n- Mikopo",
+		"register.success":           "Karibu AMY!\nUsajili umekamilika.\nPiga *384*123# kufikia:\n- Angalia Salio\n- Toa Pesa\n- Mapato\n- Mikopo",
 		"register.already_registered": "Tayari umesajiliwa!\nPiga *384*123# kufikia\nakaunti yako.",
 
 		// Language
@@ -292,7 +295,7 @@ func (t *Translator) loadSwahili() {
 		"profile.pin_set_success":    "PIN ya muamala imewekwa!\nSasa unaweza kutoa pesa.",
 		"profile.pin_changed_success": "PIN imebadilishwa!",
 		"profile.no_pin_redirect":    "Huna PIN bado.\nTafadhali unda moja sasa.\nIngiza PIN ya tarakimu 4",
-		"profile.view":               "Wasifu Wako\nSimu: %s\nJina: %s",
+		"profile.view":               "Wasifu Wako\nSimu: %s\nJina: %s\nKazi: %s",
 
 		// Errors
 		"error.generic":             "Kuna tatizo. Jaribu tena.",
@@ -303,7 +306,7 @@ func (t *Translator) loadSwahili() {
 		"error.rate_limited":        "Maombi mengi sana. Subiri na ujaribu tena.",
 
 		// General
-		"goodbye": "Asante kwa kutumia CrewPay.\nKwaheri!",
+		"goodbye": "Asante kwa kutumia AMY.\nKwaheri!",
 	}
 
 	t.mu.Lock()

@@ -62,18 +62,24 @@ type WalletResponse struct {
 
 // UserResponse represents a user lookup response.
 type UserResponse struct {
-	ID           string `json:"id"`
-	Phone        string `json:"phone"`
-	CrewMemberID string `json:"crew_member_id"`
-	IsActive     bool   `json:"is_active"`
+	ID             string `json:"id"`
+	Phone          string `json:"phone"`
+	SystemRole     string `json:"system_role"`
+	CrewMemberID   string `json:"crew_member_id"`
+	OrganizationID string `json:"organization_id,omitempty"`
+	IsActive       bool   `json:"is_active"`
 }
 
 // CrewMemberResponse represents a crew member response.
 type CrewMemberResponse struct {
-	ID        string `json:"id"`
-	FirstName string `json:"first_name"`
-	LastName  string `json:"last_name"`
-	FullName  string `json:"full_name"`
+	ID          string `json:"id"`
+	FirstName   string `json:"first_name"`
+	LastName    string `json:"last_name"`
+	FullName    string `json:"full_name"`
+	Role        string `json:"role"`
+	JobTypeID   string `json:"job_type_id,omitempty"`
+	JobTitle    string `json:"job_title,omitempty"`
+	JobTypeName string `json:"job_type_name,omitempty"`
 }
 
 // EarningsSummary represents aggregated earnings data.
@@ -132,7 +138,7 @@ type LoanResponse struct {
 	TenureDays           int    `json:"tenure_days"`
 }
 
-// RegisterRequest holds the data for crew registration via USSD.
+// RegisterRequest holds the data for crew/worker registration via USSD.
 // Maps to the backend's dto.RegisterRequest fields.
 type RegisterRequest struct {
 	Phone      string `json:"phone"`
@@ -140,15 +146,41 @@ type RegisterRequest struct {
 	FirstName  string `json:"first_name"`
 	LastName   string `json:"last_name"`
 	NationalID string `json:"national_id"`
-	Role       string `json:"role"`      // SystemRole: "CREW"
-	CrewRole   string `json:"crew_role"` // CrewRole: "DRIVER", "CONDUCTOR", "RIDER"
+	Role       string `json:"role"`               // SystemRole: "CREW"
+	CrewRole   string `json:"crew_role,omitempty"` // Legacy: "DRIVER", "CONDUCTOR", "RIDER"
+	JobTypeID  string `json:"job_type_id,omitempty"` // Tenant-configured job type ID (preferred)
 }
 
-// RegisterResponse holds the result of a crew registration.
+// RegisterResponse holds the result of a crew/worker registration.
 type RegisterResponse struct {
 	UserID       string `json:"user_id"`
 	CrewMemberID string `json:"crew_member_id"`
 	CrewID       string `json:"crew_id"`
+}
+
+// JobTypeResponse represents a tenant-configured job type for dynamic role menus.
+type JobTypeResponse struct {
+	ID          string `json:"id"`
+	Code        string `json:"code"`
+	DisplayName string `json:"display_name"`
+	Category    string `json:"category"` // PRIMARY, FACILITATOR, SUPPORT, SUPERVISOR
+	IsActive    bool   `json:"is_active"`
+}
+
+// IndustryJobType represents a default job type from an industry template.
+type IndustryJobType struct {
+	Code        string `json:"code"`
+	DisplayName string `json:"display_name"`
+	Category    string `json:"category"`
+}
+
+// IndustryTemplateResponse represents the backend's industry template.
+// Used to resolve default job types when no tenant-specific config exists.
+type IndustryTemplateResponse struct {
+	IndustryType    string            `json:"industry_type"`
+	DisplayLabel    string            `json:"display_label"`
+	DefaultJobTypes []IndustryJobType `json:"default_job_types"`
+	UILabels        map[string]string `json:"ui_labels,omitempty"`
 }
 
 // --- API methods ---
@@ -417,7 +449,7 @@ func (c *Client) ApplyForLoan(ctx context.Context, crewMemberID string, amountCe
 	return &loan, nil
 }
 
-// RegisterCrew registers a new crew member via USSD self-registration.
+// RegisterCrew registers a new crew member/worker via USSD self-registration.
 func (c *Client) RegisterCrew(ctx context.Context, req RegisterRequest) (*RegisterResponse, error) {
 	resp, err := c.post(ctx, "/api/v1/auth/register", req)
 	if err != nil {
@@ -429,6 +461,36 @@ func (c *Client) RegisterCrew(ctx context.Context, req RegisterRequest) (*Regist
 		return nil, err
 	}
 	return &result, nil
+}
+
+// GetOrganizationJobTypes fetches tenant-configured job types for dynamic USSD role menus.
+// Returns a filtered list of active job types for the given organization.
+func (c *Client) GetOrganizationJobTypes(ctx context.Context, organizationID string) ([]JobTypeResponse, error) {
+	resp, err := c.get(ctx, fmt.Sprintf("/api/v1/organizations/%s/job-types", url.PathEscape(organizationID)))
+	if err != nil {
+		return nil, err
+	}
+
+	var jobTypes []JobTypeResponse
+	if err := c.parseListResponse(resp, &jobTypes); err != nil {
+		return nil, err
+	}
+	return jobTypes, nil
+}
+
+// GetIndustryTemplate fetches default job types for an industry from the backend.
+// Used when a service code maps to an industry but not a specific org.
+func (c *Client) GetIndustryTemplate(ctx context.Context, industryType string) (*IndustryTemplateResponse, error) {
+	resp, err := c.get(ctx, "/api/v1/industry-templates?industry="+url.QueryEscape(industryType))
+	if err != nil {
+		return nil, err
+	}
+
+	var tmpl IndustryTemplateResponse
+	if err := c.parseResponse(resp, &tmpl); err != nil {
+		return nil, err
+	}
+	return &tmpl, nil
 }
 
 // --- HTTP helpers ---

@@ -1,0 +1,210 @@
+<div class="ussd-mgmt">
+  <!-- Header with cache refresh -->
+  <div class="ussd-header">
+    <div class="ussd-header-left">
+      <h2 class="ussd-title">USSD Gateway Management</h2>
+      <p class="ussd-subtitle">Service codes, MNO provisioning, and experimentation</p>
+    </div>
+    <div class="ussd-header-actions">
+      <button class="btn btn-primary ussd-refresh-btn" (click)="refreshCache()" [disabled]="cacheRefreshing()" id="btn-refresh-ussd-cache">
+        <span class="material-icons-round" [class.spin]="cacheRefreshing()" style="font-size:16px;">{{cacheRefreshing() ? 'sync' : 'refresh'}}</span>
+        {{cacheRefreshing() ? 'Refreshing...' : 'Refresh Cache'}}
+      </button>
+    </div>
+  </div>
+  @if (cacheRefreshResult()) {
+    <div class="ussd-result" [class.success]="cacheRefreshResult()==='success'" [class.error]="cacheRefreshResult()==='error'">
+      <span class="material-icons-round" style="font-size:16px;">{{cacheRefreshResult()==='success' ? 'check_circle' : 'error'}}</span>
+      {{cacheRefreshResult()==='success' ? 'Cache refresh triggered. Roles updating in background.' : 'Failed to refresh. Is the USSD gateway running?'}}
+    </div>
+  }
+
+  <!-- Sub-tabs -->
+  <div class="sub-tab-bar">
+    @for (st of subTabs; track st.key) {
+      <button class="sub-tab-btn" [class.active]="subTab()===st.key" (click)="subTab.set(st.key)">
+        <span class="material-icons-round" style="font-size:16px;">{{st.icon}}</span> {{st.label}}
+      </button>
+    }
+  </div>
+
+  <!-- SERVICE CODES TAB -->
+  @if (subTab()==='routes') {
+    <div class="section-header">
+      <div class="section-count">{{routes().length}} service codes configured</div>
+      <button class="btn btn-primary btn-sm" (click)="openRouteModal()" id="btn-add-route"><span class="material-icons-round" style="font-size:16px;">add</span> Add Route</button>
+    </div>
+    <div class="data-table-wrapper"><table class="data-table"><thead><tr>
+      <th>Service Code</th><th>Industry</th><th>Tenant</th><th>Roles</th><th>Status</th><th>Actions</th>
+    </tr></thead><tbody>
+      @for (r of routes(); track r.id) {
+        <tr>
+          <td><span class="code-badge">{{r.service_code}}</span></td>
+          <td><span class="badge badge-accent">{{r.industry_type}}</span></td>
+          <td style="font-size:0.8125rem;color:var(--color-text-muted);">{{r.organization_name || r.organization_id || '—'}}</td>
+          <td><div class="role-chips">@for (role of r.roles.slice(0,3); track role) {<span class="role-chip">{{role}}</span>} @if (r.roles.length > 3) {<span class="role-chip role-more">+{{r.roles.length - 3}}</span>}</div></td>
+          <td><span class="badge" [ngClass]="r.is_active ? 'badge-success' : 'badge-danger'">{{r.is_active ? 'Active' : 'Disabled'}}</span></td>
+          <td><div style="display:flex;gap:4px;">
+            <button class="btn btn-sm btn-ghost" style="color:var(--color-accent);" (click)="openRouteModal(r)"><span class="material-icons-round" style="font-size:16px;">edit</span></button>
+            <button class="btn btn-sm btn-ghost" [style.color]="r.is_active ? 'var(--color-warning)' : 'var(--color-success)'" (click)="toggleRoute(r)"><span class="material-icons-round" style="font-size:16px;">{{r.is_active ? 'pause' : 'play_arrow'}}</span></button>
+            <button class="btn btn-sm btn-ghost" style="color:var(--color-danger);" (click)="deleteRoute(r)"><span class="material-icons-round" style="font-size:16px;">delete</span></button>
+          </div></td>
+        </tr>
+      }
+    </tbody></table></div>
+  }
+
+  <!-- MNO PROVISIONING TAB -->
+  @if (subTab()==='mno') {
+    <div class="section-header">
+      <div class="section-count">{{mnoRequests().length}} provisioning requests</div>
+      <button class="btn btn-primary btn-sm" (click)="openMnoModal()" id="btn-new-mno"><span class="material-icons-round" style="font-size:16px;">add</span> New Request</button>
+    </div>
+    <div class="data-table-wrapper"><table class="data-table"><thead><tr>
+      <th>Service Code</th><th>MNO</th><th>Status</th><th>Submitted</th><th>Provisioned</th><th>Notes</th>
+    </tr></thead><tbody>
+      @for (m of mnoRequests(); track m.id) {
+        <tr>
+          <td><span class="code-badge">{{m.service_code}}</span></td>
+          <td><span class="badge" [ngClass]="m.mno==='SAFARICOM' ? 'badge-success' : m.mno==='AIRTEL' ? 'badge-danger' : 'badge-info'">{{m.mno}}</span></td>
+          <td><span class="badge" [ngClass]="getMnoStatusClass(m.status)">{{m.status}}</span></td>
+          <td style="font-size:0.8125rem;color:var(--color-text-muted);">{{m.submitted_at | date:'mediumDate'}}</td>
+          <td style="font-size:0.8125rem;color:var(--color-text-muted);">{{m.provisioned_at ? (m.provisioned_at | date:'mediumDate') : '—'}}</td>
+          <td style="font-size:0.75rem;color:var(--color-text-muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;">{{m.rejected_reason || '—'}}</td>
+        </tr>
+      }
+    </tbody></table></div>
+
+    <div class="mno-info-grid">
+      <div class="glass-card mno-info-card">
+        <span class="material-icons-round" style="color:#4CAF50;font-size:28px;">check_circle</span>
+        <div class="mno-info-val">{{mnoRequests().filter(m => m.status==='ACTIVE').length}}</div>
+        <div class="mno-info-label">Active</div>
+      </div>
+      <div class="glass-card mno-info-card">
+        <span class="material-icons-round" style="color:#FF9800;font-size:28px;">hourglass_top</span>
+        <div class="mno-info-val">{{mnoRequests().filter(m => m.status==='PENDING').length}}</div>
+        <div class="mno-info-label">Pending</div>
+      </div>
+      <div class="glass-card mno-info-card">
+        <span class="material-icons-round" style="color:#f44336;font-size:28px;">cancel</span>
+        <div class="mno-info-val">{{mnoRequests().filter(m => m.status==='REJECTED').length}}</div>
+        <div class="mno-info-label">Rejected</div>
+      </div>
+    </div>
+  }
+
+  <!-- A/B TESTING TAB -->
+  @if (subTab()==='ab') {
+    <div class="section-header">
+      <div class="section-count">{{abTests().length}} experiments</div>
+      <button class="btn btn-primary btn-sm" (click)="openAbModal()" id="btn-new-ab"><span class="material-icons-round" style="font-size:16px;">add</span> New Experiment</button>
+    </div>
+
+    @for (t of abTests(); track t.id) {
+      <div class="glass-card ab-card">
+        <div class="ab-card-header">
+          <div>
+            <div class="ab-card-name">{{t.name}}</div>
+            <div class="ab-card-meta"><span class="code-badge" style="font-size:0.7rem;">{{t.service_code}}</span> <span class="badge" [ngClass]="getAbStatusClass(t.status)" style="margin-left:6px;">{{t.status}}</span></div>
+          </div>
+          <div class="ab-card-actions">
+            @if (t.status !== 'COMPLETED') {
+              <button class="btn btn-sm" [ngClass]="t.status==='RUNNING' ? 'btn-warning' : 'btn-secondary'" (click)="toggleAbTest(t)">
+                <span class="material-icons-round" style="font-size:14px;">{{t.status==='RUNNING' ? 'pause' : 'play_arrow'}}</span>
+                {{t.status==='RUNNING' ? 'Pause' : 'Start'}}
+              </button>
+              <button class="btn btn-sm btn-ghost" style="color:var(--color-text-muted);" (click)="endAbTest(t)">End</button>
+            }
+          </div>
+        </div>
+        <div class="ab-variants">
+          <div class="ab-variant">
+            <div class="ab-variant-label">A: {{t.variant_a_label}}</div>
+            <div class="ab-variant-bar"><div class="ab-bar-fill ab-bar-a" [style.width.%]="t.impressions_a > 0 ? (t.conversions_a / t.impressions_a * 100) : 0"></div></div>
+            <div class="ab-variant-stats">
+              <span>{{t.impressions_a}} impressions</span>
+              <span class="ab-conv">{{conversionRate(t.impressions_a, t.conversions_a)}}% conv.</span>
+            </div>
+          </div>
+          <div class="ab-variant">
+            <div class="ab-variant-label">B: {{t.variant_b_label}}</div>
+            <div class="ab-variant-bar"><div class="ab-bar-fill ab-bar-b" [style.width.%]="t.impressions_b > 0 ? (t.conversions_b / t.impressions_b * 100) : 0"></div></div>
+            <div class="ab-variant-stats">
+              <span>{{t.impressions_b}} impressions</span>
+              <span class="ab-conv">{{conversionRate(t.impressions_b, t.conversions_b)}}% conv.</span>
+            </div>
+          </div>
+        </div>
+        <div class="ab-split">Traffic split: {{t.traffic_split_pct}}% A / {{100 - t.traffic_split_pct}}% B</div>
+      </div>
+    }
+  }
+
+  <!-- ROUTE MODAL -->
+  @if (showRouteModal()) {
+    <div class="modal-backdrop" (click)="showRouteModal.set(false)"><div class="modal-content" (click)="$event.stopPropagation()">
+      <div class="modal-header"><h3>{{editingRoute() ? 'Edit' : 'Add'}} Service Code Route</h3><button class="btn btn-ghost btn-icon" (click)="showRouteModal.set(false)"><span class="material-icons-round">close</span></button></div>
+      <div class="modal-body">
+        <div class="form-group"><label class="form-label">Service Code *</label><input class="form-input" [(ngModel)]="routeForm.service_code" placeholder="e.g. *384*700#" [disabled]="editingRoute()" /></div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Industry *</label>
+            <select class="form-select" [(ngModel)]="routeForm.industry_type">@for (ind of industries; track ind) {<option [value]="ind">{{ind}}</option>}</select>
+          </div>
+          <div class="form-group"><label class="form-label">Tenant Org ID (optional)</label><input class="form-input" [(ngModel)]="routeForm.organization_id" placeholder="org-uuid" /></div>
+        </div>
+        <div class="form-group"><label class="form-label">Registration Roles *</label><input class="form-input" [(ngModel)]="routeForm.rolesText" placeholder="DRIVER, CONDUCTOR, RIDER" /><small class="form-hint">Comma-separated role codes</small></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" (click)="showRouteModal.set(false)">Cancel</button>
+        <button class="btn btn-primary" (click)="saveRoute()" [disabled]="savingRoute() || !routeForm.service_code || !routeForm.rolesText">{{savingRoute() ? 'Saving...' : 'Save Route'}}</button>
+      </div>
+    </div></div>
+  }
+
+  <!-- MNO MODAL -->
+  @if (showMnoModal()) {
+    <div class="modal-backdrop" (click)="showMnoModal.set(false)"><div class="modal-content" (click)="$event.stopPropagation()">
+      <div class="modal-header"><h3>New MNO Provisioning Request</h3><button class="btn btn-ghost btn-icon" (click)="showMnoModal.set(false)"><span class="material-icons-round">close</span></button></div>
+      <div class="modal-body">
+        <div class="form-group"><label class="form-label">Service Code *</label><input class="form-input" [(ngModel)]="mnoForm.service_code" placeholder="e.g. *384*700#" /></div>
+        <div class="form-group"><label class="form-label">MNO Provider *</label>
+          <select class="form-select" [(ngModel)]="mnoForm.mno"><option value="SAFARICOM">Safaricom</option><option value="AIRTEL">Airtel</option><option value="TELKOM">Telkom</option></select>
+        </div>
+        <div class="form-group"><label class="form-label">Callback URL (optional)</label><input class="form-input" [(ngModel)]="mnoForm.callback_url" placeholder="https://api.example.com/ussd/callback" /></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" (click)="showMnoModal.set(false)">Cancel</button>
+        <button class="btn btn-primary" (click)="submitMno()" [disabled]="savingMno() || !mnoForm.service_code">{{savingMno() ? 'Submitting...' : 'Submit Request'}}</button>
+      </div>
+    </div></div>
+  }
+
+  <!-- A/B MODAL -->
+  @if (showAbModal()) {
+    <div class="modal-backdrop" (click)="showAbModal.set(false)"><div class="modal-content modal-wide" (click)="$event.stopPropagation()">
+      <div class="modal-header"><h3>New A/B Experiment</h3><button class="btn btn-ghost btn-icon" (click)="showAbModal.set(false)"><span class="material-icons-round">close</span></button></div>
+      <div class="modal-body">
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Experiment Name *</label><input class="form-input" [(ngModel)]="abForm.name" placeholder="e.g. Rider-first menu" /></div>
+          <div class="form-group"><label class="form-label">Service Code *</label><input class="form-input" [(ngModel)]="abForm.service_code" placeholder="*384*123#" /></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Variant A Label</label><input class="form-input" [(ngModel)]="abForm.variant_a_label" /></div>
+          <div class="form-group"><label class="form-label">Variant B Label</label><input class="form-input" [(ngModel)]="abForm.variant_b_label" /></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Variant A Roles</label><input class="form-input" [(ngModel)]="abForm.variant_a_roles" placeholder="DRIVER, CONDUCTOR" /></div>
+          <div class="form-group"><label class="form-label">Variant B Roles</label><input class="form-input" [(ngModel)]="abForm.variant_b_roles" placeholder="RIDER, DRIVER" /></div>
+        </div>
+        <div class="form-group"><label class="form-label">Traffic Split (% to Variant A)</label>
+          <div style="display:flex;align-items:center;gap:12px;"><input type="range" min="10" max="90" step="5" [(ngModel)]="abForm.traffic_split_pct" style="flex:1;" /><span class="split-label">{{abForm.traffic_split_pct}}% / {{100 - abForm.traffic_split_pct}}%</span></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" (click)="showAbModal.set(false)">Cancel</button>
+        <button class="btn btn-primary" (click)="saveAbTest()" [disabled]="savingAb() || !abForm.name || !abForm.service_code">{{savingAb() ? 'Creating...' : 'Create Experiment'}}</button>
+      </div>
+    </div></div>
+  }
+</div>

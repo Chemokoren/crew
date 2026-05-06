@@ -168,6 +168,62 @@ var (
 		},
 		[]string{"type"}, // "parse_error", "backend_error", "session_error", "internal_error"
 	)
+
+	// --- Role cache metrics ---
+
+	// RoleCacheHitsTotal tracks cache hits when serving registration roles.
+	RoleCacheHitsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "ussd",
+			Subsystem: "role_cache",
+			Name:      "hits_total",
+			Help:      "Total role cache hits (served from Redis)",
+		},
+		[]string{"service_code"},
+	)
+
+	// RoleCacheMissesTotal tracks cache misses (fell through to hardcoded fallback).
+	RoleCacheMissesTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "ussd",
+			Subsystem: "role_cache",
+			Name:      "misses_total",
+			Help:      "Total role cache misses (used hardcoded fallback)",
+		},
+		[]string{"service_code"},
+	)
+
+	// RoleCacheRefreshTotal tracks background cron refresh attempts.
+	RoleCacheRefreshTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "ussd",
+			Subsystem: "role_cache",
+			Name:      "refresh_total",
+			Help:      "Total role cache refresh attempts by result",
+		},
+		[]string{"service_code", "result"}, // "success", "error"
+	)
+
+	// RoleCacheRefreshDuration tracks how long each full refresh cycle takes.
+	RoleCacheRefreshDuration = promauto.NewHistogram(
+		prometheus.HistogramOpts{
+			Namespace: "ussd",
+			Subsystem: "role_cache",
+			Name:      "refresh_duration_seconds",
+			Help:      "Duration of role cache refresh cycle in seconds",
+			Buckets:   []float64{0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0},
+		},
+	)
+
+	// RoleCacheLastRefreshTimestamp tracks the Unix timestamp of the last successful refresh.
+	RoleCacheLastRefreshTimestamp = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: "ussd",
+			Subsystem: "role_cache",
+			Name:      "last_refresh_timestamp",
+			Help:      "Unix timestamp of the last successful role cache refresh",
+		},
+	)
 )
 
 // MetricsMiddleware records request-level metrics.

@@ -68,6 +68,13 @@ type Config struct {
 
 	// CORS (for USSD simulator)
 	CORSAllowedOrigins string // Comma-separated allowed origins (default: *)
+
+	// Service Code Routing (industry/tenant mapping)
+	// Format: *384*123#:TRANSPORT,*384*200#:CONSTRUCTION,*384*201#:CONSTRUCTION@<org_id>
+	ServiceCodeRoutes string // Comma-separated service code mappings
+
+	// Role Cache
+	RoleCacheRefreshHours int // How often to refresh role cache from API (default: 24 = midnight daily)
 }
 
 // Load reads configuration from environment variables.
@@ -116,6 +123,10 @@ func Load() (*Config, error) {
 		SupportedLanguages: getEnv("SUPPORTED_LANGUAGES", "en,sw"),
 
 		CORSAllowedOrigins: getEnv("CORS_ALLOWED_ORIGINS", "*"),
+
+		ServiceCodeRoutes: getEnv("SERVICE_CODE_ROUTES", "*384*123#:TRANSPORT"),
+
+		RoleCacheRefreshHours: getEnvInt("ROLE_CACHE_REFRESH_HOURS", 24),
 	}
 
 	if err := cfg.validate(); err != nil {
@@ -162,6 +173,14 @@ func (c *Config) IsDevelopment() bool {
 // IsProduction returns true if running in production mode.
 func (c *Config) IsProduction() bool {
 	return c.Environment == "production"
+}
+
+// RoleCacheRefreshInterval returns the role cache refresh interval.
+func (c *Config) RoleCacheRefreshInterval() time.Duration {
+	if c.RoleCacheRefreshHours <= 0 {
+		return 24 * time.Hour
+	}
+	return time.Duration(c.RoleCacheRefreshHours) * time.Hour
 }
 
 // --- Helpers ---

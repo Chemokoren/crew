@@ -464,6 +464,12 @@ export class ApiService {
     return this.http.put<ApiResponse<Organization>>(`${this.API}/organizations/${saccoId}/config`, config);
   }
 
+  // --- USSD Gateway Admin ---
+  // Routes through /ussd-admin proxy → USSD gateway at :8090/admin/...
+  refreshUSSDRoleCache(): Observable<{ status: string; message: string }> {
+    return this.http.post<{ status: string; message: string }>('/ussd-admin/cache/refresh', {});
+  }
+
   // --- Helpers ---
   private buildParams(params?: Record<string, string>): HttpParams {
     let httpParams = new HttpParams();

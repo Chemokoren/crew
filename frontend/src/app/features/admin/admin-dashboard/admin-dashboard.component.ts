@@ -5,13 +5,14 @@ import { ApiService } from '../../../core/services/api.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { CurrencyKesPipe } from '../../../shared/pipes/currency-kes.pipe';
 import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
+import { UssdManagementComponent } from '../ussd-management/ussd-management.component';
 import { SystemStats, AuditLog, AdminUser, NotificationTemplate, StatutoryRate } from '../../../core/models';
 
-type Tab = 'overview' | 'users' | 'audit' | 'templates' | 'rates';
+type Tab = 'overview' | 'users' | 'audit' | 'templates' | 'rates' | 'ussd';
 
 @Component({
   selector: 'app-admin-dashboard', standalone: true,
-  imports: [CommonModule, FormsModule, CurrencyKesPipe, RelativeTimePipe],
+  imports: [CommonModule, FormsModule, CurrencyKesPipe, RelativeTimePipe, UssdManagementComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="animate-fade-in">
@@ -139,6 +140,11 @@ type Tab = 'overview' | 'users' | 'audit' | 'templates' | 'rates';
         }
       }
 
+      <!-- USSD TAB -->
+      @if (activeTab()==='ussd') {
+        <app-ussd-management />
+      }
+
       <!-- Reset Password Modal -->
       @if (showResetModal()) {
         <div class="modal-backdrop" (click)="showResetModal.set(false)"><div class="modal-content" (click)="$event.stopPropagation()">
@@ -197,6 +203,7 @@ type Tab = 'overview' | 'users' | 'audit' | 'templates' | 'rates';
     .rate-value{font-size:1.5rem;font-weight:800;background:var(--gradient-accent);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
     .rate-meta{font-size:0.7rem;color:var(--color-text-muted);margin-top:var(--space-xs);}
     .form-row{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-md);}
+
     @media(max-width:640px){.filter-input{max-width:100%;}.form-row{grid-template-columns:1fr;}}
   `]
 })
@@ -220,12 +227,15 @@ export class AdminDashboardComponent implements OnInit {
 
   tplForm = { id: '', event_name: '', channel: 'SMS', title_template: '', body_template: '', is_active: true };
 
+
+
   readonly tabs: { key: Tab; label: string; icon: string }[] = [
     { key: 'overview', label: 'Overview', icon: 'dashboard' },
     { key: 'users', label: 'Users', icon: 'people' },
     { key: 'audit', label: 'Audit Logs', icon: 'history' },
     { key: 'templates', label: 'Templates', icon: 'description' },
     { key: 'rates', label: 'Statutory Rates', icon: 'calculate' },
+    { key: 'ussd', label: 'USSD', icon: 'sim_card' },
   ];
 
   ngOnInit() {
@@ -325,4 +335,6 @@ export class AdminDashboardComponent implements OnInit {
       error: () => this.ratesLoading.set(false),
     });
   }
+
+
 }

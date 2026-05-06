@@ -33,6 +33,8 @@ import (
 	"github.com/kibsoft/amy-mis-ussd/internal/i18n"
 	"github.com/kibsoft/amy-mis-ussd/internal/metrics"
 	"github.com/kibsoft/amy-mis-ussd/internal/middleware"
+	"github.com/kibsoft/amy-mis-ussd/internal/rolecache"
+	"github.com/kibsoft/amy-mis-ussd/internal/routing"
 	"github.com/kibsoft/amy-mis-ussd/internal/session"
 )
 
@@ -112,11 +114,32 @@ func main() {
 		slog.String("supported", cfg.SupportedLanguages),
 	)
 
-	// --- 8. Initialize FSM engine ---
-	eng := engine.NewEngine(backendClient, sessionStore, translator, logger)
+	// --- 7. Initialize service code routing table ---
+	routeTable := routing.NewTable(cfg.ServiceCodeRoutes)
+	slog.Info("service code routing initialized",
+		slog.String("routes", routeTable.String()),
+	)
+
+	// --- 8. Initialize role cache + background cron ---
+	// Roles are cached in Redis and refreshed from the backend API at midnight.
+	// The cron runs an initial population on startup (best-effort).
+	// If Redis and API are both down, hardcoded industry defaults are used.
+	// Redis Pub/Sub provides event-driven invalidation for immediate updates.
+	redisStore := rolecache.NewRedisAdapter(redisClient)
+	roleCache := rolecache.NewCache(redisStore, routeTable, backendClient, logger)
+	roleCache.SetPubSub(rolecache.NewRedisPubSubAdapter(redisClient))
+	stopCron := roleCache.StartCron(cfg.RoleCacheRefreshInterval())
+	defer stopCron()
+	slog.Info("role cache initialized with midnight-aligned cron + pub/sub",
+		slog.Duration("refresh_interval", cfg.RoleCacheRefreshInterval()),
+		slog.String("pubsub_channel", rolecache.InvalidateChannel),
+	)
+
+	// --- 9. Initialize FSM engine ---
+	eng := engine.NewEngine(backendClient, sessionStore, translator, routeTable, roleCache, logger)
 	slog.Info("FSM engine initialized")
 
-	// --- 9. Initialize gateway registry (strategy pattern) ---
+	// --- 10. Initialize gateway registry (strategy pattern) ---
 	// Register all available gateway adapters. The primary/fallback are
 	// selected by config — no code changes needed to switch providers.
 	registry := gateway.NewRegistry(logger)
@@ -193,6 +216,23 @@ func main() {
 		{
 			sim.POST("", ussdHandler.Handle(simulatorGW))
 		}
+	}
+
+	// --- Admin endpoints ---
+	admin := router.Group("/admin")
+	{
+		// POST /admin/cache/refresh — trigger immediate role cache refresh
+		// Useful after updating tenant job types in the backend.
+		admin.POST("/cache/refresh", func(c *gin.Context) {
+			go func() {
+				slog.Info("admin: manual cache refresh triggered")
+				roleCache.RefreshAll(context.Background())
+			}()
+			c.JSON(http.StatusAccepted, gin.H{
+				"status":  "accepted",
+				"message": "Role cache refresh started in background",
+			})
+		})
 	}
 
 	// --- 13. Start HTTP server ---
