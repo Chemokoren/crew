@@ -40,6 +40,11 @@ type PayoutInput struct {
 	PaybillNumber  string
 	PaybillRef     string
 	IdempotencyKey string
+	// AccountFrom is the JamboPay tenant source account number.
+	// Falls back to "wallet-{CrewMemberID}" if empty (for backwards compat).
+	AccountFrom  string
+	CallbackURL  string
+	Narration    string
 }
 
 // InitiatePayout handles the business logic for withdrawing funds from a wallet.
@@ -65,9 +70,18 @@ func (s *PayoutService) InitiatePayout(ctx context.Context, input PayoutInput) (
 	}
 
 	// 2. Initiate payout via Payment Manager
+	narration := input.Narration
+	if narration == "" {
+		narration = "Crew Wallet Payout"
+	}
+	accountFrom := input.AccountFrom
+	if accountFrom == "" {
+		// Legacy fallback — JamboPay now expects a real account number
+		accountFrom = "wallet-" + input.CrewMemberID.String()
+	}
 	req := payment.PayoutRequest{
 		AmountCents:    input.AmountCents,
-		AccountFrom:    "wallet-" + input.CrewMemberID.String(),
+		AccountFrom:    accountFrom,
 		OrderID:        input.IdempotencyKey,
 		Channel:        input.Channel,
 		RecipientName:  input.RecipientName,
@@ -76,7 +90,8 @@ func (s *PayoutService) InitiatePayout(ctx context.Context, input PayoutInput) (
 		BankCode:       input.BankCode,
 		PaybillNumber:  input.PaybillNumber,
 		PaybillRef:     input.PaybillRef,
-		Narration:      "Crew Wallet Payout",
+		CallbackURL:    input.CallbackURL,
+		Narration:      narration,
 	}
 
 	result, err := s.payManager.InitiatePayout(ctx, req)

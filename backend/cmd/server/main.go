@@ -435,14 +435,21 @@ func main() {
 
 	// --- 13a. Payment: JamboPay (config-driven) ---
 	var paymentProviders []payment.Provider
+	var jamboPayProvider *jambopay.JamboPayProvider // held for checksum verifier injection
 	if cfg.PaymentJamboPayEnabled && cfg.JamboPayClientID != "" {
-		jp := jambopay.NewJamboPayProvider(jambopay.JamboPayConfig{
+		jamboPayProvider = jambopay.NewJamboPayProvider(jambopay.JamboPayConfig{
 			BaseURL:      cfg.JamboPayBaseURL,
 			ClientID:     cfg.JamboPayClientID,
 			ClientSecret: cfg.JamboPayClientSecret,
+			AccountFrom:  cfg.JamboPayAccountFrom,
+			CallbackURL:  cfg.JamboPayCallbackURL,
+			PartnerCode:  cfg.JamboPayPartnerCode,
 		}, logger)
-		paymentProviders = append(paymentProviders, jp)
-		slog.Info("JamboPay payment provider enabled")
+		paymentProviders = append(paymentProviders, jamboPayProvider)
+		slog.Info("JamboPay payment provider enabled",
+			slog.String("base_url", cfg.JamboPayBaseURL),
+			slog.String("account_from", cfg.JamboPayAccountFrom),
+		)
 	}
 	// Future: M-Pesa direct provider
 	// if cfg.PaymentMpesaEnabled && cfg.MpesaConsumerKey != "" {
@@ -495,7 +502,15 @@ func main() {
 	payrollHandler := handler.NewPayrollHandler(payrollSvc)
 
 	webhookSvc := service.NewWebhookService(webhookRepo, payoutSvc, payrollSvc, walletRepo, payrollRepo, logger)
-	webhookHandler := handler.NewWebhookHandler(webhookSvc, cfg.WebhookJamboPaySecret, cfg.WebhookPerpaySecret)
+
+	// Build the JamboPay checksum verifier (SHA256-based, per v2 API spec).
+	// Injected into WebhookHandler so it can verify callback authenticity without
+	// the handler importing the jambopay package directly.
+	var jamboChecksumVerifier handler.ChecksumVerifier
+	if jamboPayProvider != nil {
+		jamboChecksumVerifier = jamboPayProvider.VerifyCallbackChecksum
+	}
+	webhookHandler := handler.NewWebhookHandler(webhookSvc, jamboChecksumVerifier, cfg.WebhookPerpaySecret)
 
 	scheduler := worker.NewScheduler(logger, redisClient)
 	dailySummaryJob := worker.NewDailySummaryJob(earningRepo, assignmentRepo, logger)
