@@ -21,13 +21,14 @@ import (
 
 // JamboPayConfig holds configuration for the JamboPay v2 Wallet API.
 type JamboPayConfig struct {
-	BaseURL      string // Wallet API base URL  e.g. https://api.jambopay.com
-	AuthURL      string // OAuth2 token URL     e.g. https://accounts.jambopay.com/v2
-	ClientID     string // OAuth2 client ID
-	ClientSecret string // OAuth2 client secret (raw, as provided in credentials)
-	AccountFrom  string // Tenant source account number (for payouts / transfers)
-	CallbackURL  string // Webhook URL JamboPay notifies on completion
-	PartnerCode  string // 3-digit code appended to OTP for tenant-client transactions
+	BaseURL       string // Wallet API base URL  e.g. https://api.jambopay.com
+	AuthURL       string // OAuth2 token URL     e.g. https://accounts.jambopay.com/v2
+	ClientID      string // OAuth2 client ID
+	ClientSecret  string // OAuth2 client secret (raw, as provided in credentials)
+	AccountFrom   string // Collection account — receives incoming funds (WALLET_COLLECTION_ACCOUNT=1002603)
+	PayoutAccount string // Merchant wallet — source for disbursements to members (WALLET_MERCHANT_ACCOUNT=1002602)
+	CallbackURL   string // Webhook URL JamboPay notifies on completion
+	PartnerCode   string // 3-digit code appended to OTP for tenant-client transactions
 }
 
 // JamboPayProvider implements the payment.Provider interface using JamboPay v2 Wallet API.

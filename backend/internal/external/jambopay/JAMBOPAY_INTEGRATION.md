@@ -76,11 +76,20 @@ JAMBOPAY_CLIENT_SECRET=YjQwMzRjZDQtN2Fk...  # base64-encoded secret from JamboPa
 JAMBOPAY_BASE_URL=https://api.jambopay.com
 JAMBOPAY_AUTH_URL=https://accounts.jambopay.com/v2
 
-# AMY merchant account configuration
-JAMBOPAY_ACCOUNT_FROM=1002603          # Source account for org-initiated transfers
+# Account configuration — two distinct accounts
+JAMBOPAY_ACCOUNT_FROM=1002603     # WALLET_COLLECTION_ACCOUNT — receives incoming payments / top-ups
+JAMBOPAY_PAYOUT_ACCOUNT=1002602   # WALLET_MERCHANT_ACCOUNT  — source for disbursements to members
+
 JAMBOPAY_CALLBACK_URL=https://your-domain.com/api/v1/webhooks/jambopay
 JAMBOPAY_PARTNER_CODE=349              # 3-digit code appended to OTP for member transfers
 ```
+
+> **Two-Account Model:**
+>
+> | Env Var | Account No | Purpose |
+> |---|---|---|
+> | `JAMBOPAY_ACCOUNT_FROM` | `1002603` | Collection account — receives money in (top-ups, payments) |
+> | `JAMBOPAY_PAYOUT_ACCOUNT` | `1002602` | Merchant wallet — money goes **out** to members (wages, salaries, withdrawals) |
 
 ---
 
@@ -119,19 +128,21 @@ JAMBOPAY_PARTNER_CODE=349              # 3-digit code appended to OTP for member
 
 ### 4.3 Wallet Transfer (SACCO → Member or Peer)
 
+**SACCO → Member wage payout** uses `PayoutAccount` (1002602) as the source:
+
 ```
 POST /wallet/transaction/transfer
 {
   "amount": "1.00",
   "accountTo": "MEMBER_ACCOUNT_NO",
-  "accountFrom": "1002603",
+  "accountFrom": "1002602",          // WALLET_MERCHANT_ACCOUNT — NOT the collection account
   "orderId": "WAGE-2026050601",
   "callbackUrl": "https://...",
-  "partnerCode": "349"       // required for peer (member→member) transfers
+  "partnerCode": "349"               // required for peer (member→member) transfers
 }
 ```
 
-Response: `{ "ref": "177807878845734493", "orderId": "..." }`
+**Peer transfer (Member → Member)** uses the sending member's own account as source.
 
 Authorization (OTP):
 ```
@@ -148,7 +159,7 @@ POST /payout
 {
   "amount": "1.00",
   "channel": "mpesa",
-  "accountFrom": "1002603",
+  "accountFrom": "1002602",          // WALLET_MERCHANT_ACCOUNT for external disbursements
   "recipient": { "name": "...", "phoneNumber": "0712345678" },
   "orderId": "WDR-2026050601",
   "callbackUrl": "https://..."
@@ -290,14 +301,16 @@ backend/cmd/server/main.go  # Wires JamboPayProvider into the dependency graph
 
 ---
 
-## 10. Verified Live Credentials (as of 2026-05-06)
+## 10. Verified Live Account Details (as of 2026-05-06)
 
-| Field | Value |
-|---|---|
-| Merchant Name | SisiboPay / Uasingishu County |
-| Account No | `1002603` (Business) |
-| Balance (live) | KES 124,590.38 |
-| Auth URL | `https://accounts.jambopay.com/v2` |
-| API URL | `https://api.jambopay.com` |
-| Partner Code | `349` |
-| Callback URL | Configured via `JAMBOPAY_CALLBACK_URL` |
+| Field | Collection Account | Merchant/Payout Account |
+|---|---|---|
+| **Env Var** | `JAMBOPAY_ACCOUNT_FROM` | `JAMBOPAY_PAYOUT_ACCOUNT` |
+| **JamboPay Name** | `WALLET_COLLECTION_ACCOUNT` | `WALLET_MERCHANT_ACCOUNT` |
+| **Account No** | `1002603` | `1002602` |
+| **Type** | Business | Business |
+| **Purpose** | Receives top-ups / incoming payments | Source for wages, salaries, withdrawals |
+| **Auth URL** | `https://accounts.jambopay.com/v2` | — |
+| **API URL** | `https://api.jambopay.com` | — |
+| **Partner Code** | `349` | — |
+| **Balance (live)** | KES 124,590.38 | See `/wallet/account?accountNo=1002602` |

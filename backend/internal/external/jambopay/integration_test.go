@@ -78,13 +78,14 @@ func initSharedProvider() {
 	}
 
 	p := NewJamboPayProvider(JamboPayConfig{
-		BaseURL:      os.Getenv("JAMBOPAY_BASE_URL"),
-		AuthURL:      authURL,
-		ClientID:     clientID,
-		ClientSecret: os.Getenv("JAMBOPAY_CLIENT_SECRET"),
-		AccountFrom:  os.Getenv("JAMBOPAY_ACCOUNT_FROM"),
-		CallbackURL:  os.Getenv("JAMBOPAY_CALLBACK_URL"),
-		PartnerCode:  os.Getenv("JAMBOPAY_PARTNER_CODE"),
+		BaseURL:       os.Getenv("JAMBOPAY_BASE_URL"),
+		AuthURL:       authURL,
+		ClientID:      clientID,
+		ClientSecret:  os.Getenv("JAMBOPAY_CLIENT_SECRET"),
+		AccountFrom:   os.Getenv("JAMBOPAY_ACCOUNT_FROM"),   // collection account: 1002603
+		PayoutAccount: os.Getenv("JAMBOPAY_PAYOUT_ACCOUNT"), // merchant wallet:    1002602
+		CallbackURL:   os.Getenv("JAMBOPAY_CALLBACK_URL"),
+		PartnerCode:   os.Getenv("JAMBOPAY_PARTNER_CODE"),
 	}, testLogger())
 
 	// Pre-warm the token cache — if this fails, sharedProvider stays nil
@@ -243,14 +244,14 @@ func TestIntegration_WalletTransfer_OrgToMember(t *testing.T) {
 	}
 
 	orderID := uniqueOrderID("WAGE-TEST")
-	t.Logf("Initiating: AMY(%s) → Member(%s) | KES 1.00 | order=%s",
-		p.cfg.AccountFrom, memberAccount, orderID)
+	t.Logf("Initiating: AMY payout(%s) → Member(%s) | KES 1.00 | order=%s",
+		p.cfg.PayoutAccount, memberAccount, orderID)
 
-	// Step 1: Initiate
+	// Step 1: Initiate — use PayoutAccount (1002602) as the source for disbursements
 	result, err := p.InitiateTransfer(ctx, TransferRequest{
 		Amount:      "1.00",
 		AccountTo:   memberAccount,
-		AccountFrom: p.cfg.AccountFrom,
+		AccountFrom: p.cfg.PayoutAccount, // merchant wallet (1002602), NOT collection account
 		OrderID:     orderID,
 		CallbackURL: p.cfg.CallbackURL,
 	})
@@ -328,7 +329,7 @@ func TestIntegration_ExternalPayout_MobileB2C(t *testing.T) {
 
 	result, err := p.InitiatePayout(ctx, payment.PayoutRequest{
 		AmountCents:    100, // KES 1.00
-		AccountFrom:    p.cfg.AccountFrom,
+		AccountFrom:    p.cfg.PayoutAccount, // merchant wallet (1002602) for external disbursements
 		OrderID:        orderID,
 		Channel:        payment.ChannelMobile,
 		RecipientName:  "Test Member",
@@ -382,11 +383,11 @@ func TestIntegration_OTPRegeneration(t *testing.T) {
 		t.Skip("Set JAMBOPAY_TEST_MEMBER_ACCOUNT for OTP regeneration test")
 	}
 
-	// Create a transfer to get a ref
+	// Create a transfer using the payout account (1002602) as source
 	result, err := p.InitiateTransfer(ctx, TransferRequest{
 		Amount:      "1.00",
 		AccountTo:   memberAccount,
-		AccountFrom: p.cfg.AccountFrom,
+		AccountFrom: p.cfg.PayoutAccount, // merchant wallet for disbursements
 		OrderID:     uniqueOrderID("OTP-TEST"),
 		CallbackURL: p.cfg.CallbackURL,
 	})

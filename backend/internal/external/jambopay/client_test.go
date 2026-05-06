@@ -88,10 +88,12 @@ func newTestServer(t *testing.T) *httptest.Server {
 func newMockProvider(t *testing.T, server *httptest.Server) *JamboPayProvider {
 	t.Helper()
 	return NewJamboPayProvider(JamboPayConfig{
-		BaseURL:      server.URL,
-		AuthURL:      server.URL, // same server handles /auth/token in tests
-		ClientID:     "test",
-		ClientSecret: "test",
+		BaseURL:       server.URL,
+		AuthURL:       server.URL,
+		ClientID:      "test",
+		ClientSecret:  "test",
+		AccountFrom:   "COLL-001", // collection account
+		PayoutAccount: "PAY-001",  // payout / merchant wallet
 	}, testLogger())
 }
 
@@ -217,10 +219,12 @@ func TestJamboPayTokenCaching(t *testing.T) {
 	defer server.Close()
 
 	p := NewJamboPayProvider(JamboPayConfig{
-		BaseURL:      server.URL,
-		AuthURL:      server.URL, // same mock handles auth
-		ClientID:     "c",
-		ClientSecret: "s",
+		BaseURL:       server.URL,
+		AuthURL:       server.URL,
+		ClientID:      "c",
+		ClientSecret:  "s",
+		AccountFrom:   "COLL-001",
+		PayoutAccount: "PAY-001",
 	}, testLogger())
 
 	p.CheckBalance(context.Background(), "A")
@@ -238,10 +242,10 @@ func TestJamboPayAuthFailure(t *testing.T) {
 	defer server.Close()
 
 	p := NewJamboPayProvider(JamboPayConfig{
-		BaseURL:      server.URL,
-		AuthURL:      server.URL,
-		ClientID:     "bad",
-		ClientSecret: "bad",
+		BaseURL:       server.URL,
+		AuthURL:       server.URL,
+		ClientID:      "bad",
+		ClientSecret:  "bad",
 	}, testLogger())
 
 	_, err := p.CheckBalance(context.Background(), "ACC")
