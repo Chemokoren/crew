@@ -23,10 +23,12 @@ import { Wallet, WalletTransaction, PaginationMeta, CrewMember } from '../../../
         </div>
         <div class="page-actions">
           @if (isAdmin()) {
-            <button class="btn btn-primary" (click)="openModal('credit')" id="btn-credit-wallet">
+            <button class="btn btn-primary" (click)="openModal('credit')" id="btn-credit-wallet"
+              title="Credit — Add money INTO a crew member's wallet. Use this to record wages earned, loan disbursements, or to top up a member's balance.">
               <span class="material-icons-round">add_circle</span> Credit
             </button>
-            <button class="btn btn-secondary" (click)="openModal('debit')" id="btn-debit-wallet">
+            <button class="btn btn-secondary" (click)="openModal('debit')" id="btn-debit-wallet"
+              title="Debit — Deduct money FROM a crew member's wallet. Use this to record withdrawals, insurance premium deductions, or to correct an over-credit.">
               <span class="material-icons-round">remove_circle</span> Debit
             </button>
           }
@@ -148,27 +150,44 @@ import { Wallet, WalletTransaction, PaginationMeta, CrewMember } from '../../../
       @if (showModal() === 'credit') {
         <div class="modal-backdrop" (click)="closeModal()">
           <div class="modal-content" (click)="$event.stopPropagation()" style="max-width:480px;">
-            <div class="modal-header"><h3>Credit Wallet</h3><button class="btn-ghost" (click)="closeModal()"><span class="material-icons-round">close</span></button></div>
+            <div class="modal-header">
+              <h3 style="display:flex;align-items:center;gap:8px;">
+                <span class="material-icons-round" style="color:var(--color-success);font-size:22px;">add_circle</span>
+                Credit Wallet
+              </h3>
+              <button class="btn-ghost" (click)="closeModal()"><span class="material-icons-round">close</span></button>
+            </div>
             <div class="modal-body">
-              <div style="position:relative; z-index: 54;">
-                <label class="form-label">Crew Member</label>
+              <!-- Info banner -->
+              <div class="modal-info-banner modal-info-banner--success">
+                <span class="material-icons-round" style="font-size:18px;flex-shrink:0;">info</span>
+                <span><strong>Crediting</strong> adds money <em>into</em> the member's wallet. Their balance will increase by the amount you enter. Use this to record wages, top-ups, or approved loan disbursements.</span>
+              </div>
+              <div style="position:relative; z-index: 54; margin-top:var(--space-md);">
+                <label class="form-label">Crew Member <span class="field-required">*</span></label>
+                <p class="field-hint">Search by name or staff ID — the money will be added to this person's wallet.</p>
                 <app-autocomplete [(ngModel)]="modalCrewId" [options]="crewOptions()" placeholder="— Search Crew Member —"></app-autocomplete>
               </div>
-              <label class="form-label" style="margin-top:var(--space-sm);">Amount (KES)</label>
-              <input type="number" class="form-input" [(ngModel)]="modalAmount" min="1" step="1" placeholder="e.g. 500" id="modal-credit-amount">
-              <label class="form-label" style="margin-top:var(--space-sm);">Category</label>
+              <label class="form-label" style="margin-top:var(--space-md);">Amount (KES) <span class="field-required">*</span></label>
+              <p class="field-hint">Enter the exact amount in Kenyan Shillings (e.g. 1500 for KES 1,500).</p>
+              <input type="number" class="form-input" [(ngModel)]="modalAmount" min="1" step="1" placeholder="e.g. 1500" id="modal-credit-amount">
+              <label class="form-label" style="margin-top:var(--space-md);">Category <span class="field-required">*</span></label>
+              <p class="field-hint">Choose what this credit is for:</p>
               <select class="form-select" [(ngModel)]="modalCategory" id="modal-credit-category">
-                <option value="EARNING">Earning</option>
-                <option value="TOP_UP">Top Up</option>
-                <option value="REVERSAL">Reversal</option>
-                <option value="LOAN">Loan</option>
+                <option value="EARNING">Earning — Daily or shift wages earned by the member</option>
+                <option value="TOP_UP">Top Up — Manual float top-up or balance correction</option>
+                <option value="REVERSAL">Reversal — Cancelling a previous incorrect debit</option>
+                <option value="LOAN">Loan — Disbursement of an approved loan to the member</option>
               </select>
-              <label class="form-label" style="margin-top:var(--space-sm);">Description</label>
-              <input type="text" class="form-input" [(ngModel)]="modalDescription" placeholder="Optional description" id="modal-credit-desc">
+              <label class="form-label" style="margin-top:var(--space-md);">Note (optional)</label>
+              <p class="field-hint">Add a short note so the member and admin can see why this credit was made (e.g. "Shift 6am-2pm, Westlands route").</p>
+              <input type="text" class="form-input" [(ngModel)]="modalDescription" placeholder="e.g. Shift 6am–2pm, Route 111" id="modal-credit-desc">
             </div>
             <div class="modal-footer">
               <button class="btn btn-ghost" (click)="closeModal()">Cancel</button>
-              <button class="btn btn-primary" (click)="submitCredit()" [disabled]="submitting()" id="btn-submit-credit">
+              <button class="btn btn-primary" (click)="submitCredit()" [disabled]="submitting()" id="btn-submit-credit"
+                title="Confirm: This will add the entered amount into the selected member's wallet immediately.">
+                <span class="material-icons-round" style="font-size:18px;">{{ submitting() ? 'hourglass_empty' : 'add_circle' }}</span>
                 {{ submitting() ? 'Processing...' : 'Credit Wallet' }}
               </button>
             </div>
@@ -180,26 +199,43 @@ import { Wallet, WalletTransaction, PaginationMeta, CrewMember } from '../../../
       @if (showModal() === 'debit') {
         <div class="modal-backdrop" (click)="closeModal()">
           <div class="modal-content" (click)="$event.stopPropagation()" style="max-width:480px;">
-            <div class="modal-header"><h3>Debit Wallet</h3><button class="btn-ghost" (click)="closeModal()"><span class="material-icons-round">close</span></button></div>
+            <div class="modal-header">
+              <h3 style="display:flex;align-items:center;gap:8px;">
+                <span class="material-icons-round" style="color:var(--color-danger);font-size:22px;">remove_circle</span>
+                Debit Wallet
+              </h3>
+              <button class="btn-ghost" (click)="closeModal()"><span class="material-icons-round">close</span></button>
+            </div>
             <div class="modal-body">
-              <div style="position:relative; z-index: 54;">
-                <label class="form-label">Crew Member</label>
+              <!-- Info banner -->
+              <div class="modal-info-banner modal-info-banner--warning">
+                <span class="material-icons-round" style="font-size:18px;flex-shrink:0;">warning_amber</span>
+                <span><strong>Debiting</strong> removes money <em>from</em> the member's wallet. Their balance will decrease. Use this only to record withdrawals they've taken, statutory deductions (e.g. NSSF, NHIF), or to reverse an accidental over-credit.</span>
+              </div>
+              <div style="position:relative; z-index: 54; margin-top:var(--space-md);">
+                <label class="form-label">Crew Member <span class="field-required">*</span></label>
+                <p class="field-hint">Search by name or staff ID — the amount will be deducted from this person's wallet.</p>
                 <app-autocomplete [(ngModel)]="modalCrewId" [options]="crewOptions()" placeholder="— Search Crew Member —"></app-autocomplete>
               </div>
-              <label class="form-label" style="margin-top:var(--space-sm);">Amount (KES)</label>
+              <label class="form-label" style="margin-top:var(--space-md);">Amount (KES) <span class="field-required">*</span></label>
+              <p class="field-hint">Enter the exact amount to deduct. The member's wallet must have enough balance.</p>
               <input type="number" class="form-input" [(ngModel)]="modalAmount" min="1" step="1" placeholder="e.g. 200" id="modal-debit-amount">
-              <label class="form-label" style="margin-top:var(--space-sm);">Category</label>
+              <label class="form-label" style="margin-top:var(--space-md);">Category <span class="field-required">*</span></label>
+              <p class="field-hint">Choose the reason for this deduction:</p>
               <select class="form-select" [(ngModel)]="modalCategory" id="modal-debit-category">
-                <option value="WITHDRAWAL">Withdrawal</option>
-                <option value="DEDUCTION">Deduction</option>
-                <option value="REVERSAL">Reversal</option>
+                <option value="WITHDRAWAL">Withdrawal — Member has taken out cash or M-Pesa payment</option>
+                <option value="DEDUCTION">Deduction — Statutory deductions e.g. NSSF, NHIF, insurance premium</option>
+                <option value="REVERSAL">Reversal — Undoing a previous incorrect credit entry</option>
               </select>
-              <label class="form-label" style="margin-top:var(--space-sm);">Description</label>
-              <input type="text" class="form-input" [(ngModel)]="modalDescription" placeholder="Reason for debit" id="modal-debit-desc">
+              <label class="form-label" style="margin-top:var(--space-md);">Reason <span class="field-required">*</span></label>
+              <p class="field-hint">Always provide a clear reason. This appears in the member's transaction history (e.g. "NSSF deduction May 2026").</p>
+              <input type="text" class="form-input" [(ngModel)]="modalDescription" placeholder="e.g. NSSF deduction May 2026" id="modal-debit-desc">
             </div>
             <div class="modal-footer">
               <button class="btn btn-ghost" (click)="closeModal()">Cancel</button>
-              <button class="btn btn-danger" (click)="submitDebit()" [disabled]="submitting()" id="btn-submit-debit">
+              <button class="btn btn-danger" (click)="submitDebit()" [disabled]="submitting()" id="btn-submit-debit"
+                title="Confirm: This will deduct the entered amount from the selected member's wallet immediately. This action is logged and cannot be automatically undone.">
+                <span class="material-icons-round" style="font-size:18px;">{{ submitting() ? 'hourglass_empty' : 'remove_circle' }}</span>
                 {{ submitting() ? 'Processing...' : 'Debit Wallet' }}
               </button>
             </div>
@@ -265,7 +301,12 @@ import { Wallet, WalletTransaction, PaginationMeta, CrewMember } from '../../../
     .tx-amount { font-weight: 600; font-size: 0.875rem; white-space: nowrap; }
     .tx-balance { font-size: 0.7rem; color: var(--color-text-muted); white-space: nowrap; }
     .tx-time { font-size: 0.75rem; color: var(--color-text-muted); white-space: nowrap; }
-    .form-label { display: block; font-size: 0.8rem; font-weight: 500; color: var(--color-text-secondary); margin-bottom: 4px; }
+    .form-label { display: block; font-size: 0.8rem; font-weight: 500; color: var(--color-text-secondary); margin-bottom: 2px; }
+    .field-hint { font-size: 0.72rem; color: var(--color-text-muted); margin: 0 0 6px; line-height: 1.4; }
+    .field-required { color: var(--color-danger); margin-left: 2px; }
+    .modal-info-banner { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: var(--radius-md); font-size: 0.78rem; line-height: 1.5; }
+    .modal-info-banner--success { background: var(--color-success-light); color: var(--color-success); border: 1px solid rgba(34,197,94,0.25); }
+    .modal-info-banner--warning { background: rgba(251,191,36,0.1); color: #92400e; border: 1px solid rgba(251,191,36,0.35); }
     @media (max-width: 600px) { .tx-time, .tx-balance { display: none; } }
   `]
 })

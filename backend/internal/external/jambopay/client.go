@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -65,8 +66,16 @@ func (p *JamboPayProvider) Name() string { return "jambopay" }
 // ===================================================================
 
 // authenticate retrieves or refreshes the JamboPay OAuth2 access token.
-// POST /auth/token — Content-Type: application/x-www-form-urlencoded
-// grant_type: client_credentials
+//
+// The real JamboPay API at api.jambopay.com uses HTTP Basic authentication
+// (client credentials in the Authorization header, NOT in the POST body).
+// The `application` field (= ClientID) is also required.
+// The raw ClientSecret stored in config is base64-encoded; we decode it first.
+//
+// POST /auth/token
+// Authorization: Basic base64(client_id:decoded_client_secret)
+// Content-Type: application/x-www-form-urlencoded
+// Body: grant_type=client_credentials&application={client_id}
 func (p *JamboPayProvider) authenticate(ctx context.Context) (string, error) {
 	p.mu.RLock()
 	if p.token != "" && time.Now().Before(p.expiresAt) {
@@ -76,10 +85,16 @@ func (p *JamboPayProvider) authenticate(ctx context.Context) (string, error) {
 	}
 	p.mu.RUnlock()
 
+	// Decode the base64-encoded client secret if necessary.
+	// JamboPay provides the secret already base64-encoded in credentials docs.
+	decodedSecret := p.cfg.ClientSecret
+	if decoded, err := base64Decode(p.cfg.ClientSecret); err == nil && decoded != "" {
+		decodedSecret = decoded
+	}
+
 	form := url.Values{
-		"client_id":     {p.cfg.ClientID},
-		"client_secret": {p.cfg.ClientSecret},
-		"grant_type":    {"client_credentials"},
+		"grant_type":  {"client_credentials"},
+		"application": {p.cfg.ClientID},
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
@@ -88,6 +103,8 @@ func (p *JamboPayProvider) authenticate(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("build auth request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	// Use HTTP Basic auth — JamboPay rejects client_secret in the POST body
+	req.SetBasicAuth(p.cfg.ClientID, decodedSecret)
 
 	resp, err := p.client.Do(req)
 	if err != nil {
@@ -114,6 +131,20 @@ func (p *JamboPayProvider) authenticate(ctx context.Context) (string, error) {
 	p.mu.Unlock()
 
 	return tokenResp.AccessToken, nil
+}
+
+// base64Decode decodes a base64-encoded string, trimming whitespace/newlines.
+// Returns the decoded string and nil error only if decoding succeeds.
+func base64Decode(s string) (string, error) {
+	s = strings.TrimSpace(s)
+	// Try standard base64 first, then URL-safe
+	for _, enc := range []*base64.Encoding{base64.StdEncoding, base64.URLEncoding, base64.RawStdEncoding} {
+		b, err := enc.DecodeString(s)
+		if err == nil && len(b) > 0 {
+			return strings.TrimSpace(string(b)), nil
+		}
+	}
+	return "", fmt.Errorf("not base64")
 }
 
 // doRequest sends an authenticated JSON request to JamboPay.
