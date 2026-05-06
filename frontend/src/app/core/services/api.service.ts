@@ -11,7 +11,7 @@ import {
   AuditLog, AdminUser, NotificationTemplate, Document,
   SystemStats, SACCOFloat, SACCOMembership, SACCOFloatTransaction,
   StatutoryRate, TenantJobType, PaySchedule, PayPeriod, FinancialProfile,
-  BootstrapResult
+  BootstrapResult, WorkSite
 } from '../models';
 
 @Injectable({ providedIn: 'root' })
@@ -481,5 +481,26 @@ export class ApiService {
       });
     }
     return httpParams;
+  }
+
+  // --- Work Sites (Phase H) ---
+  getWorkSites(params?: Record<string, string>): Observable<ApiListResponse<WorkSite>> {
+    return this.http.get<ApiListResponse<WorkSite>>(`${this.API}/work-sites`, { params: this.buildParams(params) });
+  }
+
+  getWorkSite(id: string): Observable<ApiResponse<WorkSite>> {
+    return this.http.get<ApiResponse<WorkSite>>(`${this.API}/work-sites/${id}`);
+  }
+
+  createWorkSite(data: Partial<WorkSite>): Observable<ApiResponse<WorkSite>> {
+    return this.http.post<ApiResponse<WorkSite>>(`${this.API}/work-sites`, data);
+  }
+
+  updateWorkSite(id: string, data: Partial<WorkSite>): Observable<ApiResponse<WorkSite>> {
+    return this.http.put<ApiResponse<WorkSite>>(`${this.API}/work-sites/${id}`, data);
+  }
+
+  deleteWorkSite(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.API}/work-sites/${id}`);
   }
 }

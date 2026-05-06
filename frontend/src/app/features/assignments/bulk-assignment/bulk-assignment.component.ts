@@ -117,6 +117,14 @@ import { CrewMember, Organization, Vehicle } from '../../../core/models';
                 <input class="form-input" type="number" [(ngModel)]="config.commission_rate" step="0.01" placeholder="10" id="bulk-comm" />
               </div>
             }
+            <div class="form-group">
+              <label class="form-label">Work Site / Location</label>
+              <input class="form-input" [(ngModel)]="config.work_site" placeholder="e.g. Site B / Route 4" id="bulk-work-site" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Project Reference</label>
+              <input class="form-input" [(ngModel)]="config.project_ref" placeholder="e.g. PRJ-001" id="bulk-project-ref" />
+            </div>
             <div class="form-group" style="grid-column:1/-1;">
               <label class="form-label">
                 <input type="checkbox" [ngModel]="skipWeekends()" (ngModelChange)="skipWeekends.set($event)" id="bulk-skip-weekends" style="margin-right:6px;">
@@ -230,6 +238,7 @@ export class BulkAssignmentComponent implements OnInit {
   /* Non-reactive config fields – only read on submit */
   config = {
     work_type: 'SHIFT', shift_time: '07:00',
+    work_site: '', project_ref: '',
     earning_model: 'FIXED', fixed_amount: 0, commission_rate: 0,
   };
 
@@ -263,6 +272,11 @@ export class BulkAssignmentComponent implements OnInit {
   ngOnInit(): void {
     this.api.getCrewMembers({ per_page: '200' }).subscribe({ next: r => this.crewMembers.set(r.data) });
     this.api.getOrganizations({ per_page: '200' }).subscribe({ next: r => this.saccos.set(r.data) });
+
+    // Pre-fill from query params if coming from Work Sites page
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('work_site')) this.config.work_site = params.get('work_site') || '';
+    if (params.has('project_ref')) this.config.project_ref = params.get('project_ref') || '';
   }
 
   goBack(): void { this.router.navigate(['/assignments']); }
@@ -303,6 +317,8 @@ export class BulkAssignmentComponent implements OnInit {
           crew_member_id: w.id,
           organization_id: this.organizationId(),
           work_type: this.config.work_type,
+          work_site: this.config.work_site,
+          project_ref: this.config.project_ref,
           shift_date: dateStr,
           shift_start: new Date(`${dateStr}T${this.config.shift_time}:00`).toISOString(),
           earning_model: this.config.earning_model,

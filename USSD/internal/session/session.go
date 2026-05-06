@@ -21,8 +21,10 @@ import (
 
 // MaxInputs is the maximum number of named inputs stored in a session.
 // This prevents unbounded memory growth from multi-step flows.
-// Normal USSD flows use 8-10 keys max; 20 provides generous headroom.
-const MaxInputs = 20
+// Role selection stores 3 keys per role (id, code, name) + menu text.
+// With 8 roles that's 25 keys; add flow inputs (name, ID, PIN, etc.)
+// and we need ~35. Using 40 for headroom.
+const MaxInputs = 40
 
 // MaxSteps is the maximum number of steps allowed in a single session.
 // Prevents runaway sessions from consuming resources indefinitely.

@@ -231,6 +231,7 @@ func main() {
 	negativeEventRepo := pgRepo.NewNegativeEventRepo(db)
 	jobTypeRepo := pgRepo.NewTenantJobTypeRepo(db)
 	payScheduleRepo := pgRepo.NewPayScheduleRepo(db)
+	workSiteRepo := pgRepo.NewWorkSiteRepo(db)
 
 	// --- 8. Initialize transaction manager ---
 	txMgr := database.NewTxManager(db)
@@ -421,6 +422,7 @@ func main() {
 	insuranceHandler := handler.NewInsuranceHandler(insuranceSvc)
 	tenantHandler := handler.NewTenantHandler(tenantSvc)
 	adminHandler := handler.NewAdminHandler(authSvc, notifSvc, auditRepo, statutoryRateRepo)
+	workSiteHandler := handler.NewWorkSiteHandler(workSiteRepo)
 
 	// --- USSD Session Handler (Phase G) ---
 	ussdSession := ussd.NewSessionHandler(
@@ -734,6 +736,17 @@ func main() {
 			routes.GET("/:id", routeHandler.GetByID)
 			routes.PUT("/:id", routeHandler.Update)
 			routes.DELETE("/:id", routeHandler.Delete)
+		}
+
+		// Work Sites (full CRUD, org-scoped)
+		workSites := secured.Group("/work-sites")
+		workSites.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin))
+		{
+			workSites.POST("", workSiteHandler.Create)
+			workSites.GET("", workSiteHandler.List)
+			workSites.GET("/:id", workSiteHandler.GetByID)
+			workSites.PUT("/:id", workSiteHandler.Update)
+			workSites.DELETE("/:id", workSiteHandler.Delete)
 		}
 
 		// Payroll (system admin + sacco admin)

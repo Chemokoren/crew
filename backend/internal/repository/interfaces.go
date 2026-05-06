@@ -354,3 +354,12 @@ type PayScheduleRepository interface {
 	ListByOrganization(ctx context.Context, orgID uuid.UUID) ([]models.PaySchedule, error)
 	GetDefault(ctx context.Context, orgID uuid.UUID) (*models.PaySchedule, error)
 }
+
+// WorkSiteRepository handles work site data access per organization.
+type WorkSiteRepository interface {
+	Create(ctx context.Context, site *models.WorkSite) error
+	GetByID(ctx context.Context, id uuid.UUID) (*models.WorkSite, error)
+	Update(ctx context.Context, site *models.WorkSite) error
+	Delete(ctx context.Context, id uuid.UUID) error
+	List(ctx context.Context, orgID *uuid.UUID, page, perPage int, search string) ([]models.WorkSite, int64, error)
+}

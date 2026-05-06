@@ -79,7 +79,7 @@ import { AutocompleteComponent, AutocompleteOption } from '../../../shared/compo
             <td style="font-weight:500;color:var(--color-text-primary);">{{p.provider}}</td>
             <td><span class="badge badge-accent">{{p.policy_type}}</span></td>
             <td>{{p.premium_cents|currencyKes}}</td>
-            <td style="text-transform:capitalize;">{{p.frequency.toLowerCase()}}</td>
+            <td style="text-transform:capitalize;">{{(p.frequency || '—').toLowerCase()}}</td>
             <td style="font-size:0.8125rem;">{{p.start_date|date:'mediumDate'}} — {{p.end_date|date:'mediumDate'}}</td>
             <td><span class="badge" [ngClass]="statusBadge(p.status)">{{p.status}}</span></td>
             @if (isAdmin()) {

@@ -56,11 +56,18 @@ export const routes: Routes = [
         loadComponent: () => import('./features/assignments/assignment-list/assignment-list.component').then(m => m.AssignmentListComponent),
       },
       {
+        // MUST be before assignments/:id to prevent 'bulk' being treated as an ID
+        path: 'assignments/bulk',
+        canActivate: [roleGuard('SYSTEM_ADMIN', 'SACCO_ADMIN')],
+        loadComponent: () => import('./features/assignments/bulk-assignment/bulk-assignment.component').then(m => m.BulkAssignmentComponent),
+      },
+      {
         path: 'assignments/:id',
         canActivate: [roleGuard('SYSTEM_ADMIN', 'SACCO_ADMIN')],
         loadComponent: () => import('./features/assignments/assignment-detail/assignment-detail.component').then(m => m.AssignmentDetailComponent),
       },
       {
+        // Legacy alias kept for backward compatibility
         path: 'assignments-bulk',
         canActivate: [roleGuard('SYSTEM_ADMIN', 'SACCO_ADMIN')],
         loadComponent: () => import('./features/assignments/bulk-assignment/bulk-assignment.component').then(m => m.BulkAssignmentComponent),

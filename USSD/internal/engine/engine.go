@@ -902,6 +902,16 @@ func (e *Engine) handleRegisterRole(ctx context.Context, sess *session.Data, inp
 	sess.SetInput("job_type_code", sess.GetInput(fmt.Sprintf("jt_%d_code", idx)))
 	sess.SetInput("role", sess.GetInput(fmt.Sprintf("jt_%d_name", idx))) // For display in confirmation
 
+	// Clean up temporary role metadata to free session input slots.
+	// These keys were only needed for role selection and are no longer required.
+	for i := 1; i <= jobTypeCount; i++ {
+		delete(sess.Inputs, fmt.Sprintf("jt_%d_id", i))
+		delete(sess.Inputs, fmt.Sprintf("jt_%d_code", i))
+		delete(sess.Inputs, fmt.Sprintf("jt_%d_name", i))
+	}
+	delete(sess.Inputs, "job_type_menu")
+	delete(sess.Inputs, "job_type_count")
+
 	sess.CurrentState = session.StateRegisterPIN
 	return e.continueWithMessage(sess, e.t(sess, "register.enter_pin")), nil
 }

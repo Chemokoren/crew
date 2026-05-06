@@ -618,3 +618,18 @@ export interface ABTest {
   ended_at?: string;
   created_at: string;
 }
+
+// --- Work Sites ---
+
+export interface WorkSite {
+  id: string;
+  organization_id: string;
+  name: string;
+  project_ref?: string;
+  address?: string;
+  description?: string;
+  is_active: boolean;
+  created_by_id: string;
+  created_at: string;
+  updated_at: string;
+}
