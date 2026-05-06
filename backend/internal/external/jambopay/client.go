@@ -54,11 +54,17 @@ type JamboPayProvider struct {
 }
 
 func NewJamboPayProvider(cfg JamboPayConfig, logger *slog.Logger) *JamboPayProvider {
-	// Use HTTP/1.1 explicitly to avoid HTTP/2 multiplexing stalls on
-	// Cloudflare-hosted endpoints (accounts.jambopay.com).
+	// JamboPay's accounts endpoint (accounts.jambopay.com) is Cloudflare-hosted
+	// and advertises HTTP/2 via TLS ALPN. Go's http.Transport, even with
+	// ForceAttemptHTTP2:false, will still use h2 if the server offers it in the
+	// TLS handshake. The h2 connection then stalls waiting for response headers.
+	// Fix: explicitly set NextProtos to ["http/1.1"] to prevent h2 negotiation.
 	transport := &http.Transport{
 		ForceAttemptHTTP2: false,
-		TLSClientConfig:   &tls.Config{MinVersion: tls.VersionTLS12},
+		TLSClientConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			NextProtos: []string{"http/1.1"}, // disable h2 ALPN — required for accounts.jambopay.com
+		},
 		DialContext: (&net.Dialer{
 			Timeout:   5 * time.Second,
 			KeepAlive: 30 * time.Second,

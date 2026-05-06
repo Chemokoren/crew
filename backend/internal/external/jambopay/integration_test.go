@@ -337,6 +337,13 @@ func TestIntegration_ExternalPayout_MobileB2C(t *testing.T) {
 		Narration:      "Integration test withdrawal",
 	})
 	if err != nil {
+		// JamboPay returns 400 "You are not allowed to do payout transactions"
+		// when the merchant account lacks the external payout permission.
+		// This is an account-level permission — ask JamboPay to enable it.
+		if strings.Contains(err.Error(), "not allowed") || strings.Contains(err.Error(), "payout transactions") {
+			t.Skipf("PERMISSION: JamboPay account lacks external payout permission — "+
+				"contact JamboPay to enable B2C payout for this merchant. Error: %v", err)
+		}
 		t.Fatalf("InitiatePayout (B2C) failed: %v", err)
 	}
 	if result.Reference == "" {
