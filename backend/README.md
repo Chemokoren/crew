@@ -86,6 +86,23 @@ curl http://localhost:8080/swagger/index.html  # → Swagger UI
 | `POST` | `/api/v1/wallets/credit` | Credit wallet (System Admin) |
 | `POST` | `/api/v1/wallets/debit` | Debit wallet (System Admin) |
 
+### Organization Float (Admin)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/organizations/:id/float` | Get float balance |
+| `POST` | `/api/v1/organizations/:id/float/topup` | Top up float (mobile/bank/card) |
+| `POST` | `/api/v1/organizations/:id/float/credit` | Direct credit float |
+| `POST` | `/api/v1/organizations/:id/float/debit` | Debit float (payout) |
+| `GET` | `/api/v1/organizations/:id/float/transactions` | Float transaction history |
+
+### Webhooks (Public — checksum-verified)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/webhooks/jambopay` | JamboPay collection + payout callbacks |
+| `POST` | `/api/v1/webhooks/perpay` | PerPay payroll callbacks |
+
 ### System
 
 | Method | Path | Description |
@@ -154,7 +171,7 @@ All integrations use the **Strategy design pattern** with automatic fallback cha
 | Integration | Provider(s) | Auth Method | Key Operations |
 |------------|-------------|-------------|----------------|
 | **SMS** | Optimize (default), Africa's Talking (fallback) | OAuth2 → JWT / API key header | `Send`, `SendBulk`, runtime `SetPrimary` |
-| **Payment** | JamboPay v2 | OAuth2 client_credentials | `InitiatePayout` (M-Pesa/bank/paybill), `VerifyPayout` (OTP), `CheckBalance` |
+| **Payment** | JamboPay v2 | OAuth2 client_credentials | `InitiateCollection` (STK push), `InitiatePayout` (M-Pesa/bank/paybill), `VerifyPayout` (OTP), `CheckBalance` |
 | **Payroll** | PerPay | JWT (15min TTL) | `SubmitPayroll` (async 202), `GetStatus` (polling), idempotency replay |
 | **Identity** | IPRS | OAuth2 via JamboPay IdP (scope=iprs) | `VerifyCitizen` (national ID → name, DOB, photo) |
 
@@ -173,6 +190,22 @@ All integrations use the **Strategy design pattern** with automatic fallback cha
 | `FIXED` | `fixed_amount_cents` | Daily flat rate |
 | `COMMISSION` | `revenue × commission_rate` | Percentage of collections |
 | `HYBRID` | `base_cents + (revenue × commission_rate)` | Base pay + commission |
+
+---
+
+## 💳 Organization Float Top-Up Flow
+
+Float can be funded via mobile money (M-Pesa STK push), bank transfer, or card:
+
+| Method | Flow | Response |
+|--------|------|----------|
+| **Mobile Money** | Create PENDING tx → STK push → User enters PIN → Callback confirms → Balance credited | `202 Accepted` (async) |
+| **Bank** | Admin enters bank reference → Balance credited immediately | `201 Created` (sync) |
+| **Card** | Admin enters card details → Balance credited immediately | `201 Created` (sync) |
+
+**Key safety guarantee:** For mobile money, the float balance is **never** credited until the payment provider confirms via webhook callback. This prevents inflated balances from failed/incomplete STK pushes.
+
+**Float transaction types:** `FUND` (inbound), `PAYOUT` (outbound), `ADJUSTMENT` (corrections)
 
 ---
 

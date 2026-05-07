@@ -1,6 +1,6 @@
 # AMY MIS — Backend System Documentation
 
-> **Version:** 1.1 | **Last Updated:** 2026-04-22 | **Go:** 1.25 | **Framework:** Gin 1.12
+> **Version:** 1.2 | **Last Updated:** 2026-05-07 | **Go:** 1.25 | **Framework:** Gin 1.12
 
 ---
 
@@ -30,7 +30,7 @@ AMY MIS (Management Information System) is a **Workforce Financial Operating Sys
 |---------|---------|---------|--------|
 | **Optimize SMS** | SMS notifications (default) | Strategy (primary) | ✅ Implemented |
 | **Africa's Talking** | SMS notifications (fallback) | Strategy (fallback) | ✅ Implemented |
-| **JamboPay v2** | M-Pesa B2C / bank / paybill payouts | Strategy | ✅ Implemented |
+| **JamboPay v2** | M-Pesa STK push (collections) + B2C / bank / paybill payouts | Strategy | ✅ Implemented |
 | **PerPay** | Payroll & statutory remittance | Strategy | ✅ Implemented |
 | **IPRS** | KYC / national ID verification | Strategy | ✅ Implemented |
 | **MinIO** | Document/file storage | Direct client | ✅ Implemented |
@@ -279,10 +279,11 @@ All third-party integrations follow the **Strategy design pattern**. Each integr
 
 | Provider | Auth | Endpoints |
 |----------|------|-----------|
-| **JamboPay v2** | OAuth2 client_credentials → Bearer token | `InitiatePayout` (M-Pesa B2C/bank/paybill), `VerifyPayout` (OTP), `CheckBalance` |
+| **JamboPay v2** | OAuth2 client_credentials → Bearer token | `InitiateCollection` (STK push), `InitiatePayout` (M-Pesa B2C/bank/paybill), `VerifyPayout` (OTP), `CheckBalance` |
 
 - **Channels:** `MOMO_B2C` (mobile money), `BANK` (bank transfer), `MOMO_B2B` (paybill/till)
-- **OTP flow:** `InitiatePayout` → `pending_otp` → `VerifyPayout(ref, otp)` → `completed`
+- **Collection flow (STK push):** `InitiateCollection` → phone prompt → user enters PIN → JamboPay callback → `ConfirmPendingTopUp`
+- **Payout OTP flow:** `InitiatePayout` → `pending_otp` → `VerifyPayout(ref, otp)` → `completed`
 
 ### 6.4 Payroll — `payroll.Manager`
 
@@ -328,6 +329,79 @@ When an assignment is completed:
 2. An `Earning` record is created
 3. The crew member's wallet is **automatically credited** with an idempotency key
 
+### 7.5 Organization Float Top-Up Flow
+
+Organization (SACCO) float can be funded via three methods. **Mobile money** uses an asynchronous STK push flow; **bank** and **card** are immediate manual entries.
+
+#### Mobile Money (Async — STK Push)
+
+```
+                              ┌────────────────────────────────┐
+  Admin clicks               │  POST /organizations/:id/      │
+  "Top Up" (M-Pesa)   ──────►│       float/topup               │
+                              │  method: "mobile_money"        │
+                              └──────────┬─────────────────────┘
+                                         │
+                              ┌──────────▼─────────────────────┐
+                              │  1. Create PENDING float tx    │  No balance change
+                              │  2. Trigger JamboPay STK push  │  Phone prompt sent
+                              │  3. Return HTTP 202 Accepted   │  "Check your phone"
+                              └──────────┬─────────────────────┘
+                                         │
+                              ┌──────────▼─────────────────────┐
+                              │  User enters M-Pesa PIN        │
+                              │  on their phone                │
+                              └──────────┬─────────────────────┘
+                                         │
+                              ┌──────────▼─────────────────────┐
+                              │  JamboPay sends callback       │
+                              │  POST /api/v1/webhooks/        │
+                              │       jambopay                 │
+                              └──────────┬─────────────────────┘
+                                         │
+                          ┌──────────────┴──────────────┐
+                    SUCCESS                         FAILED
+                          │                              │
+               ┌──────────▼──────────┐        ┌─────────▼─────────┐
+               │ ConfirmPendingTopUp │        │ FailPendingTopUp  │
+               │ • Credit balance    │        │ • Mark tx FAILED  │
+               │ • Status→COMPLETED  │        │ • No balance chg  │
+               └─────────────────────┘        └───────────────────┘
+```
+
+**Key design decisions:**
+- The float balance is **never** credited until the payment is confirmed via callback
+- Pending transactions are idempotency-protected (`idempotency_key` as the JamboPay `orderId`)
+- Failed STK pushes immediately mark the pending tx as `FAILED`
+- The webhook handler first checks for pending float tx (collection), then payout tx
+
+#### Bank & Card (Immediate)
+
+Bank and card top-ups credit the float balance immediately as they represent manual administrative entries:
+
+```
+POST /organizations/:id/float/topup  →  CreditFloat()  →  HTTP 201 Created
+```
+
+#### Float Transaction Types
+
+The `sacco_float_transactions` table enforces a check constraint:
+
+| Type | Usage |
+|------|-------|
+| `FUND` | Inbound: mobile money STK push, bank transfer, card payment |
+| `PAYOUT` | Outbound: disbursement to crew wallets or external accounts |
+| `ADJUSTMENT` | Administrative corrections |
+
+#### Float Transaction Statuses
+
+| Status | Meaning |
+|--------|--------|
+| `PENDING` | STK push initiated, awaiting payment confirmation |
+| `COMPLETED` | Payment confirmed, balance updated |
+| `FAILED` | Payment failed or STK push error |
+| `REVERSED` | Previously completed transaction reversed |
+
 ---
 
 ## 8. Financial Safety Mechanisms
@@ -339,10 +413,19 @@ The wallet repository uses **belt-and-suspenders** concurrency:
 2. **Optimistic locking:** Version check before committing
 3. **Idempotency:** Duplicate transactions with the same key return the original
 
-### 8.2 Idempotency
+### 8.2 Float Concurrency Control
+
+The organization float repository mirrors wallet safety mechanisms:
+1. **Pessimistic locking:** `SELECT ... FOR UPDATE` on float row during credit/debit
+2. **Optimistic locking:** Version check prevents concurrent modification
+3. **Idempotency:** Float transactions keyed by `idempotency_key` (unique index)
+4. **Pending→Confirm pattern:** For STK push collections, a `PENDING` record is created first (no balance change), then atomically confirmed when the callback arrives — preventing premature balance inflation
+
+### 8.3 Idempotency
 
 - Financial endpoints (`/wallets/credit`, `/wallets/debit`) require an `Idempotency-Key` HTTP header
 - Earning-to-wallet credits use `earn-{earning_id}` as the key
+- Float top-up transactions use the frontend-generated `idempotency_key` as the JamboPay `orderId`
 - Duplicate requests safely return the original transaction
 
 ### 8.3 Error Handling
@@ -389,7 +472,8 @@ Domain errors in `pkg/errs/`:
 | HTTP handlers | Register, login, refresh, /me, RBAC enforcement |
 | JWT middleware | Missing token, invalid token, expired token |
 | SMS integration | Manager fallback chain, SetPrimary, Optimize token caching, AT bulk send |
-| JamboPay integration | OAuth2 auth, M-Pesa/bank/paybill payout, OTP verify, balance, token cache |
+| JamboPay integration | OAuth2 auth, M-Pesa/bank/paybill payout, OTP verify, balance, token cache, collection STK push |
+| Webhook processing | JamboPay payout callback (COMPLETED/FAILED/reversal), collection callback (float confirm/fail) |
 | PerPay integration | JWT auth, async submit (202), idempotency replay (409), status polling |
 | IPRS integration | OAuth2 scope=iprs, citizen lookup, not found, auth failure, token cache |
 
@@ -537,4 +621,4 @@ Required variables validated at startup:
 
 ---
 
-*Document updated from source code analysis on 2026-04-22.*
+*Document updated from source code analysis on 2026-05-07.*
