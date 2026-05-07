@@ -15,9 +15,10 @@ import (
 func newTestAuthService() (*AuthService, *mock.UserRepo, *mock.CrewRepo) {
 	userRepo := mock.NewUserRepo()
 	crewRepo := mock.NewCrewRepo()
+	orgRepo := mock.NewOrganizationRepo()
 	jwtMgr := jwt.NewManager("test-secret-key-that-is-at-least-32-chars-long!", 15, 7)
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	return NewAuthService(userRepo, crewRepo, jwtMgr, nil, logger), userRepo, crewRepo
+	return NewAuthService(userRepo, crewRepo, jwtMgr, nil, logger, WithOrgRepo(orgRepo)), userRepo, crewRepo
 }
 
 func TestRegisterCrewUser(t *testing.T) {
@@ -65,9 +66,13 @@ func TestRegisterSaccoAdmin(t *testing.T) {
 	ctx := context.Background()
 
 	result, err := svc.Register(ctx, RegisterInput{
-		Phone:    "+254700000001",
-		Password: "SecurePass123!",
-		Role:     types.RoleSaccoAdmin,
+		Phone:              "+254700000001",
+		Password:           "SecurePass123!",
+		Role:               types.RoleSaccoAdmin,
+		OrganizationName:   "Test Sacco",
+		OrganizationRegNo:  "REG-001",
+		OrganizationCounty: "Nairobi",
+		OrganizationPhone:  "+254700000001",
 	})
 
 	if err != nil {
@@ -198,17 +203,24 @@ func TestLoginDisabledAccount(t *testing.T) {
 	svc, userRepo, _ := newTestAuthService()
 	ctx := context.Background()
 
-	result, _ := svc.Register(ctx, RegisterInput{
-		Phone:      "+254712345678",
-		Password:   "SecurePass123!",
-		Role:       types.RoleSaccoAdmin,
+	result, err := svc.Register(ctx, RegisterInput{
+		Phone:              "+254712345678",
+		Password:           "SecurePass123!",
+		Role:               types.RoleSaccoAdmin,
+		OrganizationName:   "Test Sacco",
+		OrganizationRegNo:  "REG-002",
+		OrganizationCounty: "Nairobi",
+		OrganizationPhone:  "+254712345678",
 	})
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
 
 	// Disable the account
 	result.User.IsActive = false
 	_ = userRepo.Update(ctx, result.User)
 
-	_, err := svc.Login(ctx, LoginInput{
+	_, err = svc.Login(ctx, LoginInput{
 		Phone:    "+254712345678",
 		Password: "SecurePass123!",
 	})
@@ -221,11 +233,18 @@ func TestRefreshToken(t *testing.T) {
 	svc, _, _ := newTestAuthService()
 	ctx := context.Background()
 
-	reg, _ := svc.Register(ctx, RegisterInput{
-		Phone:      "+254712345678",
-		Password:   "SecurePass123!",
-		Role:       types.RoleSaccoAdmin,
+	reg, err := svc.Register(ctx, RegisterInput{
+		Phone:              "+254712345678",
+		Password:           "SecurePass123!",
+		Role:               types.RoleSaccoAdmin,
+		OrganizationName:   "Test Sacco",
+		OrganizationRegNo:  "REG-003",
+		OrganizationCounty: "Nairobi",
+		OrganizationPhone:  "+254712345678",
 	})
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
 
 	newTokens, err := svc.RefreshToken(ctx, reg.Tokens.RefreshToken)
 	if err != nil {

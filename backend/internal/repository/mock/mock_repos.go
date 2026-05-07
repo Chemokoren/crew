@@ -690,3 +690,59 @@ func (r *AuditRepo) List(_ context.Context, resource string, resourceID *uuid.UU
 	return res, int64(len(res)), nil
 }
 
+// --- OrganizationRepo Mock ---
+
+type OrganizationRepo struct {
+	mu    sync.RWMutex
+	orgs  map[uuid.UUID]*models.Organization
+}
+
+func NewOrganizationRepo() *OrganizationRepo {
+	return &OrganizationRepo{orgs: make(map[uuid.UUID]*models.Organization)}
+}
+
+func (r *OrganizationRepo) Create(_ context.Context, org *models.Organization) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if org.ID == uuid.Nil {
+		org.ID = uuid.New()
+	}
+	org.CreatedAt = time.Now()
+	org.UpdatedAt = time.Now()
+	r.orgs[org.ID] = org
+	return nil
+}
+
+func (r *OrganizationRepo) GetByID(_ context.Context, id uuid.UUID) (*models.Organization, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if org, ok := r.orgs[id]; ok {
+		return org, nil
+	}
+	return nil, fmt.Errorf("organization not found")
+}
+
+func (r *OrganizationRepo) Update(_ context.Context, org *models.Organization) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	org.UpdatedAt = time.Now()
+	r.orgs[org.ID] = org
+	return nil
+}
+
+func (r *OrganizationRepo) Delete(_ context.Context, id uuid.UUID) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.orgs, id)
+	return nil
+}
+
+func (r *OrganizationRepo) List(_ context.Context, page, perPage int, search string) ([]models.Organization, int64, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var result []models.Organization
+	for _, org := range r.orgs {
+		result = append(result, *org)
+	}
+	return result, int64(len(result)), nil
+}

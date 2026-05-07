@@ -21,7 +21,7 @@ func TestWebhookHandler(t *testing.T) {
 	walletRepo := mock.NewWalletRepo()
 
 	webhookSvc := service.NewWebhookService(webhookRepo, nil, nil, nil, walletRepo, nil, logger)
-	webhookHandler := handler.NewWebhookHandler(webhookSvc, "", "") // empty secrets = skip HMAC in tests
+	webhookHandler := handler.NewWebhookHandler(webhookSvc, nil, "") // nil verifier = skip checksum in tests
 
 	r := gin.New()
 	r.POST("/webhooks/jambopay", webhookHandler.HandleJamboPay)
@@ -48,9 +48,9 @@ func TestWebhookHandler(t *testing.T) {
 
 		r.ServeHTTP(w, req)
 
-		if w.Code != http.StatusInternalServerError {
-			// json.Unmarshal in ProcessJamboPayWebhook returns an error, which gives 500
-			t.Errorf("expected status 500, got %d", w.Code)
+		if w.Code != http.StatusBadRequest {
+			// Invalid JSON is a client error — 400 Bad Request
+			t.Errorf("expected status 400, got %d", w.Code)
 		}
 	})
 

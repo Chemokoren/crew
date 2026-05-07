@@ -42,13 +42,13 @@ func setupTestEnv() *testEnv {
 	crewRepo := mock.NewCrewRepo()
 	walletRepo := mock.NewWalletRepo()
 
-	authSvc := service.NewAuthService(userRepo, crewRepo, jwtMgr, nil, logger)
-	crewSvc := service.NewCrewService(crewRepo, nil, nil, logger) // Passing nil for identity.Provider in tests
+	authSvc := service.NewAuthService(userRepo, crewRepo, jwtMgr, nil, logger, service.WithOrgRepo(mock.NewOrganizationRepo()))
+	crewSvc := service.NewCrewService(crewRepo, mock.NewMembershipRepo(), nil, logger)
 	auditRepo := mock.NewAuditRepo()
 	auditSvc := service.NewAuditService(auditRepo, logger)
 	walletSvc := service.NewWalletService(walletRepo, crewRepo, auditSvc, logger)
 
-	authHandler := NewAuthHandler(authSvc)
+	authHandler := NewAuthHandler(authSvc, nil)
 	crewHandler := NewCrewHandler(crewSvc)
 	walletHandler := NewWalletHandler(walletSvc, 10000)
 
@@ -105,6 +105,12 @@ func (e *testEnv) registerUser(t *testing.T, phone, password string, role types.
 		body.NationalID = "12345678"
 		body.CrewRole = models.RoleDriver
 	}
+	if role == types.RoleSaccoAdmin {
+		body.OrganizationName = "Test Organization"
+		body.OrganizationRegNo = "REG-TEST"
+		body.OrganizationCounty = "Nairobi"
+		body.OrganizationPhone = phone
+	}
 
 	jsonBody, _ := json.Marshal(body)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBuffer(jsonBody))
@@ -128,7 +134,7 @@ func (e *testEnv) registerUser(t *testing.T, phone, password string, role types.
 func TestRegisterEndpoint(t *testing.T) {
 	env := setupTestEnv()
 
-	body := `{"phone":"+254712345678","password":"SecurePass123!","role":"SACCO_ADMIN"}`
+	body := `{"phone":"+254712345678","password":"SecurePass123!","role":"SACCO_ADMIN","organization_name":"Test Org","organization_reg_no":"REG-T1","organization_county":"Nairobi","organization_phone":"+254712345678"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -154,7 +160,7 @@ func TestRegisterEndpoint(t *testing.T) {
 func TestRegisterDuplicatePhone(t *testing.T) {
 	env := setupTestEnv()
 
-	body := `{"phone":"+254712345678","password":"SecurePass123!","role":"SACCO_ADMIN"}`
+	body := `{"phone":"+254712345678","password":"SecurePass123!","role":"SACCO_ADMIN","organization_name":"Test Org","organization_reg_no":"REG-T2","organization_county":"Nairobi","organization_phone":"+254712345678"}`
 
 	// First registration
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBufferString(body))

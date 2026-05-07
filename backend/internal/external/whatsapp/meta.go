@@ -80,7 +80,7 @@ func (p *MetaProvider) Send(ctx context.Context, phone, message string) (*SendRe
 			slog.Int("status", resp.StatusCode),
 			slog.String("response", string(respBody)),
 		)
-		return &SendResult{Provider: p.Name(), Success: false, Error: errMsg}, fmt.Errorf(errMsg)
+		return &SendResult{Provider: p.Name(), Success: false, Error: errMsg}, fmt.Errorf("%s", errMsg)
 	}
 
 	// Parse response for message ID
