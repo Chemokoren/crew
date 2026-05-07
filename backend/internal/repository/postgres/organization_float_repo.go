@@ -52,7 +52,7 @@ func (r *OrganizationFloatRepo) CreditFloat(ctx context.Context, floatID uuid.UU
 		}
 	}
 
-	return r.executeFloatOp(ctx, floatID, version, amountCents, "CREDIT", idempotencyKey, reference)
+	return r.executeFloatOp(ctx, floatID, version, amountCents, "FUND", idempotencyKey, reference)
 }
 
 func (r *OrganizationFloatRepo) DebitFloat(ctx context.Context, floatID uuid.UUID, version int, amountCents int64,
@@ -65,7 +65,7 @@ func (r *OrganizationFloatRepo) DebitFloat(ctx context.Context, floatID uuid.UUI
 		}
 	}
 
-	return r.executeFloatOp(ctx, floatID, version, -amountCents, "DEBIT", idempotencyKey, reference)
+	return r.executeFloatOp(ctx, floatID, version, -amountCents, "PAYOUT", idempotencyKey, reference)
 }
 
 func (r *OrganizationFloatRepo) executeFloatOp(ctx context.Context, floatID uuid.UUID, version int, delta int64,
