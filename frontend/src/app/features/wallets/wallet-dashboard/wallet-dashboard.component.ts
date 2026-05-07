@@ -1089,16 +1089,24 @@ export class WalletDashboardComponent implements OnInit {
       bank_ref: this.topupBankRef || undefined,
       reference,
     }).subscribe({
-      next: () => {
-        const stkMsg = this.topupMethod === 'mobile_money'
-          ? ` — STK push sent to ${this.topupPhone}`
-          : '';
-        this.toast.success(`Float topped up via ${providerLabel}${stkMsg}`);
+      next: (res: any) => {
+        if (this.topupMethod === 'mobile_money') {
+          // Mobile money: balance NOT yet credited — waiting for callback
+          const msg = res?.data?.message || `STK push sent to ${this.topupPhone}. Check your phone to complete payment.`;
+          this.toast.success(msg);
+        } else {
+          // Bank/card: balance credited immediately
+          this.toast.success(`Float topped up via ${providerLabel}`);
+          this.loadOrgFloat();
+        }
         this.closeModal();
         this.submitting.set(false);
-        this.loadOrgFloat();
       },
-      error: () => this.submitting.set(false),
+      error: (err: any) => {
+        const msg = err?.error?.message || 'Top-up failed. Please try again.';
+        this.toast.error(msg);
+        this.submitting.set(false);
+      },
     });
   }
 

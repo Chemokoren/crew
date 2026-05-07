@@ -217,8 +217,11 @@ func (h *OrganizationHandler) CreditFloat(c *gin.Context) {
 	SuccessResponse(c, http.StatusCreated, tx)
 }
 
-// TopUpFloat handles organization float top-up via JamboPay mobile collection (STK push)
-// or records manual bank/card top-ups.
+// TopUpFloat handles organization float top-up.
+// For mobile_money: creates a PENDING float transaction, triggers STK push,
+// and returns immediately. The float balance is credited only when the payment
+// callback confirms success (via webhook handler).
+// For bank/card: credits the float immediately (manual entry).
 // POST /organizations/:id/float/topup
 func (h *OrganizationHandler) TopUpFloat(c *gin.Context) {
 	orgID, err := uuid.Parse(c.Param("id"))
@@ -241,10 +244,9 @@ func (h *OrganizationHandler) TopUpFloat(c *gin.Context) {
 		return
 	}
 
-	// Build the float credit reference string
-	refParts := []string{}
 	switch req.Method {
 	case "mobile_money":
+		// --- Async STK push flow ---
 		if req.PhoneNumber == "" {
 			BadRequest(c, "phone_number is required for mobile money top-up")
 			return
@@ -253,9 +255,27 @@ func (h *OrganizationHandler) TopUpFloat(c *gin.Context) {
 		if providerLabel == "" {
 			providerLabel = "mpesa"
 		}
-		refParts = append(refParts, "STK:"+providerLabel, "phone:"+req.PhoneNumber)
 
-		// Initiate STK push via JamboPay if payment manager is available
+		// Build reference
+		ref := "STK:" + providerLabel + " | phone:" + req.PhoneNumber
+		if req.Reference != "" {
+			ref += " | " + req.Reference
+		}
+
+		// 1. Create PENDING float transaction (no balance change yet)
+		pendingTx, err := h.saccoSvc.CreatePendingTopUp(c.Request.Context(), service.FloatOperationInput{
+			OrganizationID: orgID,
+			AmountCents:    req.AmountCents,
+			IdempotencyKey: req.IdempotencyKey,
+			Reference:      ref,
+		})
+		if err != nil {
+			MapServiceError(c, err)
+			return
+		}
+
+		// 2. Trigger STK push via JamboPay (non-blocking for the response)
+		var stkStatus string
 		if h.paymentMgr != nil {
 			collResult, collErr := h.paymentMgr.InitiateCollection(c.Request.Context(), payment.CollectionRequest{
 				AmountCents: req.AmountCents,
@@ -265,14 +285,34 @@ func (h *OrganizationHandler) TopUpFloat(c *gin.Context) {
 				Description: "Organization float top-up",
 			})
 			if collErr != nil {
-				// Log but don't block — credit the float locally and note STK failure
-				refParts = append(refParts, "stk_error:"+collErr.Error())
-			} else {
-				refParts = append(refParts, "jp_ref:"+collResult.Reference)
+				// STK push failed to send — mark the pending tx as failed
+				_ = h.saccoSvc.FailPendingTopUp(c.Request.Context(), pendingTx.ID, collErr.Error())
+				ErrorResponse(c, http.StatusBadGateway, "STK_PUSH_FAILED",
+					"Failed to initiate M-Pesa STK push: "+collErr.Error())
+				return
 			}
+			stkStatus = "STK push sent. Check your phone (" + req.PhoneNumber + ") to complete payment."
+			// Append provider reference to the pending tx reference
+			_ = h.saccoSvc.UpdatePendingRef(c.Request.Context(), pendingTx.ID, " | jp_ref:"+collResult.Reference)
+		} else {
+			stkStatus = "Payment provider not configured"
+			_ = h.saccoSvc.FailPendingTopUp(c.Request.Context(), pendingTx.ID, "no payment provider")
+			ErrorResponse(c, http.StatusServiceUnavailable, "PROVIDER_UNAVAILABLE",
+				"Mobile payment provider is not configured")
+			return
 		}
 
+		// Return PENDING status — balance NOT yet credited
+		SuccessResponse(c, http.StatusAccepted, gin.H{
+			"status":         "PENDING",
+			"message":        stkStatus,
+			"transaction_id": pendingTx.ID,
+			"amount_cents":   req.AmountCents,
+			"phone_number":   req.PhoneNumber,
+		})
+
 	case "bank":
+		// --- Immediate credit for bank transfers (manual entry) ---
 		bankRef := req.BankRef
 		if bankRef == "" {
 			bankRef = "pending"
@@ -281,42 +321,45 @@ func (h *OrganizationHandler) TopUpFloat(c *gin.Context) {
 		if providerLabel == "" {
 			providerLabel = "bank"
 		}
-		refParts = append(refParts, "BANK:"+providerLabel, "txn_ref:"+bankRef)
+		ref := "BANK:" + providerLabel + " | txn_ref:" + bankRef
+		if req.Reference != "" {
+			ref += " | " + req.Reference
+		}
+
+		tx, err := h.saccoSvc.CreditFloat(c.Request.Context(), service.FloatOperationInput{
+			OrganizationID: orgID,
+			AmountCents:    req.AmountCents,
+			IdempotencyKey: req.IdempotencyKey,
+			Reference:      ref,
+		})
+		if err != nil {
+			MapServiceError(c, err)
+			return
+		}
+		SuccessResponse(c, http.StatusCreated, tx)
 
 	case "card":
-		refParts = append(refParts, "CARD:"+req.Provider, "pending_verification")
+		// --- Immediate credit for card payments (manual entry) ---
+		ref := "CARD:" + req.Provider
+		if req.Reference != "" {
+			ref += " | " + req.Reference
+		}
+
+		tx, err := h.saccoSvc.CreditFloat(c.Request.Context(), service.FloatOperationInput{
+			OrganizationID: orgID,
+			AmountCents:    req.AmountCents,
+			IdempotencyKey: req.IdempotencyKey,
+			Reference:      ref,
+		})
+		if err != nil {
+			MapServiceError(c, err)
+			return
+		}
+		SuccessResponse(c, http.StatusCreated, tx)
 
 	default:
 		BadRequest(c, "invalid method: must be mobile_money, bank, or card")
-		return
 	}
-
-	if req.Reference != "" {
-		refParts = append(refParts, req.Reference)
-	}
-
-	// Build reference string
-	reference := ""
-	for i, p := range refParts {
-		if i > 0 {
-			reference += " | "
-		}
-		reference += p
-	}
-
-	// Credit the organization float
-	floatInput := service.FloatOperationInput{
-		OrganizationID: orgID,
-		AmountCents:    req.AmountCents,
-		IdempotencyKey: req.IdempotencyKey,
-		Reference:      reference,
-	}
-	tx, err := h.saccoSvc.CreditFloat(c.Request.Context(), floatInput)
-	if err != nil {
-		MapServiceError(c, err)
-		return
-	}
-	SuccessResponse(c, http.StatusCreated, tx)
 }
 
 func (h *OrganizationHandler) DebitFloat(c *gin.Context) {

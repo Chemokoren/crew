@@ -31,7 +31,7 @@ func TestWebhookService_JamboPayReversal(t *testing.T) {
 	payoutSvc := service.NewPayoutService(walletSvc, paymentMgr, auditSvc, logger)
 	
 	// We pass nil for payrollRepo and payrollSvc because they aren't strictly required for JamboPay webhook tests right now
-	webhookSvc := service.NewWebhookService(webhookRepo, payoutSvc, nil, walletRepo, nil, logger)
+	webhookSvc := service.NewWebhookService(webhookRepo, payoutSvc, nil, nil, walletRepo, nil, logger)
 
 	ctx := context.Background()
 
@@ -72,8 +72,8 @@ func TestWebhookService_JamboPayReversal(t *testing.T) {
 	_ = walletRepo.UpdateTransaction(ctx, tx)
 
 	payloadMap := map[string]interface{}{
-		"order_id": "payout-order-1",
-		"status":   "FAILED",
+		"orderId": "payout-order-1",
+		"status":  "FAILED",
 	}
 	payloadBytes, _ := json.Marshal(payloadMap)
 
@@ -109,7 +109,7 @@ func TestWebhookService_JamboPayReversal(t *testing.T) {
 func TestWebhookService_PerpayCompletion(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	webhookRepo := mock.NewWebhookEventRepo()
-	webhookSvc := service.NewWebhookService(webhookRepo, nil, nil, nil, nil, logger)
+	webhookSvc := service.NewWebhookService(webhookRepo, nil, nil, nil, nil, nil, logger)
 
 	ctx := context.Background()
 

@@ -506,7 +506,7 @@ func main() {
 	payrollSvc := service.NewPayrollService(payrollRepo, earningRepo, statutoryRateRepo, crewRepo, payrollMgr, logger)
 	payrollHandler := handler.NewPayrollHandler(payrollSvc)
 
-	webhookSvc := service.NewWebhookService(webhookRepo, payoutSvc, payrollSvc, walletRepo, payrollRepo, logger)
+	webhookSvc := service.NewWebhookService(webhookRepo, payoutSvc, payrollSvc, saccoSvc, walletRepo, payrollRepo, logger)
 
 	// Build the JamboPay checksum verifier (SHA256-based, per v2 API spec).
 	// Injected into WebhookHandler so it can verify callback authenticity without

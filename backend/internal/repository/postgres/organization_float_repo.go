@@ -141,6 +141,119 @@ func (r *OrganizationFloatRepo) GetTransactions(ctx context.Context, floatID uui
 	return txs, total, nil
 }
 
+// CreatePendingTransaction inserts a float transaction with status=PENDING but
+// does NOT update the float balance. Used for STK push flows where the actual
+// credit happens only after the payment provider confirms via callback.
+func (r *OrganizationFloatRepo) CreatePendingTransaction(ctx context.Context, floatID uuid.UUID,
+	amountCents int64, idempotencyKey, reference string) (*models.OrganizationFloatTransaction, error) {
+
+	// Idempotency check
+	if idempotencyKey != "" {
+		var existing models.OrganizationFloatTransaction
+		if err := r.db.WithContext(ctx).Where("idempotency_key = ?", idempotencyKey).First(&existing).Error; err == nil {
+			return &existing, nil
+		}
+	}
+
+	tx := models.OrganizationFloatTransaction{
+		OrganizationFloatID: floatID,
+		IdempotencyKey:      idempotencyKey,
+		TransactionType:     "FUND",
+		AmountCents:         amountCents,
+		BalanceAfterCents:   0, // Will be set when confirmed
+		Currency:            "KES",
+		Reference:           reference,
+		Status:              models.TxPending,
+	}
+	if err := r.db.WithContext(ctx).Create(&tx).Error; err != nil {
+		return nil, fmt.Errorf("create pending float transaction: %w", err)
+	}
+	return &tx, nil
+}
+
+// ConfirmPendingTransaction atomically credits the float balance and marks
+// the pending transaction as COMPLETED. Called when the payment provider
+// confirms a successful STK push payment.
+func (r *OrganizationFloatRepo) ConfirmPendingTransaction(ctx context.Context, txID uuid.UUID) (*models.OrganizationFloatTransaction, error) {
+	var result models.OrganizationFloatTransaction
+
+	err := r.db.WithContext(ctx).Transaction(func(dbTx *gorm.DB) error {
+		// 1. Lock the pending transaction
+		var pendingTx models.OrganizationFloatTransaction
+		if err := dbTx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ? AND status = ?", txID, models.TxPending).
+			First(&pendingTx).Error; err != nil {
+			return fmt.Errorf("lock pending tx: %w", err)
+		}
+
+		// 2. Lock the float and update balance
+		var sf models.OrganizationFloat
+		if err := dbTx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ?", pendingTx.OrganizationFloatID).
+			First(&sf).Error; err != nil {
+			return fmt.Errorf("lock float: %w", err)
+		}
+
+		sf.BalanceCents += pendingTx.AmountCents
+		sf.Version++
+		now := sf.UpdatedAt
+		sf.LastFundedAt = &now
+
+		if err := dbTx.Save(&sf).Error; err != nil {
+			return fmt.Errorf("update float balance: %w", err)
+		}
+
+		// 3. Update the transaction status
+		pendingTx.BalanceAfterCents = sf.BalanceCents
+		pendingTx.Status = models.TxCompleted
+		if err := dbTx.Save(&pendingTx).Error; err != nil {
+			return fmt.Errorf("confirm pending tx: %w", err)
+		}
+
+		result = pendingTx
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// FailPendingTransaction marks a pending transaction as FAILED without
+// modifying the float balance.
+func (r *OrganizationFloatRepo) FailPendingTransaction(ctx context.Context, txID uuid.UUID, reason string) error {
+	result := r.db.WithContext(ctx).Model(&models.OrganizationFloatTransaction{}).
+		Where("id = ? AND status = ?", txID, models.TxPending).
+		Updates(map[string]interface{}{
+			"status":    models.TxFailed,
+			"reference": gorm.Expr("reference || ' | fail_reason:' || ?", reason),
+		})
+	if result.Error != nil {
+		return fmt.Errorf("fail pending tx: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("no pending transaction found with id %s", txID)
+	}
+	return nil
+}
+
+// GetByIdempotencyKey looks up a float transaction by its idempotency key.
+func (r *OrganizationFloatRepo) GetByIdempotencyKey(ctx context.Context, key string) (*models.OrganizationFloatTransaction, error) {
+	var tx models.OrganizationFloatTransaction
+	if err := r.db.WithContext(ctx).Where("idempotency_key = ?", key).First(&tx).Error; err != nil {
+		return nil, fmt.Errorf("float tx by idempotency key: %w", err)
+	}
+	return &tx, nil
+}
+
+// AppendReference appends a suffix to the reference of a float transaction.
+func (r *OrganizationFloatRepo) AppendReference(ctx context.Context, txID uuid.UUID, refSuffix string) error {
+	return r.db.WithContext(ctx).Model(&models.OrganizationFloatTransaction{}).
+		Where("id = ?", txID).
+		Update("reference", gorm.Expr("reference || ?", refSuffix)).Error
+}
+
 func abs64(n int64) int64 {
 	if n < 0 {
 		return -n

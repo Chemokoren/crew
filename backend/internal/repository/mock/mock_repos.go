@@ -538,7 +538,7 @@ func (r *OrganizationFloatRepo) CreditFloat(_ context.Context, floatID uuid.UUID
 		ID:                uuid.New(),
 		OrganizationFloatID:      floatID,
 		IdempotencyKey:    idempotencyKey,
-		TransactionType:   "CREDIT",
+		TransactionType:   "FUND",
 		AmountCents:       amountCents,
 		BalanceAfterCents: f.BalanceCents,
 		Status:            models.TxCompleted,
@@ -566,7 +566,7 @@ func (r *OrganizationFloatRepo) DebitFloat(_ context.Context, floatID uuid.UUID,
 		ID:                uuid.New(),
 		OrganizationFloatID:      floatID,
 		IdempotencyKey:    idempotencyKey,
-		TransactionType:   "DEBIT",
+		TransactionType:   "PAYOUT",
 		AmountCents:       amountCents,
 		BalanceAfterCents: f.BalanceCents,
 		Status:            models.TxCompleted,
@@ -585,6 +585,73 @@ func (r *OrganizationFloatRepo) GetTransactions(_ context.Context, floatID uuid.
 		}
 	}
 	return all, int64(len(all)), nil
+}
+
+func (r *OrganizationFloatRepo) CreatePendingTransaction(_ context.Context, floatID uuid.UUID, amountCents int64, idempotencyKey, reference string) (*models.OrganizationFloatTransaction, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	tx := models.OrganizationFloatTransaction{
+		ID:                  uuid.New(),
+		OrganizationFloatID: floatID,
+		IdempotencyKey:      idempotencyKey,
+		TransactionType:     "FUND",
+		AmountCents:         amountCents,
+		Reference:           reference,
+		Status:              models.TxPending,
+	}
+	r.txs = append(r.txs, tx)
+	return &tx, nil
+}
+
+func (r *OrganizationFloatRepo) ConfirmPendingTransaction(_ context.Context, txID uuid.UUID) (*models.OrganizationFloatTransaction, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i, tx := range r.txs {
+		if tx.ID == txID && tx.Status == models.TxPending {
+			r.txs[i].Status = models.TxCompleted
+			if f, ok := r.floats[tx.OrganizationFloatID]; ok {
+				f.BalanceCents += tx.AmountCents
+				r.txs[i].BalanceAfterCents = f.BalanceCents
+			}
+			return &r.txs[i], nil
+		}
+	}
+	return nil, errs.ErrNotFound
+}
+
+func (r *OrganizationFloatRepo) FailPendingTransaction(_ context.Context, txID uuid.UUID, reason string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i, tx := range r.txs {
+		if tx.ID == txID && tx.Status == models.TxPending {
+			r.txs[i].Status = models.TxFailed
+			return nil
+		}
+	}
+	return errs.ErrNotFound
+}
+
+func (r *OrganizationFloatRepo) GetByIdempotencyKey(_ context.Context, key string) (*models.OrganizationFloatTransaction, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for i, tx := range r.txs {
+		if tx.IdempotencyKey == key {
+			return &r.txs[i], nil
+		}
+	}
+	return nil, errs.ErrNotFound
+}
+
+func (r *OrganizationFloatRepo) AppendReference(_ context.Context, txID uuid.UUID, refSuffix string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i, tx := range r.txs {
+		if tx.ID == txID {
+			r.txs[i].Reference += refSuffix
+			return nil
+		}
+	}
+	return errs.ErrNotFound
 }
 
 // --- AuditLogRepo Mock ---

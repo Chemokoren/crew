@@ -35,6 +35,14 @@ func (m *MockPaymentProvider) VerifyPayout(ctx context.Context, req payment.Payo
 func (m *MockPaymentProvider) CheckBalance(ctx context.Context, accountNo string) (*payment.BalanceResult, error) {
 	return nil, nil
 }
+func (m *MockPaymentProvider) InitiateCollection(ctx context.Context, req payment.CollectionRequest) (*payment.CollectionResult, error) {
+	return &payment.CollectionResult{
+		Provider:  m.Name(),
+		Reference: "MOCK_COLL_REF",
+		OrderID:   req.OrderID,
+		Status:    "pending",
+	}, nil
+}
 
 func TestPayoutService_InitiatePayout(t *testing.T) {
 	crewRepo := mock.NewCrewRepo()

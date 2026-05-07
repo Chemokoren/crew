@@ -202,6 +202,14 @@ type OrganizationFloatRepository interface {
 	DebitFloat(ctx context.Context, floatID uuid.UUID, version int, amountCents int64,
 		idempotencyKey, reference string) (*models.OrganizationFloatTransaction, error)
 	GetTransactions(ctx context.Context, floatID uuid.UUID, filter OrganizationFloatFilter, page, perPage int) ([]models.OrganizationFloatTransaction, int64, error)
+
+	// STK push / async collection flow
+	CreatePendingTransaction(ctx context.Context, floatID uuid.UUID, amountCents int64,
+		idempotencyKey, reference string) (*models.OrganizationFloatTransaction, error)
+	ConfirmPendingTransaction(ctx context.Context, txID uuid.UUID) (*models.OrganizationFloatTransaction, error)
+	FailPendingTransaction(ctx context.Context, txID uuid.UUID, reason string) error
+	GetByIdempotencyKey(ctx context.Context, key string) (*models.OrganizationFloatTransaction, error)
+	AppendReference(ctx context.Context, txID uuid.UUID, refSuffix string) error
 }
 
 // DocumentFilter specifies filtering for document queries.

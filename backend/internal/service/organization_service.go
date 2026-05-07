@@ -275,3 +275,40 @@ func (s *OrganizationService) ListFloatTransactions(ctx context.Context, orgID u
 	}
 	return s.floatRepo.GetTransactions(ctx, sf.ID, filter, page, perPage)
 }
+
+// CreatePendingTopUp creates a PENDING float transaction without changing the
+// balance. Used for mobile money STK push flows where the balance is credited
+// only after the payment callback confirms success.
+func (s *OrganizationService) CreatePendingTopUp(ctx context.Context, input FloatOperationInput) (*models.OrganizationFloatTransaction, error) {
+	sf, err := s.floatRepo.GetOrCreate(ctx, input.OrganizationID)
+	if err != nil {
+		return nil, err
+	}
+	tx, err := s.floatRepo.CreatePendingTransaction(ctx, sf.ID, input.AmountCents, input.IdempotencyKey, input.Reference)
+	if err == nil {
+		s.auditSvc.Log(ctx, input.OrganizationID, "INITIATE_TOPUP", "sacco_float", &sf.ID, nil, tx, "", "")
+	}
+	return tx, err
+}
+
+// ConfirmPendingTopUp atomically credits the float balance and marks the
+// pending transaction as COMPLETED. Called from the webhook handler when
+// the payment provider confirms a successful STK push payment.
+func (s *OrganizationService) ConfirmPendingTopUp(ctx context.Context, txID uuid.UUID) (*models.OrganizationFloatTransaction, error) {
+	return s.floatRepo.ConfirmPendingTransaction(ctx, txID)
+}
+
+// FailPendingTopUp marks a pending float transaction as FAILED.
+func (s *OrganizationService) FailPendingTopUp(ctx context.Context, txID uuid.UUID, reason string) error {
+	return s.floatRepo.FailPendingTransaction(ctx, txID, reason)
+}
+
+// GetFloatTxByIdempotencyKey finds a float transaction by its idempotency key.
+func (s *OrganizationService) GetFloatTxByIdempotencyKey(ctx context.Context, key string) (*models.OrganizationFloatTransaction, error) {
+	return s.floatRepo.GetByIdempotencyKey(ctx, key)
+}
+
+// UpdatePendingRef appends reference info to a pending float transaction.
+func (s *OrganizationService) UpdatePendingRef(ctx context.Context, txID uuid.UUID, refSuffix string) error {
+	return s.floatRepo.AppendReference(ctx, txID, refSuffix)
+}

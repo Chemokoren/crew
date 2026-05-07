@@ -15,6 +15,7 @@ type WebhookService struct {
 	webhookRepo repository.WebhookEventRepository
 	payoutSvc   *PayoutService
 	payrollSvc  *PayrollService
+	orgSvc      *OrganizationService // For float top-up confirmation
 	walletRepo  repository.WalletRepository // For JamboPay reversals
 	payrollRepo repository.PayrollRepository
 	logger      *slog.Logger
@@ -24,6 +25,7 @@ func NewWebhookService(
 	webhookRepo repository.WebhookEventRepository,
 	payoutSvc *PayoutService,
 	payrollSvc *PayrollService,
+	orgSvc *OrganizationService,
 	walletRepo repository.WalletRepository,
 	payrollRepo repository.PayrollRepository,
 	logger *slog.Logger,
@@ -32,6 +34,7 @@ func NewWebhookService(
 		webhookRepo: webhookRepo,
 		payoutSvc:   payoutSvc,
 		payrollSvc:  payrollSvc,
+		orgSvc:      orgSvc,
 		walletRepo:  walletRepo,
 		payrollRepo: payrollRepo,
 		logger:      logger,
@@ -91,6 +94,42 @@ func (s *WebhookService) ProcessJamboPayWebhook(ctx context.Context, payload []b
 		slog.String("amount", cb.Amount),
 	)
 
+	// ——— 1. Check if this is a collection/float top-up callback ———
+	// OrderID maps to the idempotency key we used when creating the pending tx
+	if s.orgSvc != nil && cb.OrderID != "" {
+		pendingTx, floatErr := s.orgSvc.GetFloatTxByIdempotencyKey(ctx, cb.OrderID)
+		if floatErr == nil && pendingTx.Status == models.TxPending {
+			switch cb.Status {
+			case "SUCCESS", "COMPLETED", "COMPLETE":
+				_, confirmErr := s.orgSvc.ConfirmPendingTopUp(ctx, pendingTx.ID)
+				if confirmErr != nil {
+					s.logger.Error("CRITICAL: failed to confirm float top-up",
+						slog.String("tx_id", pendingTx.ID.String()),
+						slog.String("error", confirmErr.Error()),
+					)
+				} else {
+					s.logger.Info("float top-up confirmed via callback",
+						slog.String("tx_id", pendingTx.ID.String()),
+						slog.String("amount", cb.Amount),
+						slog.String("ref", ref),
+					)
+				}
+			case "FAILED", "FAILURE", "REVERSED", "ERROR":
+				_ = s.orgSvc.FailPendingTopUp(ctx, pendingTx.ID, "payment "+cb.Status+": "+cb.Description)
+				s.logger.Info("float top-up failed via callback",
+					slog.String("tx_id", pendingTx.ID.String()),
+					slog.String("status", cb.Status),
+				)
+			default:
+				s.logger.Info("intermediate float top-up callback status — no action",
+					slog.String("status", cb.Status),
+				)
+			}
+			return s.webhookRepo.MarkProcessed(ctx, event.ID)
+		}
+	}
+
+	// ——— 2. Check if this is a payout callback ———
 	// Locate the internal wallet transaction via idempotency key
 	// Convention: we use "payout-{orderID}" as the idempotency key when debiting
 	tx, err := s.walletRepo.GetByIdempotencyKey(ctx, "payout-"+cb.OrderID)
