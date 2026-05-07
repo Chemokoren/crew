@@ -557,6 +557,15 @@ func (h *WalletHandler) Credit(c *gin.Context) {
 		return
 	}
 
+	// CREW users may only credit their own wallet (e.g. receive a transfer)
+	claims := middleware.GetClaims(c)
+	if claims != nil && claims.SystemRole == types.RoleCrewUser {
+		if claims.CrewMemberID == nil || req.CrewMemberID.String() != claims.CrewMemberID.String() {
+			Forbidden(c, "Crew members may only credit their own wallet")
+			return
+		}
+	}
+
 	tx, err := h.walletSvc.Credit(c.Request.Context(), service.CreditInput{
 		CrewMemberID:   req.CrewMemberID,
 		AmountCents:    req.AmountCents,
@@ -592,6 +601,15 @@ func (h *WalletHandler) Debit(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		BadRequest(c, err.Error())
 		return
+	}
+
+	// CREW users may only debit their own wallet (withdraw, airtime, bills)
+	claims := middleware.GetClaims(c)
+	if claims != nil && claims.SystemRole == types.RoleCrewUser {
+		if claims.CrewMemberID == nil || req.CrewMemberID.String() != claims.CrewMemberID.String() {
+			Forbidden(c, "Crew members may only debit their own wallet")
+			return
+		}
 	}
 
 	tx, err := h.walletSvc.Debit(c.Request.Context(), service.DebitInput{

@@ -665,20 +665,14 @@ func main() {
 			assignments.POST("/:id/check-out", middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin, types.RoleCrewUser), assignmentHandler.CheckOut)
 		}
 
-		// Wallets (system admin only for direct credit/debit; crew can view own)
+		// Wallets (all authenticated users; handler enforces ownership for CREW users)
 		wallets := secured.Group("/wallets")
 		{
 			wallets.GET("/:crew_member_id", walletHandler.GetBalance)
 			wallets.GET("/:crew_member_id/transactions", walletHandler.ListTransactions)
 			wallets.GET("/:crew_member_id/export", walletHandler.ExportCSV)
-
-			walletAdmin := wallets.Group("")
-			walletAdmin.Use(middleware.RequireRole(types.RoleSystemAdmin))
-			{
-				walletAdmin.POST("/credit", walletHandler.Credit)
-				walletAdmin.POST("/debit", walletHandler.Debit)
-			}
-			
+			wallets.POST("/credit", walletHandler.Credit)
+			wallets.POST("/debit", walletHandler.Debit)
 			wallets.POST("/:crew_member_id/payout", payoutHandler.Payout)
 		}
 
