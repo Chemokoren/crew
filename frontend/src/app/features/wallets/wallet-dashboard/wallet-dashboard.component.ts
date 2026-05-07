@@ -1110,7 +1110,7 @@ export class WalletDashboardComponent implements OnInit {
     });
   }
 
-  /** Pay employee: credit net pay (gross - deductions) to their wallet */
+  /** Pay employee: debit org float (gross), then credit net pay to their wallet */
   submitEmployeePayout(): void {
     if (!this.modalCrewId || this.modalAmount <= 0) {
       this.toast.error('Select an employee and enter a gross amount');
@@ -1119,6 +1119,11 @@ export class WalletDashboardComponent implements OnInit {
     const net = this.netPay();
     if (net <= 0) {
       this.toast.error('Net pay must be greater than zero');
+      return;
+    }
+    const orgId = this.getActiveOrgId();
+    if (!orgId) {
+      this.toast.error('No organization found. Cannot process payout.');
       return;
     }
 
@@ -1133,23 +1138,48 @@ export class WalletDashboardComponent implements OnInit {
     const deductionSummary = parts.length > 0 ? ` | Deductions: ${parts.join(', ')}` : '';
     const desc = `Gross: ${this.modalAmount} KES, Net: ${net} KES${deductionSummary}${this.modalDescription ? ' | ' + this.modalDescription : ''}`;
 
+    const grossCents = Math.round(this.modalAmount * 100);
+    const netCents = Math.round(net * 100);
+    const idempotencyKey = this.generateIdempotencyKey();
+
     this.submitting.set(true);
-    // Credit the net amount to the employee's wallet
-    this.api.creditWallet({
-      crew_member_id: this.modalCrewId,
-      amount_cents: Math.round(net * 100),
-      category: 'EARNING',
-      description: desc,
-    }, this.generateIdempotencyKey()).subscribe({
+
+    // Step 1: Debit the organization float by the GROSS amount
+    this.api.debitSACCOFloat(orgId, {
+      amount_cents: grossCents,
+      idempotency_key: idempotencyKey,
+      reference: `Employee payout | ${desc}`,
+    }).subscribe({
       next: () => {
-        this.toast.success(`KES ${net.toLocaleString()} paid to employee wallet`);
-        this.closeModal();
-        this.submitting.set(false);
-        this.loadWallet();
-        this.loadTransactions();
-        this.loadOrgFloat();
+        // Step 2: Credit the employee wallet by the NET amount
+        this.api.creditWallet({
+          crew_member_id: this.modalCrewId,
+          amount_cents: netCents,
+          category: 'EARNING',
+          description: desc,
+        }, idempotencyKey + '-credit').subscribe({
+          next: () => {
+            this.toast.success(`KES ${net.toLocaleString()} paid to employee wallet (KES ${this.modalAmount.toLocaleString()} debited from float)`);
+            this.closeModal();
+            this.submitting.set(false);
+            this.loadWallet();
+            this.loadTransactions();
+            this.loadOrgFloat();
+          },
+          error: (err: any) => {
+            // Float was debited but wallet credit failed — alert admin
+            const msg = err?.error?.message || 'Failed to credit employee wallet after debiting float. Contact support.';
+            this.toast.error(msg);
+            this.submitting.set(false);
+            this.loadOrgFloat(); // Refresh float to show updated balance
+          },
+        });
       },
-      error: () => this.submitting.set(false),
+      error: (err: any) => {
+        const msg = err?.error?.message || 'Insufficient float balance or debit failed';
+        this.toast.error(msg);
+        this.submitting.set(false);
+      },
     });
   }
 
