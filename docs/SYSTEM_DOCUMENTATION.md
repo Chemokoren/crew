@@ -1,6 +1,6 @@
 # AMY MIS — Backend System Documentation
 
-> **Version:** 1.2 | **Last Updated:** 2026-05-07 | **Go:** 1.25 | **Framework:** Gin 1.12
+> **Version:** 1.3 | **Last Updated:** 2026-05-07 | **Go:** 1.25 | **Framework:** Gin 1.12
 
 ---
 
@@ -48,9 +48,9 @@ AMY MIS (Management Information System) is a **Workforce Financial Operating Sys
 │                  middleware/                      │  CORS, Auth, RBAC, Rate Limit (Redis),
 │                                                  │  Metrics (Atomic), Logger, Recovery, Security
 ├─────────────────────────────────────────────────┤
-│                  handler/ + dto/                 │  16 HTTP handlers + structured DTOs
+│                  handler/ + dto/                 │  14 HTTP handler files + structured DTOs
 ├─────────────────────────────────────────────────┤
-│                  service/                        │  18 Business logic services
+│                  service/                        │  24 Business logic services
 ├─────────────────────────────────────────────────┤
 │                  repository/ (interfaces)        │  19 Data access contracts
 │                  repository/postgres/            │  Postgres implementation (GORM)
@@ -84,8 +84,8 @@ backend/
 │   │   ├── interfaces.go       — 19 repository interfaces
 │   │   ├── postgres/           — GORM implementations
 │   │   └── mock/               — 19 mocks (100% coverage)
-│   ├── service/                — 18 business logic services
-│   ├── handler/                — 16 handler classes + DTOs
+│   ├── service/                — 24 business logic services
+│   ├── handler/                — 14 handler files + DTOs
 │   ├── middleware/             — 8 middleware layers (Auth, Metrics, etc.)
 │   ├── worker/
 │   │   ├── scheduler.go        — Goroutine-based job scheduler
@@ -223,8 +223,10 @@ StatutoryRates (SHA, NSSF, Housing Levy)
 | `/api/v1/auth/me` | ✅ JWT | Any |
 | `/api/v1/crew/*` | ✅ JWT | SYSTEM_ADMIN or SACCO_ADMIN |
 | `/api/v1/assignments/*` | ✅ JWT | SYSTEM_ADMIN or SACCO_ADMIN |
-| `/api/v1/wallets/:id` (GET) | ✅ JWT | Any |
-| `/api/v1/wallets/credit,debit` (POST) | ✅ JWT | SYSTEM_ADMIN only |
+| `/api/v1/wallets/:id` (GET) | ✅ JWT | Any (ownership enforced for CREW) |
+| `/api/v1/wallets/credit,debit` (POST) | ✅ JWT | Any (ownership enforced for CREW) |
+| `/api/v1/transactions/employee-payout` | ✅ JWT | SYSTEM_ADMIN or SACCO_ADMIN |
+| `/api/v1/transactions/transfer` | ✅ JWT | Any (sender derived from JWT) |
 
 ---
 
@@ -420,15 +422,60 @@ The organization float repository mirrors wallet safety mechanisms:
 2. **Optimistic locking:** Version check prevents concurrent modification
 3. **Idempotency:** Float transactions keyed by `idempotency_key` (unique index)
 4. **Pending→Confirm pattern:** For STK push collections, a `PENDING` record is created first (no balance change), then atomically confirmed when the callback arrives — preventing premature balance inflation
+5. **Context-injected transactions:** Float repo uses `getDB(ctx)` to participate in externally-managed DB transactions (e.g., from `TransactionService`)
 
-### 8.3 Idempotency
+### 8.3 Atomic Multi-Repository Transactions (TransactionService)
+
+Operations that span **multiple repositories** (e.g., debiting org float AND crediting employee wallet) are wrapped in a single database transaction via `database.TxManager.RunInTx`. If either side fails, the entire operation is rolled back — **no partial state is possible**.
+
+#### Employee Payout (float → wallet)
+
+```
+POST /api/v1/transactions/employee-payout
+{
+  "crew_member_id": "uuid",
+  "gross_cents": 10000,      ← Total cost to organization
+  "net_cents": 8000,          ← Amount after statutory deductions (NSSF, SHA, Housing)
+  "idempotency_key": "uuid",
+  "description": "Gross: 100 KES, Net: 80 KES | Deductions: NSSF: 10, SHA: 10"
+}
+```
+
+Inside a single DB transaction:
+1. **Debit** org float by `gross_cents` (total cost to organization)
+2. **Credit** employee wallet by `net_cents` (take-home pay after deductions)
+3. If either fails → full rollback, no funds moved
+
+Derived idempotency keys: `{key}` for float debit, `{key}:wallet` for wallet credit.
+
+#### Wallet-to-Wallet Transfer
+
+```
+POST /api/v1/transactions/transfer
+{
+  "to_crew_member_id": "uuid",
+  "amount_cents": 5000,
+  "idempotency_key": "uuid",
+  "description": "Lunch money"
+}
+```
+
+Inside a single DB transaction:
+1. **Debit** sender wallet (derived from JWT `crew_member_id`)
+2. **Credit** recipient wallet
+3. If either fails → full rollback, no funds moved
+
+Derived idempotency keys: `{key}:debit` for sender, `{key}:credit` for recipient.
+
+### 8.4 Idempotency
 
 - Financial endpoints (`/wallets/credit`, `/wallets/debit`) require an `Idempotency-Key` HTTP header
+- Atomic transaction endpoints (`/transactions/employee-payout`, `/transactions/transfer`) use `idempotency_key` in the JSON body
 - Earning-to-wallet credits use `earn-{earning_id}` as the key
 - Float top-up transactions use the frontend-generated `idempotency_key` as the JamboPay `orderId`
 - Duplicate requests safely return the original transaction
 
-### 8.3 Error Handling
+### 8.5 Error Handling
 
 Domain errors in `pkg/errs/`:
 
@@ -448,16 +495,9 @@ Domain errors in `pkg/errs/`:
 
 ### 9.1 Test Coverage
 
-- **111 tests** across **16 test packages** (all passing with `-race`)
-- **3 test files** in `internal/service/` (auth, wallet, financial/earning)
-- **1 test file** in `internal/handler/` (HTTP integration tests)
-- **1 test file** in `internal/middleware/` (JWT auth middleware)
-- **1 test file** in `internal/config/` (config validation)
-- **1 test file** in `internal/external/sms/` (SMS manager + Optimize + Africa's Talking)
-- **1 test file** in `internal/external/jambopay/` (JamboPay v2 payout + balance)
-- **1 test file** in `internal/external/perpay/` (PerPay payroll submission + status)
-- **1 test file** in `internal/external/iprs/` (IPRS citizen verification)
-- **Mock repositories** for User, Crew, and Wallet with thread-safe operations
+- **417+ tests** across **20 test packages** (all passing)
+- **54 test files** covering services, handlers, middleware, integrations, and workers
+- **Mock repositories** for User, Crew, Wallet, Organization Float, and all others with thread-safe operations
 - **httptest servers** for all external integration tests (no real API calls)
 
 ### 9.2 Test Categories
@@ -469,6 +509,7 @@ Domain errors in `pkg/errs/`:
 | Earning calculations | FIXED, COMMISSION, HYBRID models |
 | Financial edge cases | Large amounts (40B KES), exact balance debit, 1-cent overdraw |
 | Concurrency | 20 parallel credits with race detector |
+| Atomic transactions | Employee payout validation (zero/negative/net>gross), wallet transfer validation (zero/negative/self-transfer) |
 | HTTP handlers | Register, login, refresh, /me, RBAC enforcement |
 | JWT middleware | Missing token, invalid token, expired token |
 | SMS integration | Manager fallback chain, SetPrimary, Optimize token caching, AT bulk send |
@@ -482,6 +523,8 @@ Domain errors in `pkg/errs/`:
 ```bash
 go test ./... -race -count=1 -v          # All tests with race detector
 go test ./internal/service/... -v         # Service layer only
+go test ./internal/handler/... -v         # HTTP handlers
+go test -run TestEmployeePayout -v ./internal/service/...  # Transaction tests only
 make test-coverage                        # HTML coverage report
 ```
 

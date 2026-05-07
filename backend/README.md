@@ -83,8 +83,15 @@ curl http://localhost:8080/swagger/index.html  # → Swagger UI
 |--------|------|-------------|
 | `GET` | `/api/v1/wallets/:crew_member_id` | Get wallet balance |
 | `GET` | `/api/v1/wallets/:crew_member_id/transactions` | Transaction history |
-| `POST` | `/api/v1/wallets/credit` | Credit wallet (System Admin) |
-| `POST` | `/api/v1/wallets/debit` | Debit wallet (System Admin) |
+| `POST` | `/api/v1/wallets/credit` | Credit wallet (ownership enforced) |
+| `POST` | `/api/v1/wallets/debit` | Debit wallet (ownership enforced) |
+
+### Atomic Transactions (JWT Required)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/transactions/employee-payout` | Atomic: debit org float (gross) + credit wallet (net) — Admin only |
+| `POST` | `/api/v1/transactions/transfer` | Atomic: debit sender + credit recipient wallet |
 
 ### Organization Float (Admin)
 
@@ -155,10 +162,11 @@ migrations/              — PostgreSQL migration files (7 sets, 22 tables)
 
 - **Clean Architecture**: Handlers → Services → Repositories (all via interfaces)
 - **Strategy Pattern**: All external integrations (SMS, Payment, Payroll, Identity) use a common Provider interface — swap or stack providers without code changes
-- **Transactional Integrity**: Multi-step service operations (registration, assignment completion) wrapped in database transactions via `TxManager`
+- **Transactional Integrity**: Multi-step financial operations (employee payout, wallet transfers) wrapped in database transactions via `TxManager`. Both float and wallet repos participate in externally-managed transactions via context injection (`getDB(ctx)`).
 - **Financial Safety**: All money stored as `int64` cents — no floats in the pipeline
 - **Wallet Concurrency**: `SELECT ... FOR UPDATE` + optimistic version checks
-- **Idempotency**: Financial endpoints require `Idempotency-Key` header
+- **Idempotency**: Financial endpoints require `Idempotency-Key` header or `idempotency_key` in JSON body. Derived keys ensure both sides of atomic operations are individually idempotent.
+- **Atomic Payouts**: Employee payouts (float debit + wallet credit) and wallet-to-wallet transfers execute in a single DB transaction — if either side fails, everything rolls back
 - **SACCO-Scoped Isolation**: SACCO_ADMIN users see only their own SACCO's data
 - **Ownership Enforcement**: CREW users can only access their own wallet
 
@@ -207,6 +215,23 @@ Float can be funded via mobile money (M-Pesa STK push), bank transfer, or card:
 
 **Float transaction types:** `FUND` (inbound), `PAYOUT` (outbound), `ADJUSTMENT` (corrections)
 
+### 💸 Employee Payout Flow (Atomic)
+
+Employee payouts execute in a **single database transaction** to prevent partial state:
+
+| Step | Action | Table Affected |
+|------|--------|----------------|
+| 1 | Debit org float by **gross** amount | `sacco_float_transactions` + `sacco_floats` |
+| 2 | Credit employee wallet by **net** amount | `wallet_transactions` + `wallets` |
+| ✔️ | If both succeed → commit | Both tables updated atomically |
+| ❌ | If either fails → rollback | Neither table changed |
+
+The difference between gross and net (statutory deductions: NSSF, SHA, Housing Levy, etc.) is retained by the organization.
+
+Endpoint: `POST /api/v1/transactions/employee-payout`
+
+**Idempotency:** Safe to retry — the same `idempotency_key` returns the original result.
+
 ---
 
 ## 🔐 Authentication & Authorization
@@ -253,12 +278,13 @@ go test ./internal/external/perpay/... -v  # PerPay client
 go test ./internal/external/iprs/... -v    # IPRS client
 ```
 
-**111 tests** across **16 test packages** covering:
+**417+ tests** across **20 test packages** covering:
 - Auth flows (register, login, refresh, disabled accounts)
 - Wallet operations (credit, debit, idempotency, insufficient balance)
 - Earning calculations (FIXED, COMMISSION, HYBRID)
 - Financial edge cases (large amounts, exact balance, 1-cent overdraw)
 - Concurrent wallet access with race detector
+- **Atomic transactions:** Employee payout validation (zero/negative/net>gross), wallet transfer validation (zero/negative/self-transfer)
 - HTTP handler responses + RBAC enforcement
 - JWT middleware (missing, invalid, expired tokens)
 - **SMS**: Manager fallback chain, Optimize token caching, Africa's Talking bulk
