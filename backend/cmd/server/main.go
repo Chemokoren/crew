@@ -491,6 +491,10 @@ func main() {
 	payoutSvc := service.NewPayoutService(walletSvc, paymentMgr, auditSvc, logger)
 	payoutHandler := handler.NewPayoutHandler(payoutSvc)
 
+	// Initialize TransactionService for atomic multi-repo operations (employee payout, wallet transfer)
+	transactionSvc := service.NewTransactionService(txMgr, floatRepo, walletSvc, auditSvc, logger)
+	transactionHandler := handler.NewTransactionHandler(transactionSvc)
+
 	// --- 13b. Payroll: PerPay (config-driven) ---
 	var payrollProviders []payroll.Provider
 	if cfg.PayrollPerpayEnabled && cfg.PerpayClientID != "" {
@@ -674,6 +678,18 @@ func main() {
 			wallets.POST("/credit", walletHandler.Credit)
 			wallets.POST("/debit", walletHandler.Debit)
 			wallets.POST("/:crew_member_id/payout", payoutHandler.Payout)
+		}
+
+		// Atomic financial transactions (idempotent, all-or-nothing)
+		transactions := secured.Group("/transactions")
+		{
+			// Employee payout: debit org float (gross) + credit wallet (net) in one TX
+			transactions.POST("/employee-payout",
+				middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin),
+				transactionHandler.EmployeePayout)
+
+			// Wallet-to-wallet transfer: debit sender + credit recipient in one TX
+			transactions.POST("/transfer", transactionHandler.WalletTransfer)
 		}
 
 		// SACCOs / Organizations (system admin + sacco admin)

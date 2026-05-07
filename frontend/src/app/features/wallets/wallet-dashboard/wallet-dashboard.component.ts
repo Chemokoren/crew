@@ -1110,7 +1110,7 @@ export class WalletDashboardComponent implements OnInit {
     });
   }
 
-  /** Pay employee: debit org float (gross), then credit net pay to their wallet */
+  /** Pay employee: atomically debit org float (gross) + credit wallet (net) */
   submitEmployeePayout(): void {
     if (!this.modalCrewId || this.modalAmount <= 0) {
       this.toast.error('Select an employee and enter a gross amount');
@@ -1119,11 +1119,6 @@ export class WalletDashboardComponent implements OnInit {
     const net = this.netPay();
     if (net <= 0) {
       this.toast.error('Net pay must be greater than zero');
-      return;
-    }
-    const orgId = this.getActiveOrgId();
-    if (!orgId) {
-      this.toast.error('No organization found. Cannot process payout.');
       return;
     }
 
@@ -1138,45 +1133,26 @@ export class WalletDashboardComponent implements OnInit {
     const deductionSummary = parts.length > 0 ? ` | Deductions: ${parts.join(', ')}` : '';
     const desc = `Gross: ${this.modalAmount} KES, Net: ${net} KES${deductionSummary}${this.modalDescription ? ' | ' + this.modalDescription : ''}`;
 
-    const grossCents = Math.round(this.modalAmount * 100);
-    const netCents = Math.round(net * 100);
-    const idempotencyKey = this.generateIdempotencyKey();
-
     this.submitting.set(true);
 
-    // Step 1: Debit the organization float by the GROSS amount
-    this.api.debitSACCOFloat(orgId, {
-      amount_cents: grossCents,
-      idempotency_key: idempotencyKey,
-      reference: `Employee payout | ${desc}`,
+    // Single atomic call — backend handles float debit + wallet credit in one DB transaction
+    this.api.employeePayout({
+      crew_member_id: this.modalCrewId,
+      gross_cents: Math.round(this.modalAmount * 100),
+      net_cents: Math.round(net * 100),
+      idempotency_key: this.generateIdempotencyKey(),
+      description: desc,
     }).subscribe({
       next: () => {
-        // Step 2: Credit the employee wallet by the NET amount
-        this.api.creditWallet({
-          crew_member_id: this.modalCrewId,
-          amount_cents: netCents,
-          category: 'EARNING',
-          description: desc,
-        }, idempotencyKey + '-credit').subscribe({
-          next: () => {
-            this.toast.success(`KES ${net.toLocaleString()} paid to employee wallet (KES ${this.modalAmount.toLocaleString()} debited from float)`);
-            this.closeModal();
-            this.submitting.set(false);
-            this.loadWallet();
-            this.loadTransactions();
-            this.loadOrgFloat();
-          },
-          error: (err: any) => {
-            // Float was debited but wallet credit failed — alert admin
-            const msg = err?.error?.message || 'Failed to credit employee wallet after debiting float. Contact support.';
-            this.toast.error(msg);
-            this.submitting.set(false);
-            this.loadOrgFloat(); // Refresh float to show updated balance
-          },
-        });
+        this.toast.success(`KES ${net.toLocaleString()} paid to employee wallet (KES ${this.modalAmount.toLocaleString()} debited from float)`);
+        this.closeModal();
+        this.submitting.set(false);
+        this.loadWallet();
+        this.loadTransactions();
+        this.loadOrgFloat();
       },
       error: (err: any) => {
-        const msg = err?.error?.message || 'Insufficient float balance or debit failed';
+        const msg = err?.error?.message || 'Employee payout failed. No funds were moved.';
         this.toast.error(msg);
         this.submitting.set(false);
       },
@@ -1230,32 +1206,26 @@ export class WalletDashboardComponent implements OnInit {
     }
     this.submitting.set(true);
     const note = this.modalDescription || 'Wallet transfer';
-    // Debit sender
-    this.api.debitWallet({
-      crew_member_id: this.activeCrewId,
+
+    // Single atomic call — backend debits sender + credits recipient in one DB transaction
+    this.api.walletTransfer({
+      to_crew_member_id: this.modalCrewId,
       amount_cents: Math.round(this.modalAmount * 100),
-      category: 'WITHDRAWAL',
-      description: `Transfer to wallet: ${note}`,
-    }, this.generateIdempotencyKey()).subscribe({
+      idempotency_key: this.generateIdempotencyKey(),
+      description: note,
+    }).subscribe({
       next: () => {
-        // Credit recipient
-        this.api.creditWallet({
-          crew_member_id: this.modalCrewId,
-          amount_cents: Math.round(this.modalAmount * 100),
-          category: 'EARNING',
-          description: `Received wallet transfer: ${note}`,
-        }, this.generateIdempotencyKey()).subscribe({
-          next: () => {
-            this.toast.success(`KES ${this.modalAmount.toLocaleString()} sent successfully`);
-            this.closeModal();
-            this.submitting.set(false);
-            this.loadWallet();
-            this.loadTransactions();
-          },
-          error: () => this.submitting.set(false),
-        });
+        this.toast.success(`KES ${this.modalAmount.toLocaleString()} sent successfully`);
+        this.closeModal();
+        this.submitting.set(false);
+        this.loadWallet();
+        this.loadTransactions();
       },
-      error: () => this.submitting.set(false),
+      error: (err: any) => {
+        const msg = err?.error?.message || 'Transfer failed. No funds were moved.';
+        this.toast.error(msg);
+        this.submitting.set(false);
+      },
     });
   }
 

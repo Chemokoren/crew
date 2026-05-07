@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/kibsoft/amy-mis/internal/database"
 	"github.com/kibsoft/amy-mis/internal/models"
 	"github.com/kibsoft/amy-mis/internal/repository"
 	"github.com/kibsoft/amy-mis/pkg/errs"
@@ -22,9 +23,17 @@ func NewOrganizationFloatRepo(db *gorm.DB) *OrganizationFloatRepo {
 	return &OrganizationFloatRepo{db: db}
 }
 
+// getDB returns the transaction from context if present, otherwise the default DB.
+func (r *OrganizationFloatRepo) getDB(ctx context.Context) *gorm.DB {
+	if tx := database.ExtractTx(ctx); tx != nil {
+		return tx.WithContext(ctx)
+	}
+	return r.db.WithContext(ctx)
+}
+
 func (r *OrganizationFloatRepo) GetOrCreate(ctx context.Context, orgID uuid.UUID) (*models.OrganizationFloat, error) {
 	var sf models.OrganizationFloat
-	err := r.db.WithContext(ctx).Where("sacco_id = ?", orgID).First(&sf).Error
+	err := r.getDB(ctx).Where("sacco_id = ?", orgID).First(&sf).Error
 	if err == nil {
 		return &sf, nil
 	}
@@ -35,7 +44,7 @@ func (r *OrganizationFloatRepo) GetOrCreate(ctx context.Context, orgID uuid.UUID
 		OrganizationID:  orgID,
 		Currency: "KES",
 	}
-	if err := r.db.WithContext(ctx).Create(&sf).Error; err != nil {
+	if err := r.getDB(ctx).Create(&sf).Error; err != nil {
 		return nil, fmt.Errorf("create sacco float: %w", err)
 	}
 	return &sf, nil
@@ -47,7 +56,7 @@ func (r *OrganizationFloatRepo) CreditFloat(ctx context.Context, floatID uuid.UU
 	// Check idempotency
 	if idempotencyKey != "" {
 		var existing models.OrganizationFloatTransaction
-		if err := r.db.WithContext(ctx).Where("idempotency_key = ?", idempotencyKey).First(&existing).Error; err == nil {
+		if err := r.getDB(ctx).Where("idempotency_key = ?", idempotencyKey).First(&existing).Error; err == nil {
 			return &existing, nil
 		}
 	}
@@ -60,7 +69,7 @@ func (r *OrganizationFloatRepo) DebitFloat(ctx context.Context, floatID uuid.UUI
 
 	if idempotencyKey != "" {
 		var existing models.OrganizationFloatTransaction
-		if err := r.db.WithContext(ctx).Where("idempotency_key = ?", idempotencyKey).First(&existing).Error; err == nil {
+		if err := r.getDB(ctx).Where("idempotency_key = ?", idempotencyKey).First(&existing).Error; err == nil {
 			return &existing, nil
 		}
 	}
@@ -73,7 +82,7 @@ func (r *OrganizationFloatRepo) executeFloatOp(ctx context.Context, floatID uuid
 
 	var tx models.OrganizationFloatTransaction
 
-	err := r.db.WithContext(ctx).Transaction(func(dbTx *gorm.DB) error {
+	err := r.getDB(ctx).Transaction(func(dbTx *gorm.DB) error {
 		// Lock and verify version
 		var sf models.OrganizationFloat
 		if err := dbTx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", floatID).First(&sf).Error; err != nil {
@@ -122,7 +131,7 @@ func (r *OrganizationFloatRepo) GetTransactions(ctx context.Context, floatID uui
 	var txs []models.OrganizationFloatTransaction
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&models.OrganizationFloatTransaction{}).Where("sacco_float_id = ?", floatID)
+	query := r.getDB(ctx).Model(&models.OrganizationFloatTransaction{}).Where("sacco_float_id = ?", floatID)
 	if filter.TransactionType != "" {
 		query = query.Where("transaction_type = ?", filter.TransactionType)
 	}
@@ -150,7 +159,7 @@ func (r *OrganizationFloatRepo) CreatePendingTransaction(ctx context.Context, fl
 	// Idempotency check
 	if idempotencyKey != "" {
 		var existing models.OrganizationFloatTransaction
-		if err := r.db.WithContext(ctx).Where("idempotency_key = ?", idempotencyKey).First(&existing).Error; err == nil {
+		if err := r.getDB(ctx).Where("idempotency_key = ?", idempotencyKey).First(&existing).Error; err == nil {
 			return &existing, nil
 		}
 	}
@@ -165,7 +174,7 @@ func (r *OrganizationFloatRepo) CreatePendingTransaction(ctx context.Context, fl
 		Reference:           reference,
 		Status:              models.TxPending,
 	}
-	if err := r.db.WithContext(ctx).Create(&tx).Error; err != nil {
+	if err := r.getDB(ctx).Create(&tx).Error; err != nil {
 		return nil, fmt.Errorf("create pending float transaction: %w", err)
 	}
 	return &tx, nil
@@ -177,7 +186,7 @@ func (r *OrganizationFloatRepo) CreatePendingTransaction(ctx context.Context, fl
 func (r *OrganizationFloatRepo) ConfirmPendingTransaction(ctx context.Context, txID uuid.UUID) (*models.OrganizationFloatTransaction, error) {
 	var result models.OrganizationFloatTransaction
 
-	err := r.db.WithContext(ctx).Transaction(func(dbTx *gorm.DB) error {
+	err := r.getDB(ctx).Transaction(func(dbTx *gorm.DB) error {
 		// 1. Lock the pending transaction
 		var pendingTx models.OrganizationFloatTransaction
 		if err := dbTx.Clauses(clause.Locking{Strength: "UPDATE"}).
@@ -223,7 +232,7 @@ func (r *OrganizationFloatRepo) ConfirmPendingTransaction(ctx context.Context, t
 // FailPendingTransaction marks a pending transaction as FAILED without
 // modifying the float balance.
 func (r *OrganizationFloatRepo) FailPendingTransaction(ctx context.Context, txID uuid.UUID, reason string) error {
-	result := r.db.WithContext(ctx).Model(&models.OrganizationFloatTransaction{}).
+	result := r.getDB(ctx).Model(&models.OrganizationFloatTransaction{}).
 		Where("id = ? AND status = ?", txID, models.TxPending).
 		Updates(map[string]interface{}{
 			"status":    models.TxFailed,
@@ -241,7 +250,7 @@ func (r *OrganizationFloatRepo) FailPendingTransaction(ctx context.Context, txID
 // GetByIdempotencyKey looks up a float transaction by its idempotency key.
 func (r *OrganizationFloatRepo) GetByIdempotencyKey(ctx context.Context, key string) (*models.OrganizationFloatTransaction, error) {
 	var tx models.OrganizationFloatTransaction
-	if err := r.db.WithContext(ctx).Where("idempotency_key = ?", key).First(&tx).Error; err != nil {
+	if err := r.getDB(ctx).Where("idempotency_key = ?", key).First(&tx).Error; err != nil {
 		return nil, fmt.Errorf("float tx by idempotency key: %w", err)
 	}
 	return &tx, nil
@@ -249,7 +258,7 @@ func (r *OrganizationFloatRepo) GetByIdempotencyKey(ctx context.Context, key str
 
 // AppendReference appends a suffix to the reference of a float transaction.
 func (r *OrganizationFloatRepo) AppendReference(ctx context.Context, txID uuid.UUID, refSuffix string) error {
-	return r.db.WithContext(ctx).Model(&models.OrganizationFloatTransaction{}).
+	return r.getDB(ctx).Model(&models.OrganizationFloatTransaction{}).
 		Where("id = ?", txID).
 		Update("reference", gorm.Expr("reference || ?", refSuffix)).Error
 }

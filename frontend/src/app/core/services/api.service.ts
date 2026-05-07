@@ -107,6 +107,29 @@ export class ApiService {
     return this.http.get(`${this.API}/wallets/${crewMemberId}/export`, { responseType: 'blob' });
   }
 
+  // --- Atomic Transactions (single endpoint, all-or-nothing) ---
+
+  /** Atomically debit org float (gross) and credit employee wallet (net) */
+  employeePayout(data: {
+    crew_member_id: string;
+    gross_cents: number;
+    net_cents: number;
+    idempotency_key: string;
+    description?: string;
+  }): Observable<unknown> {
+    return this.http.post(`${this.API}/transactions/employee-payout`, data);
+  }
+
+  /** Atomically debit sender and credit recipient wallet */
+  walletTransfer(data: {
+    to_crew_member_id: string;
+    amount_cents: number;
+    idempotency_key: string;
+    description?: string;
+  }): Observable<unknown> {
+    return this.http.post(`${this.API}/transactions/transfer`, data);
+  }
+
   // --- Organizations ---
   getOrganizations(params?: Record<string, string>): Observable<ApiListResponse<Organization>> {
     return this.http.get<ApiListResponse<Organization>>(`${this.API}/organizations`, { params: this.buildParams(params) });
