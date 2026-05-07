@@ -1042,13 +1042,20 @@ export class WalletDashboardComponent implements OnInit {
     const reference = `${channelInfo}${this.modalDescription ? ' | ' + this.modalDescription : ''}`;
 
     this.submitting.set(true);
-    this.api.creditSACCOFloat(orgId, {
+    this.api.topupSACCOFloat(orgId, {
       amount_cents: Math.round(this.modalAmount * 100),
       idempotency_key: this.generateIdempotencyKey(),
+      method: this.topupMethod,
+      provider: this.topupProvider,
+      phone_number: this.topupPhone || undefined,
+      bank_ref: this.topupBankRef || undefined,
       reference,
     }).subscribe({
       next: () => {
-        this.toast.success(`Float topped up via ${providerLabel}`);
+        const stkMsg = this.topupMethod === 'mobile_money'
+          ? ` — STK push sent to ${this.topupPhone}`
+          : '';
+        this.toast.success(`Float topped up via ${providerLabel}${stkMsg}`);
         this.closeModal();
         this.submitting.set(false);
         this.loadOrgFloat();

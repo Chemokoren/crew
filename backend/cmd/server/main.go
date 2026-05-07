@@ -411,7 +411,6 @@ func main() {
 	crewHandler := handler.NewCrewHandler(crewSvc)
 	walletHandler := handler.NewWalletHandler(walletSvc, cfg.CSVExportMaxRows)
 	assignmentHandler := handler.NewAssignmentHandler(assignmentSvc)
-	orgHandler := handler.NewOrganizationHandler(saccoSvc)
 	vehicleHandler := handler.NewVehicleHandler(vehicleSvc)
 	routeHandler := handler.NewRouteHandler(routeSvc)
 	notifHandler := handler.NewNotificationHandler(notifSvc)
@@ -472,7 +471,10 @@ func main() {
 	} else {
 		slog.Warn("no payment providers configured — payout functionality disabled")
 	}
-	
+
+	// Create orgHandler after paymentMgr so it can trigger STK push for float top-ups
+	orgHandler := handler.NewOrganizationHandler(saccoSvc, paymentMgr)
+
 	// Initialize PayoutService after paymentMgr is available
 	payoutSvc := service.NewPayoutService(walletSvc, paymentMgr, auditSvc, logger)
 	payoutHandler := handler.NewPayoutHandler(payoutSvc)
@@ -679,6 +681,7 @@ func main() {
 			saccos.DELETE("/:id/members/:membership_id", orgHandler.RemoveMember)
 			saccos.GET("/:id/float", orgHandler.GetFloat)
 			saccos.POST("/:id/float/credit", orgHandler.CreditFloat)
+			saccos.POST("/:id/float/topup", orgHandler.TopUpFloat)
 			saccos.POST("/:id/float/debit", orgHandler.DebitFloat)
 			saccos.GET("/:id/float/transactions", orgHandler.ListFloatTransactions)
 		}
@@ -698,6 +701,7 @@ func main() {
 			orgs.DELETE("/:id/members/:membership_id", orgHandler.RemoveMember)
 			orgs.GET("/:id/float", orgHandler.GetFloat)
 			orgs.POST("/:id/float/credit", orgHandler.CreditFloat)
+			orgs.POST("/:id/float/topup", orgHandler.TopUpFloat)
 			orgs.POST("/:id/float/debit", orgHandler.DebitFloat)
 			orgs.GET("/:id/float/transactions", orgHandler.ListFloatTransactions)
 			// Tenant config, job types, pay schedules — also under /organizations/

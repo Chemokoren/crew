@@ -591,6 +591,134 @@ func (p *JamboPayProvider) CheckBalance(ctx context.Context, accountNo string) (
 }
 
 // ===================================================================
+// MOBILE MONEY COLLECTION (STK Push — M-Pesa / Airtel)
+// ===================================================================
+
+// MobileCollectionRequest is the body for POST /wallet/transaction/mobile-collection.
+// This triggers an STK push on the customer's phone to collect money into the tenant wallet.
+type MobileCollectionRequest struct {
+	OrderID     string `json:"orderId"`               // Unique order ID (idempotency key)
+	Amount      string `json:"amount"`                // String decimal, e.g. "500.00"
+	AccountTo   string `json:"accountTo"`              // Collection wallet account receiving funds
+	Provider    string `json:"provider"`               // "MPESA" or "AIRTEL_MONEY"
+	PhoneNumber string `json:"phoneNumber"`            // Phone number to push STK to
+	ServiceType string `json:"serviceType"`            // "TOPUP" or "MERCHANT_PAYMENT"
+	Description string `json:"description,omitempty"`  // Transaction description
+	CallbackURL string `json:"callbackUrl"`            // Callback URL for result notification
+}
+
+// MobileCollectionResponse is returned from POST /wallet/transaction/mobile-collection.
+type MobileCollectionResponse struct {
+	Ref       string `json:"ref"`
+	OrderID   string `json:"orderId"`
+	Amount    string `json:"amount"`
+	AccountTo string `json:"accountTo"`
+	Status    string `json:"status"` // "pending", "completed", "failed"
+}
+
+// InitiateMobileCollection triggers an express checkout / STK push to collect money
+// from a mobile phone into the tenant's collection wallet.
+// POST /wallet/transaction/mobile-collection
+//
+// Supported providers: "MPESA", "AIRTEL_MONEY"
+// Service types: "TOPUP" (fund wallet), "MERCHANT_PAYMENT" (merchant payment)
+func (p *JamboPayProvider) InitiateMobileCollection(ctx context.Context, req MobileCollectionRequest) (*MobileCollectionResponse, error) {
+	p.logger.Info("initiating JamboPay mobile collection (STK push)",
+		slog.String("provider", req.Provider),
+		slog.String("phone", req.PhoneNumber),
+		slog.String("amount", req.Amount),
+		slog.String("order_id", req.OrderID),
+	)
+
+	// Apply defaults from config
+	if req.AccountTo == "" {
+		req.AccountTo = p.cfg.CollectionAccount
+	}
+	if req.CallbackURL == "" {
+		req.CallbackURL = p.cfg.CallbackURL
+	}
+	if req.ServiceType == "" {
+		req.ServiceType = "TOPUP"
+	}
+
+	body, status, err := p.doRequest(ctx, http.MethodPost, "/wallet/transaction/mobile-collection", req)
+	if err != nil {
+		return nil, fmt.Errorf("mobile collection request: %w", err)
+	}
+	if status != http.StatusCreated && status != http.StatusOK {
+		return nil, parseJamboPayError("mobile collection", status, body)
+	}
+
+	var result MobileCollectionResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("decode mobile collection response: %w", err)
+	}
+	return &result, nil
+}
+
+// GetTransaction retrieves a transaction record by reference or order ID.
+// GET /wallet/transaction?ref=...&orderId=...
+func (p *JamboPayProvider) GetTransaction(ctx context.Context, ref, orderID string) (map[string]interface{}, error) {
+	query := url.Values{}
+	if ref != "" {
+		query.Set("ref", ref)
+	}
+	if orderID != "" {
+		query.Set("orderId", orderID)
+	}
+	path := "/wallet/transaction"
+	if len(query) > 0 {
+		path += "?" + query.Encode()
+	}
+
+	body, status, err := p.doRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, parseJamboPayError("get transaction", status, body)
+	}
+	var result map[string]interface{}
+	_ = json.Unmarshal(body, &result)
+	return result, nil
+}
+
+// InitiateCollection implements payment.Provider.InitiateCollection.
+func (p *JamboPayProvider) InitiateCollection(ctx context.Context, req payment.CollectionRequest) (*payment.CollectionResult, error) {
+	// Map generic provider name to JamboPay provider constant
+	jpProvider := "MPESA"
+	switch req.Provider {
+	case "AIRTEL_MONEY", "airtel":
+		jpProvider = "AIRTEL_MONEY"
+	}
+
+	amount := fmt.Sprintf("%.2f", float64(req.AmountCents)/100)
+
+	mcReq := MobileCollectionRequest{
+		OrderID:     req.OrderID,
+		Amount:      amount,
+		AccountTo:   req.AccountTo,
+		Provider:    jpProvider,
+		PhoneNumber: req.PhoneNumber,
+		ServiceType: "TOPUP",
+		Description: req.Description,
+		CallbackURL: req.CallbackURL,
+	}
+
+	resp, err := p.InitiateMobileCollection(ctx, mcReq)
+	if err != nil {
+		return nil, err
+	}
+
+	return &payment.CollectionResult{
+		Provider:  p.Name(),
+		Reference: resp.Ref,
+		OrderID:   resp.OrderID,
+		Status:    "pending",
+	}, nil
+}
+
+// ==================================================================="
 // IPRS IDENTITY VERIFICATION (via JamboPay proxy)
 // ===================================================================
 

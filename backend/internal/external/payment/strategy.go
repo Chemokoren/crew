@@ -57,12 +57,32 @@ type BalanceResult struct {
 	Currency string `json:"currency"`
 }
 
+// CollectionRequest holds data for initiating a mobile money collection (STK push).
+type CollectionRequest struct {
+	AmountCents int64  `json:"amount_cents"`
+	AccountTo   string `json:"account_to"`    // Collection account receiving funds
+	OrderID     string `json:"order_id"`      // Idempotency key
+	Provider    string `json:"provider"`      // "MPESA", "AIRTEL_MONEY"
+	PhoneNumber string `json:"phone_number"` // Phone to push STK to
+	Description string `json:"description"`
+	CallbackURL string `json:"callback_url"`
+}
+
+// CollectionResult holds the response from a collection initiation.
+type CollectionResult struct {
+	Provider  string `json:"provider"`
+	Reference string `json:"reference"` // Provider's transaction reference
+	OrderID   string `json:"order_id"`
+	Status    string `json:"status"`    // "pending", "completed", "failed"
+}
+
 // Provider defines the contract for payment/payout providers.
 type Provider interface {
 	Name() string
 	InitiatePayout(ctx context.Context, req PayoutRequest) (*PayoutResult, error)
 	VerifyPayout(ctx context.Context, req PayoutVerifyRequest) (*PayoutResult, error)
 	CheckBalance(ctx context.Context, accountNo string) (*BalanceResult, error)
+	InitiateCollection(ctx context.Context, req CollectionRequest) (*CollectionResult, error)
 }
 
 // Manager orchestrates payment providers with fallback support.
@@ -114,6 +134,14 @@ func (m *Manager) CheckBalance(ctx context.Context, accountNo string) (*BalanceR
 	primary := m.providers[0]
 	m.mu.RUnlock()
 	return primary.CheckBalance(ctx, accountNo)
+}
+
+// InitiateCollection dispatches a mobile money collection using the primary provider.
+func (m *Manager) InitiateCollection(ctx context.Context, req CollectionRequest) (*CollectionResult, error) {
+	m.mu.RLock()
+	primary := m.providers[0]
+	m.mu.RUnlock()
+	return primary.InitiateCollection(ctx, req)
 }
 
 // SetPrimary reorders providers so the named provider becomes primary.

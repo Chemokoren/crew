@@ -60,6 +60,15 @@ func (m *mockPaymentProvider) CheckBalance(ctx context.Context, accountNo string
 	}, nil
 }
 
+func (m *mockPaymentProvider) InitiateCollection(ctx context.Context, req CollectionRequest) (*CollectionResult, error) {
+	return &CollectionResult{
+		Provider:  m.name,
+		Reference: "COL-001",
+		OrderID:   req.OrderID,
+		Status:    "pending",
+	}, nil
+}
+
 func TestManagerInitiatePayoutPrimary(t *testing.T) {
 	primary := &mockPaymentProvider{name: "primary"}
 	fallback := &mockPaymentProvider{name: "fallback"}

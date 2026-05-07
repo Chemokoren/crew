@@ -152,6 +152,10 @@ export class ApiService {
     return this.http.post(`${this.API}/organizations/${saccoId}/float/credit`, data);
   }
 
+  topupSACCOFloat(saccoId: string, data: Record<string, unknown>): Observable<unknown> {
+    return this.http.post(`${this.API}/organizations/${saccoId}/float/topup`, data);
+  }
+
   debitSACCOFloat(saccoId: string, data: Record<string, unknown>): Observable<unknown> {
     return this.http.post(`${this.API}/organizations/${saccoId}/float/debit`, data);
   }

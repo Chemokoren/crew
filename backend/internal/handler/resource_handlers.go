@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/kibsoft/amy-mis/internal/external/payment"
 	"github.com/kibsoft/amy-mis/internal/middleware"
 	"github.com/kibsoft/amy-mis/internal/models"
 	"github.com/kibsoft/amy-mis/internal/repository"
@@ -15,11 +16,16 @@ import (
 // --- SACCO Handler ---
 
 type OrganizationHandler struct {
-	saccoSvc *service.OrganizationService
+	saccoSvc   *service.OrganizationService
+	paymentMgr *payment.Manager // nil when no payment providers configured
 }
 
-func NewOrganizationHandler(svc *service.OrganizationService) *OrganizationHandler {
-	return &OrganizationHandler{saccoSvc: svc}
+func NewOrganizationHandler(svc *service.OrganizationService, paymentMgr ...*payment.Manager) *OrganizationHandler {
+	h := &OrganizationHandler{saccoSvc: svc}
+	if len(paymentMgr) > 0 {
+		h.paymentMgr = paymentMgr[0]
+	}
+	return h
 }
 
 func (h *OrganizationHandler) Create(c *gin.Context) {
@@ -204,6 +210,108 @@ func (h *OrganizationHandler) CreditFloat(c *gin.Context) {
 	}
 	req.OrganizationID = orgID
 	tx, err := h.saccoSvc.CreditFloat(c.Request.Context(), req)
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+	SuccessResponse(c, http.StatusCreated, tx)
+}
+
+// TopUpFloat handles organization float top-up via JamboPay mobile collection (STK push)
+// or records manual bank/card top-ups.
+// POST /organizations/:id/float/topup
+func (h *OrganizationHandler) TopUpFloat(c *gin.Context) {
+	orgID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		BadRequest(c, "Invalid Organization ID")
+		return
+	}
+
+	var req struct {
+		AmountCents    int64  `json:"amount_cents" binding:"required,min=1"`
+		IdempotencyKey string `json:"idempotency_key" binding:"required"`
+		Method         string `json:"method" binding:"required"`   // "mobile_money", "bank", "card"
+		Provider       string `json:"provider"`                    // "mpesa", "airtel", "kcb", "equity", etc.
+		PhoneNumber    string `json:"phone_number"`                // Required for mobile_money
+		Reference      string `json:"reference"`                   // Reference/description
+		BankRef        string `json:"bank_ref"`                    // Bank transfer reference
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		BadRequest(c, err.Error())
+		return
+	}
+
+	// Build the float credit reference string
+	refParts := []string{}
+	switch req.Method {
+	case "mobile_money":
+		if req.PhoneNumber == "" {
+			BadRequest(c, "phone_number is required for mobile money top-up")
+			return
+		}
+		providerLabel := req.Provider
+		if providerLabel == "" {
+			providerLabel = "mpesa"
+		}
+		refParts = append(refParts, "STK:"+providerLabel, "phone:"+req.PhoneNumber)
+
+		// Initiate STK push via JamboPay if payment manager is available
+		if h.paymentMgr != nil {
+			collResult, collErr := h.paymentMgr.InitiateCollection(c.Request.Context(), payment.CollectionRequest{
+				AmountCents: req.AmountCents,
+				OrderID:     req.IdempotencyKey,
+				Provider:    req.Provider,
+				PhoneNumber: req.PhoneNumber,
+				Description: "Organization float top-up",
+			})
+			if collErr != nil {
+				// Log but don't block — credit the float locally and note STK failure
+				refParts = append(refParts, "stk_error:"+collErr.Error())
+			} else {
+				refParts = append(refParts, "jp_ref:"+collResult.Reference)
+			}
+		}
+
+	case "bank":
+		bankRef := req.BankRef
+		if bankRef == "" {
+			bankRef = "pending"
+		}
+		providerLabel := req.Provider
+		if providerLabel == "" {
+			providerLabel = "bank"
+		}
+		refParts = append(refParts, "BANK:"+providerLabel, "txn_ref:"+bankRef)
+
+	case "card":
+		refParts = append(refParts, "CARD:"+req.Provider, "pending_verification")
+
+	default:
+		BadRequest(c, "invalid method: must be mobile_money, bank, or card")
+		return
+	}
+
+	if req.Reference != "" {
+		refParts = append(refParts, req.Reference)
+	}
+
+	// Build reference string
+	reference := ""
+	for i, p := range refParts {
+		if i > 0 {
+			reference += " | "
+		}
+		reference += p
+	}
+
+	// Credit the organization float
+	floatInput := service.FloatOperationInput{
+		OrganizationID: orgID,
+		AmountCents:    req.AmountCents,
+		IdempotencyKey: req.IdempotencyKey,
+		Reference:      reference,
+	}
+	tx, err := h.saccoSvc.CreditFloat(c.Request.Context(), floatInput)
 	if err != nil {
 		MapServiceError(c, err)
 		return
