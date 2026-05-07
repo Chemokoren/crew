@@ -7,7 +7,7 @@ import { ToastService } from '../../../core/services/toast.service';
 import { CurrencyKesPipe } from '../../../shared/pipes/currency-kes.pipe';
 import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
 import { AutocompleteComponent, AutocompleteOption } from '../../../shared/components/autocomplete/autocomplete.component';
-import { Wallet, WalletTransaction, PaginationMeta, CrewMember, SACCOFloat } from '../../../core/models';
+import { Wallet, WalletTransaction, PaginationMeta, CrewMember, SACCOFloat, Organization } from '../../../core/models';
 
 @Component({
   selector: 'app-wallet-dashboard',
@@ -43,6 +43,19 @@ import { Wallet, WalletTransaction, PaginationMeta, CrewMember, SACCOFloat } fro
           }
         </div>
       </div>
+
+      <!-- Admin: Organization Selector (SYSTEM_ADMIN without org_id) -->
+      @if (showOrgSelector()) {
+        <div class="glass-card" style="margin-bottom:var(--space-md);padding:var(--space-sm) var(--space-md); display:flex; align-items:center; gap:var(--space-sm);">
+          <span class="material-icons-round" style="color:var(--color-accent);">business</span>
+          <label style="font-weight:500; font-size:0.85rem; white-space:nowrap;">Active Organization:</label>
+          <select [(ngModel)]="selectedOrgId" (ngModelChange)="onOrgChanged($event)" class="form-control" style="flex:1; max-width:400px;" id="select-org">
+            @for (org of organizations(); track org.id) {
+              <option [value]="org.id">{{ org.name }}</option>
+            }
+          </select>
+        </div>
+      }
 
       <!-- Admin: Organization Float Balance -->
       @if (isAdmin() && orgFloat()) {
@@ -651,6 +664,11 @@ export class WalletDashboardComponent implements OnInit {
 
   wallet = signal<Wallet | null>(null);
   orgFloat = signal<SACCOFloat | null>(null);
+  organizations = signal<Organization[]>([]);
+  selectedOrgId = '';
+  showOrgSelector = computed(() =>
+    this.isAdmin() && this.organizations().length > 1 && !this.auth.currentUser()?.organization_id
+  );
   transactions = signal<WalletTransaction[]>([]);
   txMeta = signal<PaginationMeta | null>(null);
   loadingTxs = signal(true);
@@ -825,6 +843,17 @@ export class WalletDashboardComponent implements OnInit {
     return this.auth.hasRole('SYSTEM_ADMIN', 'SACCO_ADMIN');
   }
 
+  /** Resolve the active organization ID from user profile or selector */
+  getActiveOrgId(): string | undefined {
+    return this.auth.currentUser()?.organization_id || this.selectedOrgId || undefined;
+  }
+
+  /** Handle org selector change (SYSTEM_ADMIN) */
+  onOrgChanged(orgId: string): void {
+    this.selectedOrgId = orgId;
+    this.loadOrgFloat();
+  }
+
   totalDeductions(): number {
     return (this.deductionNSSF || 0) + (this.deductionSHA || 0) + (this.deductionHousing || 0) +
       (this.deductionLoan || 0) + (this.deductionInsurance || 0) + (this.deductionOther || 0);
@@ -846,9 +875,18 @@ export class WalletDashboardComponent implements OnInit {
       });
       // Load organization float balance
       if (user?.organization_id) {
-        this.api.getSACCOFloat(user.organization_id).subscribe({
-          next: (res) => this.orgFloat.set(res.data),
-          error: () => this.orgFloat.set(null),
+        this.selectedOrgId = user.organization_id;
+        this.loadOrgFloat();
+      } else {
+        // SYSTEM_ADMIN: fetch all orgs and auto-select the first
+        this.api.getOrganizations({ per_page: '50' }).subscribe({
+          next: (res) => {
+            this.organizations.set(res.data || []);
+            if (res.data?.length) {
+              this.selectedOrgId = res.data[0].id;
+              this.loadOrgFloat();
+            }
+          },
         });
       }
       this.loadingTxs.set(false);
@@ -887,7 +925,7 @@ export class WalletDashboardComponent implements OnInit {
   }
 
   loadOrgFloat(): void {
-    const orgId = this.auth.currentUser()?.organization_id;
+    const orgId = this.getActiveOrgId();
     if (!orgId) return;
     this.api.getSACCOFloat(orgId).subscribe({
       next: (res) => this.orgFloat.set(res.data),
@@ -1026,9 +1064,9 @@ export class WalletDashboardComponent implements OnInit {
       this.toast.error('Enter a bank/RTGS reference');
       return;
     }
-    const orgId = this.auth.currentUser()?.organization_id;
+    const orgId = this.getActiveOrgId();
     if (!orgId) {
-      this.toast.error('Organization not found');
+      this.toast.error('No organization selected. Please select an organization first.');
       return;
     }
 
