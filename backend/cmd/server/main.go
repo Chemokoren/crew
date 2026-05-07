@@ -59,6 +59,7 @@ import (
 	"github.com/kibsoft/amy-mis/internal/ussd"
 	"github.com/kibsoft/amy-mis/internal/worker"
 	"github.com/kibsoft/amy-mis/pkg/jwt"
+	"github.com/kibsoft/amy-mis/pkg/retry"
 	"github.com/kibsoft/amy-mis/pkg/types"
 
 	swaggerFiles "github.com/swaggo/files"
@@ -292,6 +293,11 @@ func main() {
 				slog.String("requested", cfg.SMSPrimaryProvider),
 			)
 		}
+		smsMgr.SetRetryPolicy(retry.Policy{
+			MaxAttempts:  cfg.RetryMaxAttempts,
+			InitialDelay: time.Duration(cfg.RetryInitialDelayMs) * time.Millisecond,
+			MaxDelay:     time.Duration(cfg.RetryMaxDelayMs) * time.Millisecond,
+		})
 	} else {
 		slog.Warn("no SMS providers configured — SMS functionality disabled")
 	}
@@ -468,6 +474,12 @@ func main() {
 				slog.String("requested", cfg.PaymentPrimaryProvider),
 			)
 		}
+		// Apply admin-configurable retry policy for external integration calls
+		paymentMgr.SetRetryPolicy(retry.Policy{
+			MaxAttempts:  cfg.RetryMaxAttempts,
+			InitialDelay: time.Duration(cfg.RetryInitialDelayMs) * time.Millisecond,
+			MaxDelay:     time.Duration(cfg.RetryMaxDelayMs) * time.Millisecond,
+		})
 	} else {
 		slog.Warn("no payment providers configured — payout functionality disabled")
 	}
@@ -499,6 +511,11 @@ func main() {
 				slog.String("requested", cfg.PayrollPrimaryProvider),
 			)
 		}
+		payrollMgr.SetRetryPolicy(retry.Policy{
+			MaxAttempts:  cfg.RetryMaxAttempts,
+			InitialDelay: time.Duration(cfg.RetryInitialDelayMs) * time.Millisecond,
+			MaxDelay:     time.Duration(cfg.RetryMaxDelayMs) * time.Millisecond,
+		})
 	} else {
 		slog.Warn("no payroll providers configured — payroll submission disabled")
 	}

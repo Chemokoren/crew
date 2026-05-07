@@ -251,7 +251,7 @@ func (s *OrganizationService) CreditFloat(ctx context.Context, input FloatOperat
 	}
 	tx, err := s.floatRepo.CreditFloat(ctx, sf.ID, sf.Version, input.AmountCents, input.IdempotencyKey, input.Reference)
 	if err == nil {
-		s.auditSvc.Log(ctx, input.OrganizationID, "CREDIT_FLOAT", "sacco_float", &sf.ID, nil, tx, "", "")
+		s.auditSvc.Log(ctx, nil, "CREDIT_FLOAT", "sacco_float", &sf.ID, nil, tx, "", "")
 	}
 	return tx, err
 }
@@ -263,7 +263,7 @@ func (s *OrganizationService) DebitFloat(ctx context.Context, input FloatOperati
 	}
 	tx, err := s.floatRepo.DebitFloat(ctx, sf.ID, sf.Version, input.AmountCents, input.IdempotencyKey, input.Reference)
 	if err == nil {
-		s.auditSvc.Log(ctx, input.OrganizationID, "DEBIT_FLOAT", "sacco_float", &sf.ID, nil, tx, "", "")
+		s.auditSvc.Log(ctx, nil, "DEBIT_FLOAT", "sacco_float", &sf.ID, nil, tx, "", "")
 	}
 	return tx, err
 }
@@ -286,7 +286,7 @@ func (s *OrganizationService) CreatePendingTopUp(ctx context.Context, input Floa
 	}
 	tx, err := s.floatRepo.CreatePendingTransaction(ctx, sf.ID, input.AmountCents, input.IdempotencyKey, input.Reference)
 	if err == nil {
-		s.auditSvc.Log(ctx, input.OrganizationID, "INITIATE_TOPUP", "sacco_float", &sf.ID, nil, tx, "", "")
+		s.auditSvc.Log(ctx, nil, "INITIATE_TOPUP", "sacco_float", &sf.ID, nil, tx, "", "")
 	}
 	return tx, err
 }

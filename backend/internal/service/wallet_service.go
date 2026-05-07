@@ -112,7 +112,7 @@ func (s *WalletService) Credit(ctx context.Context, input CreditInput) (*models.
 	)
 
 	// Log audit trail
-	s.auditSvc.Log(ctx, input.CrewMemberID, "CREDIT", "wallet", &wallet.ID, nil, tx, "", "")
+	s.auditSvc.Log(ctx, nil, "CREDIT", "wallet", &wallet.ID, nil, tx, "", "")
 
 	return tx, nil
 }
@@ -160,7 +160,7 @@ func (s *WalletService) Debit(ctx context.Context, input DebitInput) (*models.Wa
 	)
 
 	// Log audit trail
-	s.auditSvc.Log(ctx, input.CrewMemberID, "DEBIT", "wallet", &wallet.ID, nil, tx, "", "")
+	s.auditSvc.Log(ctx, nil, "DEBIT", "wallet", &wallet.ID, nil, tx, "", "")
 
 	return tx, nil
 }

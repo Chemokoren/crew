@@ -118,14 +118,14 @@ func (s *PayoutService) InitiatePayout(ctx context.Context, input PayoutInput) (
 				slog.String("crew_member_id", input.CrewMemberID.String()),
 				slog.String("reversal_error", reverseErr.Error()),
 			)
-			s.auditSvc.Log(ctx, input.CrewMemberID, "PAYOUT_REVERSAL_FAILED", "payout", &tx.ID, nil,
+			s.auditSvc.Log(ctx, nil, "PAYOUT_REVERSAL_FAILED", "payout", &tx.ID, nil,
 				map[string]interface{}{"amount_cents": input.AmountCents, "error": reverseErr.Error()}, "", "")
 		} else {
 			s.logger.Info("payout debit reversed successfully",
 				slog.String("original_tx_id", tx.ID.String()),
 				slog.Int64("amount_cents", input.AmountCents),
 			)
-			s.auditSvc.Log(ctx, input.CrewMemberID, "PAYOUT_REVERSED", "payout", &tx.ID, nil,
+			s.auditSvc.Log(ctx, nil, "PAYOUT_REVERSED", "payout", &tx.ID, nil,
 				map[string]interface{}{"amount_cents": input.AmountCents, "reason": "provider_failure"}, "", "")
 		}
 
@@ -138,7 +138,7 @@ func (s *PayoutService) InitiatePayout(ctx context.Context, input PayoutInput) (
 	)
 
 	// Audit trail for payout initiation
-	s.auditSvc.Log(ctx, input.CrewMemberID, "PAYOUT_INITIATED", "payout", &tx.ID, nil, result, "", "")
+	s.auditSvc.Log(ctx, nil, "PAYOUT_INITIATED", "payout", &tx.ID, nil, result, "", "")
 
 	return result, nil
 }

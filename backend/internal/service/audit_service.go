@@ -20,8 +20,8 @@ func NewAuditService(auditRepo repository.AuditLogRepository, logger *slog.Logge
 	return &AuditService{auditRepo: auditRepo, logger: logger}
 }
 
-// Log records a single audit event.
-func (s *AuditService) Log(ctx context.Context, userID uuid.UUID, action, resource string, resourceID *uuid.UUID, oldValue, newValue interface{}, ipAddress, userAgent string) {
+// Log records a single audit event. userID may be nil for system/org-level actions.
+func (s *AuditService) Log(ctx context.Context, userID *uuid.UUID, action, resource string, resourceID *uuid.UUID, oldValue, newValue interface{}, ipAddress, userAgent string) {
 	oldJSON, _ := json.Marshal(oldValue)
 	newJSON, _ := json.Marshal(newValue)
 

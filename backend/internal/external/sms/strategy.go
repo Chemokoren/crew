@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+
+	"github.com/kibsoft/amy-mis/pkg/retry"
 )
 
 // SendResult holds the outcome of an SMS send attempt.
@@ -38,10 +40,12 @@ type Provider interface {
 // Manager orchestrates SMS providers using the Strategy pattern.
 // It maintains an ordered list of providers and uses the primary (first)
 // with automatic fallback to subsequent providers on failure.
+// Transient network errors are retried with exponential backoff.
 type Manager struct {
-	providers []Provider
-	mu        sync.RWMutex
-	logger    *slog.Logger
+	providers   []Provider
+	mu          sync.RWMutex
+	logger      *slog.Logger
+	retryPolicy retry.Policy
 }
 
 // NewManager creates an SMS manager with the given providers.
@@ -58,33 +62,53 @@ func NewManager(logger *slog.Logger, providers ...Provider) *Manager {
 	)
 
 	return &Manager{
-		providers: providers,
-		logger:    logger,
+		providers:   providers,
+		logger:      logger,
+		retryPolicy: retry.DefaultPolicy(),
 	}
+}
+
+// SetRetryPolicy updates the retry policy for all future calls.
+func (m *Manager) SetRetryPolicy(p retry.Policy) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.retryPolicy = p
 }
 
 // Send dispatches an SMS using the primary provider.
 // Falls back to the next provider in the chain on failure.
+// Each provider attempt is retried with exponential backoff on network errors.
 func (m *Manager) Send(ctx context.Context, phone, message string) (*SendResult, error) {
 	m.mu.RLock()
 	providers := m.providers
+	policy := m.retryPolicy
 	m.mu.RUnlock()
 
 	var lastErr error
 	for _, p := range providers {
-		result, err := p.Send(ctx, phone, message)
-		if err == nil && result.Success {
+		result, err := retry.Do(ctx, m.logger, "sms.Send/"+p.Name(), policy,
+			retry.IsNetworkError,
+			func(ctx context.Context) (*SendResult, error) {
+				res, err := p.Send(ctx, phone, message)
+				if err != nil {
+					return nil, err
+				}
+				if !res.Success {
+					return nil, fmt.Errorf("sms send failed: %s", res.Error)
+				}
+				return res, nil
+			},
+		)
+		if err == nil {
 			return result, nil
 		}
 
 		lastErr = err
-		if err != nil {
-			m.logger.Warn("SMS provider failed, trying next",
-				slog.String("provider", p.Name()),
-				slog.String("phone", phone),
-				slog.String("error", err.Error()),
-			)
-		}
+		m.logger.Warn("SMS provider failed, trying next",
+			slog.String("provider", p.Name()),
+			slog.String("phone", phone),
+			slog.String("error", err.Error()),
+		)
 	}
 
 	return nil, fmt.Errorf("all SMS providers failed: %w", lastErr)
@@ -94,11 +118,17 @@ func (m *Manager) Send(ctx context.Context, phone, message string) (*SendResult,
 func (m *Manager) SendBulk(ctx context.Context, phones []string, message string) ([]SendResult, error) {
 	m.mu.RLock()
 	providers := m.providers
+	policy := m.retryPolicy
 	m.mu.RUnlock()
 
 	var lastErr error
 	for _, p := range providers {
-		results, err := p.SendBulk(ctx, phones, message)
+		results, err := retry.Do(ctx, m.logger, "sms.SendBulk/"+p.Name(), policy,
+			retry.IsNetworkError,
+			func(ctx context.Context) ([]SendResult, error) {
+				return p.SendBulk(ctx, phones, message)
+			},
+		)
 		if err == nil {
 			return results, nil
 		}
@@ -140,3 +170,4 @@ func (m *Manager) ProviderNames() []string {
 	}
 	return names
 }
+

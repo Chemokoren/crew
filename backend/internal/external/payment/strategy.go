@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+
+	"github.com/kibsoft/amy-mis/pkg/retry"
 )
 
 // PayoutChannel identifies how money is sent.
@@ -85,32 +87,57 @@ type Provider interface {
 	InitiateCollection(ctx context.Context, req CollectionRequest) (*CollectionResult, error)
 }
 
-// Manager orchestrates payment providers with fallback support.
+// Manager orchestrates payment providers with fallback support
+// and automatic exponential-backoff retry on transient network errors.
 type Manager struct {
-	providers []Provider
-	mu        sync.RWMutex
-	logger    *slog.Logger
+	providers   []Provider
+	mu          sync.RWMutex
+	logger      *slog.Logger
+	retryPolicy retry.Policy
 }
 
 // NewManager creates a payment manager with the given providers.
+// An optional retry.Policy can be passed; if omitted, DefaultPolicy() is used.
 func NewManager(logger *slog.Logger, providers ...Provider) *Manager {
 	names := make([]string, len(providers))
 	for i, p := range providers {
 		names[i] = p.Name()
 	}
 	logger.Info("payment manager initialized", slog.Any("providers", names))
-	return &Manager{providers: providers, logger: logger}
+	return &Manager{
+		providers:   providers,
+		logger:      logger,
+		retryPolicy: retry.DefaultPolicy(),
+	}
 }
 
-// InitiatePayout dispatches a payout using the primary provider.
+// SetRetryPolicy updates the retry policy for all future calls.
+func (m *Manager) SetRetryPolicy(p retry.Policy) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.retryPolicy = p
+	m.logger.Info("payment retry policy updated",
+		slog.Int("max_attempts", p.MaxAttempts),
+		slog.Duration("initial_delay", p.InitialDelay),
+		slog.Duration("max_delay", p.MaxDelay),
+	)
+}
+
+// InitiatePayout dispatches a payout using the primary provider with retry.
 func (m *Manager) InitiatePayout(ctx context.Context, req PayoutRequest) (*PayoutResult, error) {
 	m.mu.RLock()
 	providers := m.providers
+	policy := m.retryPolicy
 	m.mu.RUnlock()
 
 	var lastErr error
 	for _, p := range providers {
-		result, err := p.InitiatePayout(ctx, req)
+		result, err := retry.Do(ctx, m.logger, "payment.InitiatePayout/"+p.Name(), policy,
+			retry.IsNetworkError,
+			func(ctx context.Context) (*PayoutResult, error) {
+				return p.InitiatePayout(ctx, req)
+			},
+		)
 		if err == nil {
 			return result, nil
 		}
@@ -120,28 +147,49 @@ func (m *Manager) InitiatePayout(ctx context.Context, req PayoutRequest) (*Payou
 	return nil, fmt.Errorf("all payment providers failed: %w", lastErr)
 }
 
-// VerifyPayout authorizes a pending payout.
+// VerifyPayout authorizes a pending payout with retry.
 func (m *Manager) VerifyPayout(ctx context.Context, req PayoutVerifyRequest) (*PayoutResult, error) {
 	m.mu.RLock()
 	primary := m.providers[0]
+	policy := m.retryPolicy
 	m.mu.RUnlock()
-	return primary.VerifyPayout(ctx, req)
+
+	return retry.Do(ctx, m.logger, "payment.VerifyPayout/"+primary.Name(), policy,
+		retry.IsNetworkError,
+		func(ctx context.Context) (*PayoutResult, error) {
+			return primary.VerifyPayout(ctx, req)
+		},
+	)
 }
 
-// CheckBalance retrieves account balance from the primary provider.
+// CheckBalance retrieves account balance from the primary provider with retry.
 func (m *Manager) CheckBalance(ctx context.Context, accountNo string) (*BalanceResult, error) {
 	m.mu.RLock()
 	primary := m.providers[0]
+	policy := m.retryPolicy
 	m.mu.RUnlock()
-	return primary.CheckBalance(ctx, accountNo)
+
+	return retry.Do(ctx, m.logger, "payment.CheckBalance/"+primary.Name(), policy,
+		retry.IsNetworkError,
+		func(ctx context.Context) (*BalanceResult, error) {
+			return primary.CheckBalance(ctx, accountNo)
+		},
+	)
 }
 
-// InitiateCollection dispatches a mobile money collection using the primary provider.
+// InitiateCollection dispatches a mobile money collection with retry.
 func (m *Manager) InitiateCollection(ctx context.Context, req CollectionRequest) (*CollectionResult, error) {
 	m.mu.RLock()
 	primary := m.providers[0]
+	policy := m.retryPolicy
 	m.mu.RUnlock()
-	return primary.InitiateCollection(ctx, req)
+
+	return retry.Do(ctx, m.logger, "payment.InitiateCollection/"+primary.Name(), policy,
+		retry.IsNetworkError,
+		func(ctx context.Context) (*CollectionResult, error) {
+			return primary.InitiateCollection(ctx, req)
+		},
+	)
 }
 
 // SetPrimary reorders providers so the named provider becomes primary.
@@ -170,3 +218,4 @@ func (m *Manager) ProviderNames() []string {
 	}
 	return names
 }
+

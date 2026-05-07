@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+
+	"github.com/kibsoft/amy-mis/pkg/retry"
 )
 
 // PayComponent represents a single pay element (salary, bonus, overtime).
@@ -68,10 +70,12 @@ type Provider interface {
 }
 
 // Manager orchestrates payroll providers with the Strategy pattern.
+// Transient network errors are retried with exponential backoff.
 type Manager struct {
-	providers []Provider
-	mu        sync.RWMutex
-	logger    *slog.Logger
+	providers   []Provider
+	mu          sync.RWMutex
+	logger      *slog.Logger
+	retryPolicy retry.Policy
 }
 
 // NewManager creates a payroll manager.
@@ -81,7 +85,18 @@ func NewManager(logger *slog.Logger, providers ...Provider) *Manager {
 		names[i] = p.Name()
 	}
 	logger.Info("payroll manager initialized", slog.Any("providers", names))
-	return &Manager{providers: providers, logger: logger}
+	return &Manager{
+		providers:   providers,
+		logger:      logger,
+		retryPolicy: retry.DefaultPolicy(),
+	}
+}
+
+// SetRetryPolicy updates the retry policy for all future calls.
+func (m *Manager) SetRetryPolicy(p retry.Policy) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.retryPolicy = p
 }
 
 // SubmitPayroll submits a payroll request using the primary provider.
@@ -89,11 +104,17 @@ func NewManager(logger *slog.Logger, providers ...Provider) *Manager {
 func (m *Manager) SubmitPayroll(ctx context.Context, req SubmitRequest) (*SubmitResult, error) {
 	m.mu.RLock()
 	providers := m.providers
+	policy := m.retryPolicy
 	m.mu.RUnlock()
 
 	var lastErr error
 	for _, p := range providers {
-		result, err := p.SubmitPayroll(ctx, req)
+		result, err := retry.Do(ctx, m.logger, "payroll.Submit/"+p.Name(), policy,
+			retry.IsNetworkError,
+			func(ctx context.Context) (*SubmitResult, error) {
+				return p.SubmitPayroll(ctx, req)
+			},
+		)
 		if err == nil {
 			return result, nil
 		}
@@ -111,11 +132,17 @@ func (m *Manager) SubmitPayroll(ctx context.Context, req SubmitRequest) (*Submit
 func (m *Manager) GetStatus(ctx context.Context, correlationID string) (*StatusResult, error) {
 	m.mu.RLock()
 	providers := m.providers
+	policy := m.retryPolicy
 	m.mu.RUnlock()
 
 	var lastErr error
 	for _, p := range providers {
-		result, err := p.GetStatus(ctx, correlationID)
+		result, err := retry.Do(ctx, m.logger, "payroll.GetStatus/"+p.Name(), policy,
+			retry.IsNetworkError,
+			func(ctx context.Context) (*StatusResult, error) {
+				return p.GetStatus(ctx, correlationID)
+			},
+		)
 		if err == nil {
 			return result, nil
 		}

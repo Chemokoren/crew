@@ -182,6 +182,17 @@ type Config struct {
 	RequestTimeoutSec int   // Global request timeout in seconds (default: 30)
 	MaxRequestBodyMB  int   // Maximum request body size in megabytes (default: 10)
 	CSVExportMaxRows  int   // Maximum rows for CSV export (default: 10000)
+
+	// =============================================
+	// RETRY — External Integration Retry Policy
+	// =============================================
+	// Controls exponential-backoff retry for all external integration calls
+	// (JamboPay, M-Pesa STK push, SMS, PerPay payroll, IPRS identity).
+	// Admins can tune these values to balance reliability vs. response latency.
+
+	RetryMaxAttempts    int // Max retry attempts including first try (default: 3)
+	RetryInitialDelayMs int // Initial backoff delay in ms, doubles each retry (default: 500)
+	RetryMaxDelayMs     int // Maximum backoff delay cap in ms (default: 5000)
 }
 
 // Load reads configuration from environment variables.
@@ -310,6 +321,11 @@ func Load() (*Config, error) {
 		RequestTimeoutSec: getEnvInt("REQUEST_TIMEOUT_SEC", 30),
 		MaxRequestBodyMB:  getEnvInt("MAX_REQUEST_BODY_MB", 10),
 		CSVExportMaxRows:  getEnvInt("CSV_EXPORT_MAX_ROWS", 10000),
+
+		// Retry policy for external integrations
+		RetryMaxAttempts:    getEnvInt("RETRY_MAX_ATTEMPTS", 3),
+		RetryInitialDelayMs: getEnvInt("RETRY_INITIAL_DELAY_MS", 500),
+		RetryMaxDelayMs:     getEnvInt("RETRY_MAX_DELAY_MS", 5000),
 	}
 
 	if err := cfg.validate(); err != nil {
