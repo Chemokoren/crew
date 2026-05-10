@@ -40,6 +40,7 @@ type JamboPayConfig struct {
 //   - Wallet-to-wallet transfer (POST /wallet/transaction/transfer)
 //   - Transfer authorization / OTP (POST /wallet/transaction/authorize, POST /wallet/otp)
 //   - Transaction reversal (POST /wallet/transaction/initiate-reversal)
+//   - Mobile collection / STK push (POST /checkout/express)
 //   - Payout (POST /payout, POST /payout/authorize, GET /payout, GET /payout/{id})
 //   - IPRS identity verification (POST /iprs/verify)
 //   - Balance check (GET /wallet/account?accountNo=...)
@@ -594,38 +595,59 @@ func (p *JamboPayProvider) CheckBalance(ctx context.Context, accountNo string) (
 // MOBILE MONEY COLLECTION (STK Push — M-Pesa / Airtel)
 // ===================================================================
 
-// MobileCollectionRequest is the body for POST /wallet/transaction/mobile-collection.
-// This triggers an STK push on the customer's phone to collect money into the tenant wallet.
-type MobileCollectionRequest struct {
-	OrderID     string `json:"orderId"`               // Unique order ID (idempotency key)
-	Amount      string `json:"amount"`                // String decimal, e.g. "500.00"
-	AccountTo   string `json:"accountTo"`              // Collection wallet account receiving funds
-	Provider    string `json:"provider"`               // "MPESA" or "AIRTEL_MONEY"
-	PhoneNumber string `json:"phoneNumber"`            // Phone number to push STK to
-	ServiceType string `json:"serviceType"`            // "TOPUP" or "MERCHANT_PAYMENT"
-	Description string `json:"description,omitempty"`  // Transaction description
-	CallbackURL string `json:"callbackUrl"`            // Callback URL for result notification
+// ExpressCheckoutRequest is the body for POST /checkout/express.
+// This triggers an STK push (mobile money) or wallet-as-service checkout
+// to collect money into the tenant's collection wallet.
+//
+// See: JamboPay v2 API Documentation — EXPRESS CHECKOUT / PAYMENT API
+type ExpressCheckoutRequest struct {
+	OrderID       string                      `json:"orderId"`       // Unique order ID (idempotency key)
+	Amount        string                      `json:"amount"`        // String decimal, e.g. "500.00"
+	CallbackURL   string                      `json:"callBackUrl"`   // Callback URL for result notification
+	AccountTo     string                      `json:"accountTo"`     // Collection wallet account receiving funds
+	Description   string                      `json:"description"`   // Transaction description
+	ModeOfPayment string                      `json:"modeOfPayment"` // "MOBILE_MONEY" or "WALLET_AS_SERVICE"
+	Provider      string                      `json:"provider"`      // "MPESA", "AIRTEL_MONEY", or "JAMBOPAY"
+	Data          ExpressCheckoutDataMobile    `json:"data"`          // Mode-specific data (phone, serviceType, etc.)
 }
 
-// MobileCollectionResponse is returned from POST /wallet/transaction/mobile-collection.
-type MobileCollectionResponse struct {
-	Ref       string `json:"ref"`
-	OrderID   string `json:"orderId"`
-	Amount    string `json:"amount"`
-	AccountTo string `json:"accountTo"`
-	Status    string `json:"status"` // "pending", "completed", "failed"
+// ExpressCheckoutDataMobile holds mode-specific fields for mobile money checkout.
+type ExpressCheckoutDataMobile struct {
+	PhoneNumber string `json:"phoneNumber,omitempty"` // Phone number to push STK to (mobile money)
+	AccountNo   string `json:"accountNo,omitempty"`   // Sender account number (wallet-as-service)
+	ServiceType string `json:"serviceType"`           // "TOPUP" or "MERCHANTPAYMENT"
 }
+
+// ExpressCheckoutResponse is returned from POST /checkout/express.
+type ExpressCheckoutResponse struct {
+	OrderID     string `json:"orderId"`
+	Currency    string `json:"currency"`
+	OrderAmount string `json:"orderAmount"`
+	CallbackURL string `json:"callBackUrl"`
+	Description string `json:"description"`
+	Ref         string `json:"ref"`
+	Checksum    string `json:"checksum"`
+}
+
+// MobileCollectionRequest is kept as an alias for backward compatibility.
+// New callers should prefer ExpressCheckoutRequest directly.
+type MobileCollectionRequest = ExpressCheckoutRequest
+
+// MobileCollectionResponse is kept as an alias for backward compatibility.
+type MobileCollectionResponse = ExpressCheckoutResponse
 
 // InitiateMobileCollection triggers an express checkout / STK push to collect money
 // from a mobile phone into the tenant's collection wallet.
-// POST /wallet/transaction/mobile-collection
+// POST /checkout/express
 //
-// Supported providers: "MPESA", "AIRTEL_MONEY"
-// Service types: "TOPUP" (fund wallet), "MERCHANT_PAYMENT" (merchant payment)
-func (p *JamboPayProvider) InitiateMobileCollection(ctx context.Context, req MobileCollectionRequest) (*MobileCollectionResponse, error) {
-	p.logger.Info("initiating JamboPay mobile collection (STK push)",
+// Supported modeOfPayment: "MOBILE_MONEY", "WALLET_AS_SERVICE"
+// Supported providers: "MPESA", "AIRTEL_MONEY" (for mobile), "JAMBOPAY" (for wallet)
+// Service types: "TOPUP" (fund wallet), "MERCHANTPAYMENT" (merchant payment)
+func (p *JamboPayProvider) InitiateMobileCollection(ctx context.Context, req ExpressCheckoutRequest) (*ExpressCheckoutResponse, error) {
+	p.logger.Info("initiating JamboPay express checkout (STK push)",
 		slog.String("provider", req.Provider),
-		slog.String("phone", req.PhoneNumber),
+		slog.String("mode", req.ModeOfPayment),
+		slog.String("phone", req.Data.PhoneNumber),
 		slog.String("amount", req.Amount),
 		slog.String("order_id", req.OrderID),
 	)
@@ -637,21 +659,24 @@ func (p *JamboPayProvider) InitiateMobileCollection(ctx context.Context, req Mob
 	if req.CallbackURL == "" {
 		req.CallbackURL = p.cfg.CallbackURL
 	}
-	if req.ServiceType == "" {
-		req.ServiceType = "TOPUP"
+	if req.ModeOfPayment == "" {
+		req.ModeOfPayment = "MOBILE_MONEY"
+	}
+	if req.Data.ServiceType == "" {
+		req.Data.ServiceType = "TOPUP"
 	}
 
-	body, status, err := p.doRequest(ctx, http.MethodPost, "/wallet/transaction/mobile-collection", req)
+	body, status, err := p.doRequest(ctx, http.MethodPost, "/checkout/express", req)
 	if err != nil {
-		return nil, fmt.Errorf("mobile collection request: %w", err)
+		return nil, fmt.Errorf("express checkout request: %w", err)
 	}
 	if status != http.StatusCreated && status != http.StatusOK {
-		return nil, parseJamboPayError("mobile collection", status, body)
+		return nil, parseJamboPayError("express checkout", status, body)
 	}
 
-	var result MobileCollectionResponse
+	var result ExpressCheckoutResponse
 	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("decode mobile collection response: %w", err)
+		return nil, fmt.Errorf("decode express checkout response: %w", err)
 	}
 	return &result, nil
 }
@@ -694,18 +719,21 @@ func (p *JamboPayProvider) InitiateCollection(ctx context.Context, req payment.C
 
 	amount := fmt.Sprintf("%.2f", float64(req.AmountCents)/100)
 
-	mcReq := MobileCollectionRequest{
-		OrderID:     req.OrderID,
-		Amount:      amount,
-		AccountTo:   req.AccountTo,
-		Provider:    jpProvider,
-		PhoneNumber: req.PhoneNumber,
-		ServiceType: "TOPUP",
-		Description: req.Description,
-		CallbackURL: req.CallbackURL,
+	ecReq := ExpressCheckoutRequest{
+		OrderID:       req.OrderID,
+		Amount:        amount,
+		AccountTo:     req.AccountTo,
+		Description:   req.Description,
+		CallbackURL:   req.CallbackURL,
+		ModeOfPayment: "MOBILE_MONEY",
+		Provider:      jpProvider,
+		Data: ExpressCheckoutDataMobile{
+			PhoneNumber: req.PhoneNumber,
+			ServiceType: "TOPUP",
+		},
 	}
 
-	resp, err := p.InitiateMobileCollection(ctx, mcReq)
+	resp, err := p.InitiateMobileCollection(ctx, ecReq)
 	if err != nil {
 		return nil, err
 	}

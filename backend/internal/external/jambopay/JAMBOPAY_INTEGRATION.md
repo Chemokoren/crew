@@ -11,7 +11,8 @@ AMY integrates with **JamboPay V2 Wallet API** to provide multi-tenant financial
 | **Crew Member** (Driver / Conductor) | Holds an **Individual** wallet under AMY's merchant |
 
 Supported operations:
-- Organisation top-up and balance checks
+- Organisation top-up via M-Pesa STK push (express checkout)
+- Organisation and member balance checks
 - Wage/salary payouts from SACCO → Member wallets (wallet-to-wallet transfer)
 - Member peer transfers (wallet-to-wallet)
 - Member withdrawals to M-Pesa / Bank (external payout — requires permission, see §7)
@@ -28,7 +29,7 @@ JamboPay uses **different endpoints** for authentication and wallet operations:
 | Purpose | Base URL | Endpoint |
 |---|---|---|
 | **OAuth2 Token** | `https://accounts.jambopay.com/v2` | `POST /auth/token` |
-| **Wallet API** | `https://api.jambopay.com` | `/wallet/*`, `/payout`, `/iprs/*` |
+| **Wallet API** | `https://api.jambopay.com` | `/wallet/*`, `/checkout/*`, `/payout`, `/iprs/*` |
 
 Both are Cloudflare-hosted. Go's default HTTP client negotiates HTTP/2 via TLS ALPN, which stalls on these endpoints. The provider forces HTTP/1.1 by setting `NextProtos: []string{"http/1.1"}` in the TLS config.
 
@@ -150,7 +151,39 @@ POST /wallet/transaction/authorize
 { "ref": "177807878845734493", "otp": "123456" }
 ```
 
-### 4.4 External Payout (Member → M-Pesa / Bank)
+### 4.4 Express Checkout — STK Push (Organization Top-Up)
+
+```
+POST /checkout/express
+{
+  "orderId": "TOPUP-2026050601",
+  "amount": "500.00",
+  "callBackUrl": "https://your-domain.com/api/v1/webhooks/jambopay",
+  "accountTo": "1002603",                 // WALLET_COLLECTION_ACCOUNT
+  "description": "Organization float top-up",
+  "modeOfPayment": "MOBILE_MONEY",        // or "WALLET_AS_SERVICE"
+  "provider": "MPESA",                    // or "AIRTEL_MONEY"
+  "data": {
+    "phoneNumber": "254712345678",         // STK push target phone
+    "serviceType": "TOPUP"                 // or "MERCHANTPAYMENT"
+  }
+}
+```
+
+**Response (201):**
+```json
+{
+  "orderId": "TOPUP-2026050601",
+  "currency": "KES",
+  "orderAmount": "500.00",
+  "callBackUrl": "https://...",
+  "description": "Organization float top-up",
+  "ref": "7889076981526054",
+  "checksum": "U2FsdGzsvgbmkertkhcbcxcvbn="
+}
+```
+
+### 4.5 External Payout (Member → M-Pesa / Bank)
 
 > **Requires JamboPay to enable the payout permission on the merchant account.**
 
@@ -166,7 +199,7 @@ POST /payout
 }
 ```
 
-### 4.5 Checksum Verification (Webhook Callbacks)
+### 4.6 Checksum Verification (Webhook Callbacks)
 
 JamboPay embeds a `checksum` field in callback payloads. Verification:
 

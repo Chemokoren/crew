@@ -46,14 +46,10 @@ import { Wallet, WalletTransaction, PaginationMeta, CrewMember, SACCOFloat, Orga
 
       <!-- Admin: Organization Selector (SYSTEM_ADMIN without org_id) -->
       @if (showOrgSelector()) {
-        <div class="glass-card" style="margin-bottom:var(--space-md);padding:var(--space-sm) var(--space-md); display:flex; align-items:center; gap:var(--space-sm);">
+        <div class="glass-card" style="margin-bottom:var(--space-md);padding:var(--space-sm) var(--space-md); display:flex; align-items:center; gap:var(--space-sm); position:relative; z-index:55;">
           <span class="material-icons-round" style="color:var(--color-accent);">business</span>
           <label style="font-weight:500; font-size:0.85rem; white-space:nowrap;">Active Organization:</label>
-          <select [(ngModel)]="selectedOrgId" (ngModelChange)="onOrgChanged($event)" class="form-control" style="flex:1; max-width:400px;" id="select-org">
-            @for (org of organizations(); track org.id) {
-              <option [value]="org.id">{{ org.name }}</option>
-            }
-          </select>
+          <app-autocomplete [(ngModel)]="selectedOrgId" (ngModelChange)="onOrgChanged($event)" [options]="orgOptions()" placeholder="— Search organization —" id="select-org" style="flex:1; max-width:400px;"></app-autocomplete>
         </div>
       }
 
@@ -678,6 +674,12 @@ export class WalletDashboardComponent implements OnInit {
     label: `${c.first_name} ${c.last_name}`,
     sublabel: `ID: ${c.crew_id}`,
     searchText: `${c.first_name} ${c.last_name} ${c.crew_id}`
+  })));
+  orgOptions = computed<AutocompleteOption[]>(() => this.organizations().map(org => ({
+    value: org.id,
+    label: org.name,
+    sublabel: org.id,
+    searchText: `${org.name} ${org.id}`
   })));
 
   showModal = signal<'credit' | 'topup' | 'payout' | 'withdraw' | 'transfer' | 'airtime' | 'bills' | null>(null);
