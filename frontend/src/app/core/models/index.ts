@@ -26,9 +26,26 @@ export interface User {
   is_active: boolean;
   last_login_at?: string;
   created_at: string;
+  // Enriched profile data from GET /auth/me
+  crew_profile?: CrewProfile;
+  kyc_restrictions?: string[];
+  kyc_verification_mode?: 'UPLOAD' | 'MANUAL';
 }
 
-export type SystemRole = 'SYSTEM_ADMIN' | 'SACCO_ADMIN' | 'CREW' | 'LENDER' | 'INSURER';
+export type SystemRole = 'SYSTEM_ADMIN' | 'EMPLOYER' | 'EMPLOYEE' | 'LENDER' | 'INSURER';
+
+export interface CrewProfile {
+  id: string;
+  crew_id: string;
+  first_name: string;
+  last_name: string;
+  full_name: string;
+  role: CrewRole;
+  job_type_id?: string;
+  job_title?: string;
+  kyc_status: KYCStatus;
+  kyc_verified_at?: string;
+}
 
 export interface AuthResponse {
   user: User;
@@ -188,6 +205,10 @@ export interface TenantConfig {
   statutory_exemptions?: string[];
   ui_labels?: Record<string, string>;
   features?: Record<string, boolean>;
+  kyc_required?: boolean;
+  kyc_restricted_actions?: string[];
+  kyc_document_types?: string[];
+  kyc_verification_mode?: 'UPLOAD' | 'MANUAL';
 }
 
 // AD-13: Bootstrap result from industry template seeding

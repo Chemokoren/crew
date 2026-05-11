@@ -195,7 +195,7 @@ export class EarningsComponent implements OnInit {
   chartMid = computed(() => Math.round(this.chartMax() / 2));
 
   isAdmin(): boolean {
-    return this.auth.hasRole('SYSTEM_ADMIN', 'SACCO_ADMIN');
+    return this.auth.hasRole('SYSTEM_ADMIN', 'EMPLOYER');
   }
 
   ngOnInit(): void {

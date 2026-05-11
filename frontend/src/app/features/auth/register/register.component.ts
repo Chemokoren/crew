@@ -31,8 +31,8 @@ interface IndustryOption {
           </div>
 
           <form class="auth-form" (ngSubmit)="onSubmit()" id="register-form">
-            <!-- Step indicator for SACCO_ADMIN -->
-            @if (role === 'SACCO_ADMIN') {
+            <!-- Step indicator for EMPLOYER -->
+            @if (role === 'EMPLOYER') {
               <div class="step-indicator">
                 <div class="step" [class.active]="step() === 1" [class.completed]="step() > 1">
                   <span class="step-number">1</span>
@@ -46,8 +46,8 @@ interface IndustryOption {
               </div>
             }
 
-            <!-- STEP 1: Personal info (always shown for CREW, or step 1 for SACCO_ADMIN) -->
-            @if (role === 'CREW' || step() === 1) {
+            <!-- STEP 1: Personal info (always shown for EMPLOYEE, or step 1 for EMPLOYER) -->
+            @if (role === 'EMPLOYEE' || step() === 1) {
               <div class="form-row">
                 <div class="form-group">
                   <label class="form-label" for="reg-first-name">First Name</label>
@@ -66,40 +66,23 @@ interface IndustryOption {
 
               <div class="form-group">
                 <label class="form-label" for="reg-email">Email (optional)</label>
-                <input class="form-input" id="reg-email" type="email" placeholder="john@example.com" [(ngModel)]="email" name="email" />
+                <input class="form-input" id="reg-email" type="email" placeholder="john&#64;example.com" [(ngModel)]="email" name="email" />
               </div>
 
               <div class="form-group">
-                <label class="form-label" for="reg-role">Role</label>
+                <label class="form-label" for="reg-role">I am signing up as</label>
                 <select class="form-select" id="reg-role" [(ngModel)]="role" name="role" required>
-                  <option value="CREW">Crew Member</option>
-                  <option value="SACCO_ADMIN">Organization Admin</option>
+                  <option value="EMPLOYEE">Employee</option>
+                  <option value="EMPLOYER">Employer</option>
                 </select>
               </div>
-
-              @if (role === 'CREW') {
-                <div class="form-group">
-                  <label class="form-label" for="reg-national-id">National ID</label>
-                  <input class="form-input" id="reg-national-id" type="text" placeholder="12345678" [(ngModel)]="nationalId" name="nationalId" />
-                </div>
-
-                <div class="form-group">
-                  <label class="form-label" for="reg-crew-role">Crew Role</label>
-                  <select class="form-select" id="reg-crew-role" [(ngModel)]="crewRole" name="crewRole">
-                    <option value="DRIVER">Driver</option>
-                    <option value="CONDUCTOR">Conductor</option>
-                    <option value="RIDER">Rider</option>
-                    <option value="OTHER">Other</option>
-                  </select>
-                </div>
-              }
 
               <div class="form-group">
                 <label class="form-label" for="reg-password">Password</label>
                 <input class="form-input" id="reg-password" type="password" placeholder="Min 8 characters" [(ngModel)]="password" name="password" required minlength="8" autocomplete="new-password" />
               </div>
 
-              @if (role === 'SACCO_ADMIN') {
+              @if (role === 'EMPLOYER') {
                 <button class="btn btn-primary btn-lg btn-full" type="button" (click)="nextStep()" id="register-next">
                   <span class="material-icons-round">arrow_forward</span> Next: Organization Details
                 </button>
@@ -114,8 +97,8 @@ interface IndustryOption {
               }
             }
 
-            <!-- STEP 2: Organization details (only for SACCO_ADMIN) -->
-            @if (role === 'SACCO_ADMIN' && step() === 2) {
+            <!-- STEP 2: Organization details (only for EMPLOYER) -->
+            @if (role === 'EMPLOYER' && step() === 2) {
               <div class="form-group">
                 <label class="form-label" for="reg-org-name">Organization Name</label>
                 <input class="form-input" id="reg-org-name" type="text" placeholder="e.g. Metro Trans SACCO" [(ngModel)]="orgName" name="orgName" required />
@@ -347,9 +330,7 @@ export class RegisterComponent {
   password = '';
   firstName = '';
   lastName = '';
-  nationalId = '';
-  role: SystemRole = 'CREW';
-  crewRole = 'DRIVER';
+  role: SystemRole = 'EMPLOYEE';
   loading = signal(false);
 
   // Organization fields
@@ -395,8 +376,8 @@ export class RegisterComponent {
       return;
     }
 
-    // Validate org fields for SACCO_ADMIN
-    if (this.role === 'SACCO_ADMIN') {
+    // Validate org fields for EMPLOYER
+    if (this.role === 'EMPLOYER') {
       if (!this.orgName) { this.toast.warning('Organization name is required'); return; }
       if (!this.orgRegNo) { this.toast.warning('Registration number is required'); return; }
       if (!this.orgCounty) { this.toast.warning('County is required'); return; }
@@ -411,14 +392,12 @@ export class RegisterComponent {
       role: this.role,
       first_name: this.firstName || undefined,
       last_name: this.lastName || undefined,
-      national_id: this.role === 'CREW' ? this.nationalId : undefined,
-      crew_role: this.role === 'CREW' ? this.crewRole : undefined,
       // Organization fields
-      organization_name: this.role === 'SACCO_ADMIN' ? this.orgName : undefined,
-      organization_reg_no: this.role === 'SACCO_ADMIN' ? this.orgRegNo : undefined,
-      organization_county: this.role === 'SACCO_ADMIN' ? this.orgCounty : undefined,
-      organization_phone: this.role === 'SACCO_ADMIN' ? this.orgPhone : undefined,
-      industry_type: this.role === 'SACCO_ADMIN' ? this.industryType : undefined,
+      organization_name: this.role === 'EMPLOYER' ? this.orgName : undefined,
+      organization_reg_no: this.role === 'EMPLOYER' ? this.orgRegNo : undefined,
+      organization_county: this.role === 'EMPLOYER' ? this.orgCounty : undefined,
+      organization_phone: this.role === 'EMPLOYER' ? this.orgPhone : undefined,
+      industry_type: this.role === 'EMPLOYER' ? this.industryType : undefined,
     }).subscribe({
       next: () => {
         this.toast.success('Account created successfully!');

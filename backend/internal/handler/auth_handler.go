@@ -2,13 +2,17 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"github.com/kibsoft/amy-mis/internal/external/storage"
 	"github.com/kibsoft/amy-mis/internal/handler/dto"
 	"github.com/kibsoft/amy-mis/internal/middleware"
+	"github.com/kibsoft/amy-mis/internal/models"
 	"github.com/kibsoft/amy-mis/internal/service"
 	"github.com/kibsoft/amy-mis/pkg/errs"
 	"github.com/kibsoft/amy-mis/pkg/jwt"
@@ -16,12 +20,20 @@ import (
 
 // AuthHandler handles authentication endpoints.
 type AuthHandler struct {
-	authSvc  *service.AuthService
-	otpSvc   *service.OTPService
+	authSvc *service.AuthService
+	otpSvc  *service.OTPService
+	docSvc  *service.DocumentService // optional — needed for KYC upload
+	storage storage.Storage          // optional — needed for KYC upload
 }
 
 func NewAuthHandler(authSvc *service.AuthService, otpSvc *service.OTPService) *AuthHandler {
 	return &AuthHandler{authSvc: authSvc, otpSvc: otpSvc}
+}
+
+// WithDocUpload wires document upload dependencies for KYC.
+func (h *AuthHandler) WithDocUpload(docSvc *service.DocumentService, store storage.Storage) {
+	h.docSvc = docSvc
+	h.storage = store
 }
 
 // POST /api/v1/auth/register
@@ -33,16 +45,13 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	}
 
 	result, err := h.authSvc.Register(c.Request.Context(), service.RegisterInput{
-		Phone:      req.Phone,
-		Email:      req.Email,
-		Password:   req.Password,
-		Role:       req.Role,
-		FirstName:  req.FirstName,
-		LastName:   req.LastName,
-		NationalID: req.NationalID,
-		CrewRole:   req.CrewRole,
-		JobTypeID:  req.JobTypeID,
-		// Organization fields (for SACCO_ADMIN registration)
+		Phone:    req.Phone,
+		Email:    req.Email,
+		Password: req.Password,
+		Role:     req.Role,
+		FirstName: req.FirstName,
+		LastName:  req.LastName,
+		// Organization fields (for EMPLOYER registration)
 		OrganizationName:   req.OrganizationName,
 		OrganizationRegNo:  req.OrganizationRegNo,
 		OrganizationCounty: req.OrganizationCounty,
@@ -117,16 +126,215 @@ func (h *AuthHandler) Me(c *gin.Context) {
 		return
 	}
 
-	user, err := h.authSvc.GetUserByID(c.Request.Context(), claims.UserID)
+	user, crew, restrictions, kycMode, err := h.authSvc.GetEnrichedProfile(c.Request.Context(), claims.UserID)
 	if err != nil {
 		MapServiceError(c, err)
 		return
 	}
 
-	SuccessResponse(c, http.StatusOK, dto.UserToResponse(user))
+	resp := dto.EnrichedProfileResponse{
+		UserResponse:        dto.UserToResponse(user),
+		KYCRestrictions:     restrictions,
+		KYCVerificationMode: kycMode,
+	}
+
+	if crew != nil {
+		resp.CrewProfile = &dto.CrewProfileDTO{
+			ID:            crew.ID,
+			CrewID:        crew.CrewID,
+			FirstName:     crew.FirstName,
+			LastName:      crew.LastName,
+			FullName:      crew.FullName(),
+			Role:          crew.Role,
+			JobTypeID:     crew.JobTypeID,
+			JobTitle:      crew.JobTitle,
+			KYCStatus:     crew.KYCStatus,
+			KYCVerifiedAt: crew.KYCVerifiedAt,
+		}
+	}
+
+	SuccessResponse(c, http.StatusOK, resp)
 }
 
-// GET /api/v1/auth/lookup?phone=+254712345678
+// PUT /api/v1/auth/profile
+// Updates the current user's job/specialization on their crew member profile.
+func (h *AuthHandler) UpdateProfile(c *gin.Context) {
+	claims := middleware.GetClaims(c)
+	if claims == nil {
+		Unauthorized(c, "Authentication required")
+		return
+	}
+
+	var req dto.UpdateProfileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		BadRequest(c, err.Error())
+		return
+	}
+
+	crew, err := h.authSvc.UpdateProfile(c.Request.Context(), service.UpdateProfileInput{
+		UserID:    claims.UserID,
+		Role:      req.Role,
+		JobTitle:  req.JobTitle,
+		FirstName: req.FirstName,
+		LastName:  req.LastName,
+	})
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+
+	SuccessResponse(c, http.StatusOK, dto.CrewProfileDTO{
+		ID:            crew.ID,
+		CrewID:        crew.CrewID,
+		FirstName:     crew.FirstName,
+		LastName:      crew.LastName,
+		FullName:      crew.FullName(),
+		Role:          crew.Role,
+		JobTypeID:     crew.JobTypeID,
+		JobTitle:      crew.JobTitle,
+		KYCStatus:     crew.KYCStatus,
+		KYCVerifiedAt: crew.KYCVerifiedAt,
+	})
+}
+
+// POST /api/v1/auth/kyc/initiate
+// Initiates KYC verification by submitting national ID + serial number.
+func (h *AuthHandler) InitiateKYC(c *gin.Context) {
+	claims := middleware.GetClaims(c)
+	if claims == nil {
+		Unauthorized(c, "Authentication required")
+		return
+	}
+
+	var req dto.InitiateKYCRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		BadRequest(c, err.Error())
+		return
+	}
+
+	crew, err := h.authSvc.InitiateKYC(c.Request.Context(), service.InitiateKYCInput{
+		UserID:       claims.UserID,
+		NationalID:   req.NationalID,
+		SerialNumber: req.SerialNumber,
+	})
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+
+	SuccessResponse(c, http.StatusOK, gin.H{
+		"kyc_status":  crew.KYCStatus,
+		"crew_id":     crew.CrewID,
+		"message":     "KYC verification initiated. Your documents are being reviewed.",
+	})
+}
+
+// POST /api/v1/auth/kyc/upload
+// Uploads front and back photos of a National ID for KYC verification (primary method).
+// Expects multipart form with "id_front" and "id_back" file fields, plus "national_id" text field.
+func (h *AuthHandler) UploadKYC(c *gin.Context) {
+	claims := middleware.GetClaims(c)
+	if claims == nil {
+		Unauthorized(c, "Authentication required")
+		return
+	}
+
+	if h.docSvc == nil || h.storage == nil {
+		ErrorResponse(c, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "Document upload is not configured")
+		return
+	}
+
+	nationalID := c.PostForm("national_id")
+	if nationalID == "" {
+		BadRequest(c, "national_id is required")
+		return
+	}
+
+	// Get the crew member from the authenticated user
+	user, crew, _, _, err := h.authSvc.GetEnrichedProfile(c.Request.Context(), claims.UserID)
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+	_ = user
+	if crew == nil {
+		BadRequest(c, "No crew profile linked to this account")
+		return
+	}
+
+	// Process each file (front required, back optional but recommended)
+	uploadFile := func(fieldName string, docType models.DocumentType) (*models.Document, error) {
+		file, err := c.FormFile(fieldName)
+		if err != nil {
+			return nil, nil // File not provided
+		}
+
+		f, err := file.Open()
+		if err != nil {
+			return nil, fmt.Errorf("read %s: %w", fieldName, err)
+		}
+		defer f.Close()
+
+		contentType := file.Header.Get("Content-Type")
+		objectName := fmt.Sprintf("kyc/%s/%s/%s", crew.ID.String(), uuid.New().String(), file.Filename)
+
+		path, err := h.storage.UploadFile(c.Request.Context(), objectName, f, file.Size, contentType)
+		if err != nil {
+			return nil, fmt.Errorf("upload %s: %w", fieldName, err)
+		}
+
+		doc, err := h.docSvc.CreateDocument(c.Request.Context(), service.CreateDocumentInput{
+			CrewMemberID: &crew.ID,
+			DocumentType: docType,
+			FileName:     file.Filename,
+			FileSize:     file.Size,
+			MimeType:     contentType,
+			StoragePath:  path,
+			UploadedByID: claims.UserID,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("save doc record: %w", err)
+		}
+		return doc, nil
+	}
+
+	frontDoc, err := uploadFile("id_front", models.DocKYCFront)
+	if err != nil {
+		InternalError(c, err.Error())
+		return
+	}
+	if frontDoc == nil {
+		BadRequest(c, "id_front file is required")
+		return
+	}
+
+	backDoc, err := uploadFile("id_back", models.DocKYCBack)
+	if err != nil {
+		InternalError(c, err.Error())
+		return
+	}
+
+	// Update crew member's national ID and set KYC to pending
+	updatedCrew, err := h.authSvc.InitiateKYC(c.Request.Context(), service.InitiateKYCInput{
+		UserID:     claims.UserID,
+		NationalID: nationalID,
+	})
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+
+	resp := gin.H{
+		"kyc_status":    updatedCrew.KYCStatus,
+		"crew_id":       updatedCrew.CrewID,
+		"message":       "ID documents uploaded successfully. Your identity is being verified.",
+		"front_doc_id":  frontDoc.ID,
+	}
+	if backDoc != nil {
+		resp["back_doc_id"] = backDoc.ID
+	}
+	SuccessResponse(c, http.StatusOK, resp)
+}
 // Public endpoint used by USSD gateway to identify registered users.
 // Returns minimal user info (no sensitive data).
 func (h *AuthHandler) Lookup(c *gin.Context) {

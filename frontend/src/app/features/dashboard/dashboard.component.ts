@@ -292,7 +292,7 @@ import { getIndustryTemplate, getIndustryLabel, INDUSTRY_ICONS } from '../../cor
           Quick Actions
         </h2>
         <div class="actions-grid">
-          @if (auth.hasRole('SYSTEM_ADMIN', 'SACCO_ADMIN')) {
+          @if (auth.hasRole('SYSTEM_ADMIN', 'EMPLOYER')) {
             <a routerLink="/crew" class="action-card glass-card" id="quick-crew">
               <div class="action-icon-wrapper" style="background:rgba(0,210,255,0.12);color:var(--color-accent);">
                 <span class="material-icons-round">person_add</span>

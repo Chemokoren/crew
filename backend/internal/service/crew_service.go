@@ -95,6 +95,7 @@ type UpdateKYCInput struct {
 	CrewMemberID uuid.UUID
 	Status       models.KYCStatus `json:"kyc_status" validate:"required,oneof=PENDING VERIFIED REJECTED"`
 	SerialNumber string
+	Reason       string // Reason for status change (e.g. why unverified)
 }
 
 // UpdateKYCStatus changes a crew member's KYC status.
@@ -122,6 +123,9 @@ func (s *CrewService) UpdateKYCStatus(ctx context.Context, input UpdateKYCInput)
 
 		now := time.Now()
 		crew.KYCVerifiedAt = &now
+	} else {
+		// Clear verification timestamp when unverifying or rejecting
+		crew.KYCVerifiedAt = nil
 	}
 
 	if err := s.crewRepo.Update(ctx, crew); err != nil {
@@ -131,6 +135,7 @@ func (s *CrewService) UpdateKYCStatus(ctx context.Context, input UpdateKYCInput)
 	s.logger.Info("crew KYC updated",
 		slog.String("crew_id", crew.CrewID),
 		slog.String("kyc_status", string(crew.KYCStatus)),
+		slog.String("reason", input.Reason),
 	)
 
 	return crew, nil

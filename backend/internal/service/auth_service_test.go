@@ -21,18 +21,16 @@ func newTestAuthService() (*AuthService, *mock.UserRepo, *mock.CrewRepo) {
 	return NewAuthService(userRepo, crewRepo, jwtMgr, nil, logger, WithOrgRepo(orgRepo)), userRepo, crewRepo
 }
 
-func TestRegisterCrewUser(t *testing.T) {
+func TestRegisterEmployee(t *testing.T) {
 	svc, _, _ := newTestAuthService()
 	ctx := context.Background()
 
 	result, err := svc.Register(ctx, RegisterInput{
-		Phone:      "+254712345678",
-		Password:   "SecurePass123!",
-		Role:       types.RoleCrewUser,
-		FirstName:  "John",
-		LastName:   "Kamau",
-		NationalID: "12345678",
-		CrewRole:   models.RoleDriver,
+		Phone:     "+254712345678",
+		Password:  "SecurePass123!",
+		Role:      types.RoleEmployee,
+		FirstName: "John",
+		LastName:  "Kamau",
 	})
 
 	if err != nil {
@@ -44,31 +42,35 @@ func TestRegisterCrewUser(t *testing.T) {
 	if result.User.Phone != "+254712345678" {
 		t.Errorf("Phone = %q, want +254712345678", result.User.Phone)
 	}
-	if result.User.SystemRole != types.RoleCrewUser {
-		t.Errorf("Role = %q, want CREW", result.User.SystemRole)
+	if result.User.SystemRole != types.RoleEmployee {
+		t.Errorf("Role = %q, want EMPLOYEE", result.User.SystemRole)
 	}
 	if result.User.PasswordHash == "SecurePass123!" {
 		t.Error("PasswordHash should NOT be plaintext")
 	}
 	if result.CrewMember == nil {
-		t.Fatal("CrewMember should be created for CREW role")
+		t.Fatal("CrewMember should be created for EMPLOYEE role")
 	}
 	if result.CrewMember.CrewID != "CRW-00001" {
 		t.Errorf("CrewID = %q, want CRW-00001", result.CrewMember.CrewID)
+	}
+	// CrewRole should default to OTHER (set via profile later)
+	if result.CrewMember.Role != models.RoleOther {
+		t.Errorf("CrewRole = %q, want OTHER (default at registration)", result.CrewMember.Role)
 	}
 	if result.Tokens == nil || result.Tokens.AccessToken == "" {
 		t.Error("Tokens should be generated")
 	}
 }
 
-func TestRegisterSaccoAdmin(t *testing.T) {
+func TestRegisterEmployer(t *testing.T) {
 	svc, _, _ := newTestAuthService()
 	ctx := context.Background()
 
 	result, err := svc.Register(ctx, RegisterInput{
 		Phone:              "+254700000001",
 		Password:           "SecurePass123!",
-		Role:               types.RoleSaccoAdmin,
+		Role:               types.RoleEmployer,
 		OrganizationName:   "Test Sacco",
 		OrganizationRegNo:  "REG-001",
 		OrganizationCounty: "Nairobi",
@@ -79,7 +81,7 @@ func TestRegisterSaccoAdmin(t *testing.T) {
 		t.Fatalf("Register: %v", err)
 	}
 	if result.CrewMember != nil {
-		t.Error("SACCO_ADMIN should NOT have a crew member profile")
+		t.Error("EMPLOYER should NOT have a crew member profile")
 	}
 }
 
@@ -88,26 +90,22 @@ func TestRegisterDuplicatePhone(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := svc.Register(ctx, RegisterInput{
-		Phone:      "+254712345678",
-		Password:   "SecurePass123!",
-		Role:       types.RoleCrewUser,
-		FirstName:  "John",
-		LastName:   "Kamau",
-		NationalID: "12345678",
-		CrewRole:   models.RoleDriver,
+		Phone:     "+254712345678",
+		Password:  "SecurePass123!",
+		Role:      types.RoleEmployee,
+		FirstName: "John",
+		LastName:  "Kamau",
 	})
 	if err != nil {
 		t.Fatalf("first Register: %v", err)
 	}
 
 	_, err = svc.Register(ctx, RegisterInput{
-		Phone:      "+254712345678",
-		Password:   "AnotherPass123!",
-		Role:       types.RoleCrewUser,
-		FirstName:  "Jane",
-		LastName:   "Wanjiku",
-		NationalID: "87654321",
-		CrewRole:   models.RoleConductor,
+		Phone:     "+254712345678",
+		Password:  "AnotherPass123!",
+		Role:      types.RoleEmployee,
+		FirstName: "Jane",
+		LastName:  "Wanjiku",
 	})
 	if err != ErrPhoneAlreadyExists {
 		t.Errorf("expected ErrPhoneAlreadyExists, got %v", err)
@@ -133,13 +131,11 @@ func TestLoginSuccess(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := svc.Register(ctx, RegisterInput{
-		Phone:      "+254712345678",
-		Password:   "SecurePass123!",
-		Role:       types.RoleCrewUser,
-		FirstName:  "John",
-		LastName:   "Kamau",
-		NationalID: "12345678",
-		CrewRole:   models.RoleDriver,
+		Phone:     "+254712345678",
+		Password:  "SecurePass123!",
+		Role:      types.RoleEmployee,
+		FirstName: "John",
+		LastName:  "Kamau",
 	})
 	if err != nil {
 		t.Fatalf("Register: %v", err)
@@ -168,13 +164,11 @@ func TestLoginWrongPassword(t *testing.T) {
 	ctx := context.Background()
 
 	_, _ = svc.Register(ctx, RegisterInput{
-		Phone:      "+254712345678",
-		Password:   "SecurePass123!",
-		Role:       types.RoleCrewUser,
-		FirstName:  "John",
-		LastName:   "Kamau",
-		NationalID: "12345678",
-		CrewRole:   models.RoleDriver,
+		Phone:     "+254712345678",
+		Password:  "SecurePass123!",
+		Role:      types.RoleEmployee,
+		FirstName: "John",
+		LastName:  "Kamau",
 	})
 
 	_, err := svc.Login(ctx, LoginInput{
@@ -206,7 +200,7 @@ func TestLoginDisabledAccount(t *testing.T) {
 	result, err := svc.Register(ctx, RegisterInput{
 		Phone:              "+254712345678",
 		Password:           "SecurePass123!",
-		Role:               types.RoleSaccoAdmin,
+		Role:               types.RoleEmployer,
 		OrganizationName:   "Test Sacco",
 		OrganizationRegNo:  "REG-002",
 		OrganizationCounty: "Nairobi",
@@ -236,7 +230,7 @@ func TestRefreshToken(t *testing.T) {
 	reg, err := svc.Register(ctx, RegisterInput{
 		Phone:              "+254712345678",
 		Password:           "SecurePass123!",
-		Role:               types.RoleSaccoAdmin,
+		Role:               types.RoleEmployer,
 		OrganizationName:   "Test Sacco",
 		OrganizationRegNo:  "REG-003",
 		OrganizationCounty: "Nairobi",

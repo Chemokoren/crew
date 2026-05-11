@@ -65,7 +65,7 @@ curl http://localhost:8080/swagger/index.html  # → Swagger UI
 | `POST` | `/api/v1/crew` | Create crew member |
 | `GET` | `/api/v1/crew` | List crew (filter: role, kyc, search) |
 | `GET` | `/api/v1/crew/:id` | Get crew member by ID |
-| `PUT` | `/api/v1/crew/:id/kyc` | Update KYC status |
+| `PUT` | `/api/v1/crew/:id/kyc` | Update KYC status (supports `reason` for unverification/rejection) |
 | `DELETE` | `/api/v1/crew/:id` | Deactivate crew member |
 
 ### Assignments (Admin/SACCO)
@@ -243,10 +243,14 @@ Endpoint: `POST /api/v1/transactions/employee-payout`
 | Role | Permissions |
 |------|-------------|
 | `SYSTEM_ADMIN` | Full access to all resources |
-| `SACCO_ADMIN` | Manage crew, vehicles, assignments within own SACCO |
-| `CREW` | View own profile, wallet, transactions |
+| `EMPLOYER` | Manage crew, vehicles, assignments within own organization |
+| `EMPLOYEE` | View own profile, wallet, transactions (KYC-gated) |
 | `LENDER` | View loan-related data |
 | `INSURER` | View insurance-related data |
+
+### KYC Enforcement
+
+Employees with unverified KYC (`PENDING` or `REJECTED`) are restricted to `/profile` and `/notifications` only. All other routes are blocked by the frontend `kycGuard` until verification is completed. Admins can unverify employees via `PUT /crew/:id/kyc` with a `reason` field — the employee receives an IN_APP notification explaining why.
 
 ---
 
@@ -278,7 +282,7 @@ go test ./internal/external/perpay/... -v  # PerPay client
 go test ./internal/external/iprs/... -v    # IPRS client
 ```
 
-**417+ tests** across **20 test packages** covering:
+**425+ tests** across **20 test packages** covering:
 - Auth flows (register, login, refresh, disabled accounts)
 - Wallet operations (credit, debit, idempotency, insufficient balance)
 - Earning calculations (FIXED, COMMISSION, HYBRID)
@@ -286,6 +290,7 @@ go test ./internal/external/iprs/... -v    # IPRS client
 - Concurrent wallet access with race detector
 - **Atomic transactions:** Employee payout validation (zero/negative/net>gross), wallet transfer validation (zero/negative/self-transfer)
 - HTTP handler responses + RBAC enforcement
+- **KYC lifecycle:** Verify, unverify (→PENDING with reason), reject (→REJECTED with reason), timestamp clearing, notification dispatch
 - JWT middleware (missing, invalid, expired tokens)
 - **SMS**: Manager fallback chain, Optimize token caching, Africa's Talking bulk
 - **JamboPay**: OAuth2 auth, M-Pesa/bank payouts, OTP verify, balance check

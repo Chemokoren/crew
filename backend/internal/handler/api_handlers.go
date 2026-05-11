@@ -2,6 +2,7 @@ package handler
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/kibsoft/amy-mis/internal/external/payment"
 	"github.com/kibsoft/amy-mis/internal/handler/dto"
 	"github.com/kibsoft/amy-mis/internal/middleware"
+	"github.com/kibsoft/amy-mis/internal/models"
 	"github.com/kibsoft/amy-mis/internal/repository"
 	"github.com/kibsoft/amy-mis/internal/service"
 	"github.com/kibsoft/amy-mis/pkg/pagination"
@@ -817,15 +819,14 @@ func sanitizeCSVCell(s string) string {
 	return string(result)
 }
 
-// --- Crew Handler ---
-
 // CrewHandler handles crew member endpoints.
 type CrewHandler struct {
-	crewSvc *service.CrewService
+	crewSvc  *service.CrewService
+	notifSvc *service.NotificationService
 }
 
-func NewCrewHandler(svc *service.CrewService) *CrewHandler {
-	return &CrewHandler{crewSvc: svc}
+func NewCrewHandler(svc *service.CrewService, notifSvc *service.NotificationService) *CrewHandler {
+	return &CrewHandler{crewSvc: svc, notifSvc: notifSvc}
 }
 
 // Create godoc
@@ -912,10 +913,34 @@ func (h *CrewHandler) UpdateKYC(c *gin.Context) {
 		CrewMemberID: id,
 		Status:       req.KYCStatus,
 		SerialNumber: req.SerialNumber,
+		Reason:       req.Reason,
 	})
 	if err != nil {
 		MapServiceError(c, err)
 		return
+	}
+
+	// Send notification when KYC is rejected or reverted from VERIFIED
+	if h.notifSvc != nil && (req.KYCStatus == models.KYCRejected || req.KYCStatus == models.KYCPending) {
+		var title, body string
+		switch req.KYCStatus {
+		case models.KYCRejected:
+			title = "KYC Verification Rejected"
+			body = "Your identity documents have been rejected."
+		case models.KYCPending:
+			title = "KYC Verification Revoked"
+			body = "Your identity verification has been revoked and reset to pending."
+		}
+		if req.Reason != "" {
+			body += " Reason: " + req.Reason
+		}
+		if _, err := h.notifSvc.SendToCrewMember(c.Request.Context(), id, models.ChannelInApp, title, body); err != nil {
+			// Log but don't fail the request — KYC update already succeeded
+			slog.Warn("failed to send KYC notification",
+				slog.String("crew_member_id", id.String()),
+				slog.String("error", err.Error()),
+			)
+		}
 	}
 
 	SuccessResponse(c, http.StatusOK, dto.CrewToResponse(crew))

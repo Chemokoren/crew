@@ -98,14 +98,12 @@ func TestAuthService_RegisterWithJobType(t *testing.T) {
 
 	jtID := uuid.New()
 	result, err := authSvc.Register(ctx, RegisterInput{
-		Phone:      "+254700100200",
-		Password:   "securepass123",
-		Role:       "CREW",
-		FirstName:  "Grace",
-		LastName:   "Akinyi",
-		NationalID: "55555555",
-		CrewRole:   models.RoleOther,
-		JobTypeID:  &jtID,
+		Phone:     "+254700100200",
+		Password:  "securepass123",
+		Role:      "EMPLOYEE",
+		FirstName: "Grace",
+		LastName:  "Akinyi",
+		JobTypeID: &jtID,
 	})
 	if err != nil {
 		t.Fatalf("Register with job type failed: %v", err)

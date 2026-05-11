@@ -12,7 +12,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/kibsoft/amy-mis/internal/handler/dto"
 	"github.com/kibsoft/amy-mis/internal/middleware"
-	"github.com/kibsoft/amy-mis/internal/models"
 	"github.com/kibsoft/amy-mis/internal/repository/mock"
 	"github.com/kibsoft/amy-mis/internal/service"
 	"github.com/kibsoft/amy-mis/pkg/jwt"
@@ -49,7 +48,7 @@ func setupTestEnv() *testEnv {
 	walletSvc := service.NewWalletService(walletRepo, crewRepo, auditSvc, logger)
 
 	authHandler := NewAuthHandler(authSvc, nil)
-	crewHandler := NewCrewHandler(crewSvc)
+	crewHandler := NewCrewHandler(crewSvc, nil)
 	walletHandler := NewWalletHandler(walletSvc, 10000)
 
 	router := gin.New()
@@ -99,13 +98,11 @@ func (e *testEnv) registerUser(t *testing.T, phone, password string, role types.
 		Password: password,
 		Role:     role,
 	}
-	if role == types.RoleCrewUser {
+	if role == types.RoleEmployee {
 		body.FirstName = "Test"
 		body.LastName = "User"
-		body.NationalID = "12345678"
-		body.CrewRole = models.RoleDriver
 	}
-	if role == types.RoleSaccoAdmin {
+	if role == types.RoleEmployer {
 		body.OrganizationName = "Test Organization"
 		body.OrganizationRegNo = "REG-TEST"
 		body.OrganizationCounty = "Nairobi"
@@ -134,7 +131,7 @@ func (e *testEnv) registerUser(t *testing.T, phone, password string, role types.
 func TestRegisterEndpoint(t *testing.T) {
 	env := setupTestEnv()
 
-	body := `{"phone":"+254712345678","password":"SecurePass123!","role":"SACCO_ADMIN","organization_name":"Test Org","organization_reg_no":"REG-T1","organization_county":"Nairobi","organization_phone":"+254712345678"}`
+	body := `{"phone":"+254712345678","password":"SecurePass123!","role":"EMPLOYER","organization_name":"Test Org","organization_reg_no":"REG-T1","organization_county":"Nairobi","organization_phone":"+254712345678"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -160,7 +157,7 @@ func TestRegisterEndpoint(t *testing.T) {
 func TestRegisterDuplicatePhone(t *testing.T) {
 	env := setupTestEnv()
 
-	body := `{"phone":"+254712345678","password":"SecurePass123!","role":"SACCO_ADMIN","organization_name":"Test Org","organization_reg_no":"REG-T2","organization_county":"Nairobi","organization_phone":"+254712345678"}`
+	body := `{"phone":"+254712345678","password":"SecurePass123!","role":"EMPLOYER","organization_name":"Test Org","organization_reg_no":"REG-T2","organization_county":"Nairobi","organization_phone":"+254712345678"}`
 
 	// First registration
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBufferString(body))
@@ -196,7 +193,7 @@ func TestRegisterMissingFields(t *testing.T) {
 
 func TestLoginEndpoint(t *testing.T) {
 	env := setupTestEnv()
-	env.registerUser(t, "+254712345678", "SecurePass123!", types.RoleSaccoAdmin)
+	env.registerUser(t, "+254712345678", "SecurePass123!", types.RoleEmployer)
 
 	body := `{"phone":"+254712345678","password":"SecurePass123!"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(body))
@@ -220,7 +217,7 @@ func TestLoginEndpoint(t *testing.T) {
 
 func TestLoginWrongPassword(t *testing.T) {
 	env := setupTestEnv()
-	env.registerUser(t, "+254712345678", "SecurePass123!", types.RoleSaccoAdmin)
+	env.registerUser(t, "+254712345678", "SecurePass123!", types.RoleEmployer)
 
 	body := `{"phone":"+254712345678","password":"WrongPassword!"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(body))
@@ -236,7 +233,7 @@ func TestLoginWrongPassword(t *testing.T) {
 
 func TestRefreshEndpoint(t *testing.T) {
 	env := setupTestEnv()
-	authResp := env.registerUser(t, "+254712345678", "SecurePass123!", types.RoleSaccoAdmin)
+	authResp := env.registerUser(t, "+254712345678", "SecurePass123!", types.RoleEmployer)
 
 	body, _ := json.Marshal(dto.RefreshRequest{RefreshToken: authResp.Tokens.RefreshToken})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", bytes.NewBuffer(body))
@@ -252,7 +249,7 @@ func TestRefreshEndpoint(t *testing.T) {
 
 func TestMeEndpoint(t *testing.T) {
 	env := setupTestEnv()
-	authResp := env.registerUser(t, "+254712345678", "SecurePass123!", types.RoleSaccoAdmin)
+	authResp := env.registerUser(t, "+254712345678", "SecurePass123!", types.RoleEmployer)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
 	req.Header.Set("Authorization", "Bearer "+authResp.Tokens.AccessToken)
@@ -304,8 +301,8 @@ func TestMeWithInvalidToken(t *testing.T) {
 func TestCrewEndpointRequiresAdminRole(t *testing.T) {
 	env := setupTestEnv()
 
-	// Register as CREW user (should NOT have access to /crew endpoints)
-	crewAuth := env.registerUser(t, "+254700000001", "SecurePass123!", types.RoleCrewUser)
+	// Register as EMPLOYEE user (should NOT have access to /crew endpoints)
+	crewAuth := env.registerUser(t, "+254700000001", "SecurePass123!", types.RoleEmployee)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/crew", nil)
 	req.Header.Set("Authorization", "Bearer "+crewAuth.Tokens.AccessToken)
@@ -314,14 +311,14 @@ func TestCrewEndpointRequiresAdminRole(t *testing.T) {
 	env.router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusForbidden {
-		t.Errorf("CREW user accessing /crew: status = %d, want 403", w.Code)
+		t.Errorf("EMPLOYEE user accessing /crew: status = %d, want 403", w.Code)
 	}
 }
 
 func TestCrewEndpointAllowsSaccoAdmin(t *testing.T) {
 	env := setupTestEnv()
 
-	adminAuth := env.registerUser(t, "+254700000002", "SecurePass123!", types.RoleSaccoAdmin)
+	adminAuth := env.registerUser(t, "+254700000002", "SecurePass123!", types.RoleEmployer)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/crew", nil)
 	req.Header.Set("Authorization", "Bearer "+adminAuth.Tokens.AccessToken)
@@ -330,7 +327,7 @@ func TestCrewEndpointAllowsSaccoAdmin(t *testing.T) {
 	env.router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("SACCO_ADMIN accessing /crew: status = %d, want 200; body = %s", w.Code, w.Body.String())
+		t.Errorf("EMPLOYER accessing /crew: status = %d, want 200; body = %s", w.Code, w.Body.String())
 	}
 }
 
@@ -338,7 +335,7 @@ func TestCrewEndpointAllowsSaccoAdmin(t *testing.T) {
 
 func TestCreateCrewMember(t *testing.T) {
 	env := setupTestEnv()
-	adminAuth := env.registerUser(t, "+254700000002", "SecurePass123!", types.RoleSaccoAdmin)
+	adminAuth := env.registerUser(t, "+254700000002", "SecurePass123!", types.RoleEmployer)
 
 	body := `{"national_id":"87654321","first_name":"Jane","last_name":"Wanjiku","role":"CONDUCTOR"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/crew", bytes.NewBufferString(body))

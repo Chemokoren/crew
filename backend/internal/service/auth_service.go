@@ -69,14 +69,12 @@ type RegisterInput struct {
 	Password string           `json:"password" validate:"required,min=8"`
 	Role     types.SystemRole `json:"role" validate:"required"`
 
-	// Optional: create a crew profile at the same time
-	FirstName  string          `json:"first_name" validate:"required_if=Role CREW"`
-	LastName   string          `json:"last_name" validate:"required_if=Role CREW"`
-	NationalID string          `json:"national_id" validate:"required_if=Role CREW"`
-	CrewRole   models.CrewRole `json:"crew_role" validate:"required_if=Role CREW,omitempty,oneof=DRIVER CONDUCTOR RIDER OTHER"`
-	JobTypeID  *uuid.UUID      `json:"job_type_id,omitempty"` // Tenant-specific job type (optional, overrides CrewRole display)
+	// Employee profile fields (optional at registration — role/NationalID set via profile/KYC)
+	FirstName string     `json:"first_name"`
+	LastName  string     `json:"last_name"`
+	JobTypeID *uuid.UUID `json:"job_type_id,omitempty"`
 
-	// Organization fields (required when role == SACCO_ADMIN)
+	// Organization fields (required when role == EMPLOYER)
 	OrganizationName   string              `json:"organization_name"`
 	OrganizationRegNo  string              `json:"organization_reg_no"`
 	OrganizationCounty string              `json:"organization_county"`
@@ -100,10 +98,10 @@ func (s *AuthService) Register(ctx context.Context, input RegisterInput) (*Regis
 		return nil, fmt.Errorf("%w: invalid system role %q", ErrValidation, input.Role)
 	}
 
-	// 1b. Validate organization fields for SACCO_ADMIN
-	if input.Role == types.RoleSaccoAdmin {
+	// 1b. Validate organization fields for EMPLOYER
+	if input.Role == types.RoleEmployer {
 		if input.OrganizationName == "" {
-			return nil, fmt.Errorf("%w: organization name is required for Organization Admin", ErrValidation)
+			return nil, fmt.Errorf("%w: organization name is required for Employer", ErrValidation)
 		}
 		if input.OrganizationRegNo == "" {
 			return nil, fmt.Errorf("%w: organization registration number is required", ErrValidation)
@@ -152,8 +150,8 @@ func (s *AuthService) Register(ctx context.Context, input RegisterInput) (*Regis
 	// 5. Execute crew/org + user creation inside a single transaction.
 	// If txMgr is nil (e.g., in tests with mock repos), run without transaction.
 	createFn := func(txCtx context.Context) error {
-		// If SACCO_ADMIN, create the Organization first
-		if input.Role == types.RoleSaccoAdmin && s.orgRepo != nil {
+		// If EMPLOYER, create the Organization first
+		if input.Role == types.RoleEmployer && s.orgRepo != nil {
 			tmpl := models.GetIndustryTemplate(input.IndustryType)
 			org = &models.Organization{
 				Name:               input.OrganizationName,
@@ -179,22 +177,23 @@ func (s *AuthService) Register(ctx context.Context, input RegisterInput) (*Regis
 			user.OrganizationID = &org.ID
 		}
 
-		// If CREW role, create crew member profile
-		if input.Role == types.RoleCrewUser {
+		// If EMPLOYEE role, create crew member profile
+		// CrewRole defaults to OTHER — user sets their actual role on their profile
+		// NationalID is collected later during the KYC/verification flow
+		if input.Role == types.RoleEmployee {
 			crewID, err := s.crewRepo.NextCrewID(txCtx)
 			if err != nil {
 				return fmt.Errorf("generate crew id: %w", err)
 			}
 
 			crewMember = &models.CrewMember{
-				CrewID:     crewID,
-				NationalID: input.NationalID,
-				FirstName:  input.FirstName,
-				LastName:   input.LastName,
-				Role:       input.CrewRole,
-				JobTypeID:  input.JobTypeID,
-				KYCStatus:  models.KYCPending,
-				IsActive:   true,
+				CrewID:    crewID,
+				FirstName: input.FirstName,
+				LastName:  input.LastName,
+				Role:      models.RoleOther,
+				JobTypeID: input.JobTypeID,
+				KYCStatus: models.KYCPending,
+				IsActive:  true,
 			}
 
 			if err := s.crewRepo.Create(txCtx, crewMember); err != nil {
@@ -412,6 +411,134 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID uuid.UUID, oldP
 	}
 	s.logger.Info("password changed", slog.String("user_id", userID.String()))
 	return nil
+}
+
+// GetEnrichedProfile returns the user plus their crew member profile, KYC restrictions, and verification mode.
+func (s *AuthService) GetEnrichedProfile(ctx context.Context, userID uuid.UUID) (*models.User, *models.CrewMember, []string, string, error) {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, nil, nil, "", err
+	}
+
+	var crew *models.CrewMember
+	if user.CrewMemberID != nil {
+		crew, _ = s.crewRepo.GetByID(ctx, *user.CrewMemberID)
+	}
+
+	// Resolve KYC restrictions and verification mode from tenant config
+	var restrictions []string
+	kycMode := models.KYCModeUpload // default
+	if crew != nil && user.OrganizationID != nil && s.orgRepo != nil {
+		org, err := s.orgRepo.GetByID(ctx, *user.OrganizationID)
+		if err == nil {
+			cfg, err := org.GetTenantConfig()
+			if err == nil {
+				kycMode = cfg.ResolvedKYCMode()
+				if cfg.KYCRequired && crew.KYCStatus != models.KYCVerified {
+					restrictions = cfg.KYCRestrictedActions
+					if len(restrictions) == 0 {
+						restrictions = models.DefaultKYCRestrictedActions()
+					}
+				}
+			}
+		}
+	}
+
+	return user, crew, restrictions, kycMode, nil
+}
+
+// UpdateProfileInput holds the fields a user can update on their own profile.
+type UpdateProfileInput struct {
+	UserID    uuid.UUID
+	Role      *models.CrewRole
+	JobTitle  *string
+	FirstName *string
+	LastName  *string
+}
+
+// UpdateProfile updates the current user's crew member profile (job/specialization).
+func (s *AuthService) UpdateProfile(ctx context.Context, input UpdateProfileInput) (*models.CrewMember, error) {
+	user, err := s.userRepo.GetByID(ctx, input.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	if user.CrewMemberID == nil {
+		return nil, fmt.Errorf("%w: no crew profile linked to this account", ErrValidation)
+	}
+
+	crew, err := s.crewRepo.GetByID(ctx, *user.CrewMemberID)
+	if err != nil {
+		return nil, fmt.Errorf("load crew profile: %w", err)
+	}
+
+	// Apply partial updates
+	if input.Role != nil {
+		crew.Role = *input.Role
+	}
+	if input.JobTitle != nil {
+		crew.JobTitle = *input.JobTitle
+	}
+	if input.FirstName != nil {
+		crew.FirstName = *input.FirstName
+	}
+	if input.LastName != nil {
+		crew.LastName = *input.LastName
+	}
+
+	if err := s.crewRepo.Update(ctx, crew); err != nil {
+		return nil, fmt.Errorf("update profile: %w", err)
+	}
+
+	s.logger.Info("profile updated",
+		slog.String("user_id", input.UserID.String()),
+		slog.String("crew_id", crew.CrewID),
+	)
+
+	return crew, nil
+}
+
+// InitiateKYCInput holds the data for a user-initiated KYC verification.
+type InitiateKYCInput struct {
+	UserID       uuid.UUID
+	NationalID   string
+	SerialNumber string
+}
+
+// InitiateKYC lets a user submit their National ID for IPRS verification.
+// This updates the crew member's national ID and triggers verification.
+func (s *AuthService) InitiateKYC(ctx context.Context, input InitiateKYCInput) (*models.CrewMember, error) {
+	user, err := s.userRepo.GetByID(ctx, input.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	if user.CrewMemberID == nil {
+		return nil, fmt.Errorf("%w: no crew profile linked to this account", ErrValidation)
+	}
+
+	crew, err := s.crewRepo.GetByID(ctx, *user.CrewMemberID)
+	if err != nil {
+		return nil, fmt.Errorf("load crew profile: %w", err)
+	}
+
+	// Store the national ID on the crew member record
+	crew.NationalID = input.NationalID
+
+	// Mark as pending while verification runs
+	crew.KYCStatus = models.KYCPending
+	crew.KYCVerifiedAt = nil
+
+	if err := s.crewRepo.Update(ctx, crew); err != nil {
+		return nil, fmt.Errorf("save national id: %w", err)
+	}
+
+	s.logger.Info("KYC initiated",
+		slog.String("user_id", input.UserID.String()),
+		slog.String("crew_id", crew.CrewID),
+	)
+
+	return crew, nil
 }
 
 // SystemStats holds system-wide statistics.

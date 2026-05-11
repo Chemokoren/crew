@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, OnInit, signal, computed, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/services/api.service';
@@ -8,6 +8,7 @@ import { ConfirmDialogService } from '../../shared/components/confirm-dialog/con
 import { Organization, TenantJobType, PaySchedule, IndustryType, PayFrequency, JobTypeCategory, BootstrapResult } from '../../core/models';
 import { getIndustryTemplate, INDUSTRY_TEMPLATES, INDUSTRY_ICONS } from '../../core/config/industry-templates';
 import { OrgContextService } from '../../core/services/org-context.service';
+import { AutocompleteComponent, AutocompleteOption } from '../../shared/components/autocomplete/autocomplete.component';
 
 const INDUSTRIES: { value: IndustryType; label: string; icon: string; desc: string }[] = [
   { value: 'TRANSPORT', label: 'Transport', icon: 'directions_bus', desc: 'SACCOs, matatus, boda-bodas — fleet management with routes, vehicles, and daily shifts' },
@@ -37,7 +38,7 @@ const JOB_CATEGORIES: { value: JobTypeCategory; label: string; desc: string }[] 
 @Component({
   selector: 'app-tenant-settings',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, AutocompleteComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="animate-fade-in">
@@ -47,6 +48,31 @@ const JOB_CATEGORIES: { value: JobTypeCategory; label: string; desc: string }[] 
           <p class="page-subtitle">Configure industry, job types, and pay schedules for your organization</p>
         </div>
       </div>
+
+      <!-- System Admin: Tenant Selector -->
+      @if (isSystemAdmin()) {
+        <div class="tenant-selector">
+          <div class="tenant-selector-label">
+            <span class="material-icons-round" style="font-size:18px;color:var(--color-accent);">business</span>
+            <span>Select Organization</span>
+          </div>
+          <div class="tenant-selector-input">
+            <app-autocomplete
+              [ngModel]="saccoId"
+              (ngModelChange)="onTenantSelected($event)"
+              [options]="orgOptions()"
+              placeholder="Search organizations by name..."
+              inputId="tenant-search"
+            ></app-autocomplete>
+          </div>
+          @if (sacco()) {
+            <div class="tenant-selector-badge">
+              <span class="material-icons-round" style="font-size:14px;">check_circle</span>
+              {{ sacco()!.name }}
+            </div>
+          }
+        </div>
+      }
 
       @if (loading()) {
         <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));">
@@ -70,6 +96,9 @@ const JOB_CATEGORIES: { value: JobTypeCategory; label: string; desc: string }[] 
           </button>
           <button class="tab-item" [class.active]="activeTab === 'schedules'" (click)="activeTab='schedules'">
             <span class="material-icons-round" style="font-size:16px;">schedule</span> Pay Schedules
+          </button>
+          <button class="tab-item" [class.active]="activeTab === 'kyc'" (click)="activeTab='kyc'">
+            <span class="material-icons-round" style="font-size:16px;">verified_user</span> KYC Policy
           </button>
         </div>
 
@@ -267,6 +296,72 @@ const JOB_CATEGORIES: { value: JobTypeCategory; label: string; desc: string }[] 
           </div>
         }
 
+        <!-- KYC Policy Tab -->
+        @if (activeTab === 'kyc') {
+          <div class="glass-card ts-section">
+            <h3 class="ts-section-title">KYC Verification Policy</h3>
+            <p class="ts-section-desc">Control identity verification requirements for your employees. When KYC is required, unverified employees will be restricted from performing the actions you select below.</p>
+
+            <div class="kyc-policy-grid">
+              <!-- KYC Required Toggle -->
+              <div class="kyc-policy-card">
+                <div class="kyc-policy-header">
+                  <div>
+                    <div class="kyc-policy-title">Require KYC Verification</div>
+                    <div class="kyc-policy-desc">When enabled, employees must verify their identity before accessing restricted features.</div>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" [(ngModel)]="kycForm.kyc_required" (ngModelChange)="saveKYCConfig()" id="kyc-required-toggle" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Verification Mode -->
+              <div class="kyc-policy-card">
+                <div class="kyc-policy-title">Verification Method</div>
+                <div class="kyc-policy-desc" style="margin-bottom:var(--space-sm);">How employees prove their identity.</div>
+                <div class="kyc-mode-options">
+                  <label class="kyc-mode-option" [class.selected]="kycForm.kyc_verification_mode === 'UPLOAD'">
+                    <input type="radio" name="kycMode" value="UPLOAD" [(ngModel)]="kycForm.kyc_verification_mode" (ngModelChange)="saveKYCConfig()" />
+                    <span class="material-icons-round" style="font-size:20px;">cloud_upload</span>
+                    <div>
+                      <strong>Upload ID Photos</strong>
+                      <span>Employee uploads front &amp; back of their National ID</span>
+                    </div>
+                  </label>
+                  <label class="kyc-mode-option" [class.selected]="kycForm.kyc_verification_mode === 'MANUAL'">
+                    <input type="radio" name="kycMode" value="MANUAL" [(ngModel)]="kycForm.kyc_verification_mode" (ngModelChange)="saveKYCConfig()" />
+                    <span class="material-icons-round" style="font-size:20px;">edit_note</span>
+                    <div>
+                      <strong>Enter ID Details</strong>
+                      <span>Employee enters ID number &amp; serial for IPRS lookup</span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Restricted Actions -->
+              <div class="kyc-policy-card" style="grid-column: 1 / -1;">
+                <div class="kyc-policy-title">Restricted Actions</div>
+                <div class="kyc-policy-desc" style="margin-bottom:var(--space-md);">Select which features are blocked for unverified employees. By default, all employee features are restricted until KYC is verified.</div>
+                <div class="kyc-actions-grid">
+                  @for (action of allRestrictableActions; track action.code) {
+                    <label class="kyc-action-item" [class.checked]="isActionRestricted(action.code)">
+                      <input type="checkbox" [checked]="isActionRestricted(action.code)" (change)="toggleAction(action.code)" />
+                      <span class="material-icons-round kyc-action-icon">{{ action.icon }}</span>
+                      <div class="kyc-action-info">
+                        <span class="kyc-action-name">{{ action.label }}</span>
+                        <span class="kyc-action-desc">{{ action.desc }}</span>
+                      </div>
+                    </label>
+                  }
+                </div>
+              </div>
+            </div>
+          </div>
+        }
+
         <!-- Job Type Modal -->
         @if (showModal() === 'job') {
           <div class="modal-backdrop" (click)="closeModal()"><div class="modal-content" (click)="$event.stopPropagation()">
@@ -317,6 +412,25 @@ const JOB_CATEGORIES: { value: JobTypeCategory; label: string; desc: string }[] 
     .ts-section-title { font-size: 1rem; font-weight: 700; margin-bottom: 4px; }
     .ts-section-desc { font-size: 0.8rem; color: var(--color-text-muted); margin-bottom: var(--space-md); }
     .ts-section-header { display: flex; justify-content: space-between; align-items: flex-start; }
+
+    /* Tenant Selector */
+    .tenant-selector {
+      display: flex; align-items: center; gap: var(--space-md); flex-wrap: wrap;
+      padding: var(--space-md) var(--space-lg);
+      background: rgba(99,102,241,0.04); border: 1px solid rgba(99,102,241,0.15);
+      border-radius: var(--radius-lg); margin-bottom: var(--space-lg);
+    }
+    .tenant-selector-label {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 0.85rem; font-weight: 600; color: var(--color-text-primary); white-space: nowrap;
+    }
+    .tenant-selector-input { flex: 1; min-width: 280px; max-width: 480px; position: relative; z-index: 20; }
+    .tenant-selector-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 4px 12px; border-radius: var(--radius-pill);
+      background: rgba(34,197,94,0.1); color: #22c55e;
+      font-size: 0.78rem; font-weight: 600;
+    }
 
     .ts-industry-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--space-md); }
     .ts-industry-card {
@@ -408,6 +522,58 @@ const JOB_CATEGORIES: { value: JobTypeCategory; label: string; desc: string }[] 
       font-size: 0.82rem;
     }
     .ts-bootstrap-result div { font-size: 0.78rem; color: var(--color-text-secondary); }
+
+    /* KYC Policy */
+    .kyc-policy-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-md); }
+    @media (max-width: 768px) { .kyc-policy-grid { grid-template-columns: 1fr; } }
+    .kyc-policy-card {
+      border: 1px solid var(--color-border); border-radius: var(--radius-md);
+      padding: var(--space-lg); background: rgba(255,255,255,0.02);
+    }
+    .kyc-policy-header { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-md); }
+    .kyc-policy-title { font-size: 0.9rem; font-weight: 700; color: var(--color-text-primary); margin-bottom: 4px; }
+    .kyc-policy-desc { font-size: 0.78rem; color: var(--color-text-muted); line-height: 1.4; }
+    /* Toggle Switch */
+    .toggle-switch { position: relative; display: inline-block; width: 48px; height: 26px; flex-shrink: 0; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute; cursor: pointer; inset: 0;
+      background: var(--color-border); border-radius: 26px; transition: all 0.25s;
+    }
+    .toggle-slider::before {
+      content: ''; position: absolute; width: 20px; height: 20px;
+      left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: transform 0.25s;
+    }
+    .toggle-switch input:checked + .toggle-slider { background: var(--color-accent, #6366f1); }
+    .toggle-switch input:checked + .toggle-slider::before { transform: translateX(22px); }
+    /* Mode Options */
+    .kyc-mode-options { display: flex; flex-direction: column; gap: var(--space-sm); }
+    .kyc-mode-option {
+      display: flex; align-items: flex-start; gap: var(--space-sm); padding: var(--space-sm) var(--space-md);
+      border: 1px solid var(--color-border); border-radius: var(--radius-sm); cursor: pointer;
+      transition: all 0.2s;
+    }
+    .kyc-mode-option input { display: none; }
+    .kyc-mode-option:hover { border-color: var(--color-accent); }
+    .kyc-mode-option.selected { border-color: var(--color-accent); background: rgba(99,102,241,0.06); }
+    .kyc-mode-option div { display: flex; flex-direction: column; }
+    .kyc-mode-option strong { font-size: 0.82rem; }
+    .kyc-mode-option span { font-size: 0.72rem; color: var(--color-text-muted); }
+    /* Actions Grid */
+    .kyc-actions-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--space-sm); }
+    .kyc-action-item {
+      display: flex; align-items: center; gap: var(--space-sm); padding: 10px var(--space-md);
+      border: 1px solid var(--color-border); border-radius: var(--radius-sm); cursor: pointer;
+      transition: all 0.2s; background: rgba(255,255,255,0.01);
+    }
+    .kyc-action-item:hover { border-color: var(--color-accent); }
+    .kyc-action-item.checked { border-color: rgba(239,68,68,0.4); background: rgba(239,68,68,0.04); }
+    .kyc-action-item input { accent-color: var(--color-danger, #ef4444); width: 16px; height: 16px; flex-shrink: 0; }
+    .kyc-action-icon { font-size: 20px; color: var(--color-text-muted); flex-shrink: 0; }
+    .kyc-action-item.checked .kyc-action-icon { color: var(--color-danger, #ef4444); }
+    .kyc-action-info { display: flex; flex-direction: column; }
+    .kyc-action-name { font-size: 0.82rem; font-weight: 600; color: var(--color-text-primary); }
+    .kyc-action-desc { font-size: 0.68rem; color: var(--color-text-muted); }
   `]
 })
 export class TenantSettingsComponent implements OnInit {
@@ -424,6 +590,18 @@ export class TenantSettingsComponent implements OnInit {
   showModal = signal<string | null>(null);
   submitting = signal(false);
 
+  /** All organizations for the admin autocomplete selector */
+  allOrgs = signal<Organization[]>([]);
+  orgOptions = computed<AutocompleteOption[]>(() => {
+    return this.allOrgs().map(o => ({
+      value: o.id,
+      label: o.name,
+      sublabel: o.industry_type ? `${o.industry_type} · ${o.county || ''}` : o.county || '',
+      badge: o.is_active ? 'Active' : 'Inactive',
+      searchText: `${o.name} ${o.registration_number || ''} ${o.county || ''} ${o.industry_type || ''}`,
+    }));
+  });
+
   activeTab = 'industry';
   saccoId = '';
   editingJobId = '';
@@ -436,15 +614,37 @@ export class TenantSettingsComponent implements OnInit {
   jobForm = { code: '', display_name: '', category: 'PRIMARY' as JobTypeCategory };
   schedForm = { name: '', frequency: 'DAILY' as PayFrequency, pay_day: 0, cutoff_hour: 17, is_default: false };
 
+  // --- KYC Policy ---
+  kycForm = {
+    kyc_required: true,
+    kyc_verification_mode: 'UPLOAD' as 'UPLOAD' | 'MANUAL',
+    kyc_restricted_actions: [] as string[],
+  };
+  savingKYC = signal(false);
+
+  readonly allRestrictableActions: { code: string; label: string; icon: string; desc: string }[] = [
+    { code: 'WALLET_WITHDRAW', label: 'Wallet Withdrawal', icon: 'account_balance_wallet', desc: 'Withdraw funds from wallet' },
+    { code: 'WALLET_TRANSFER', label: 'Wallet Transfer', icon: 'swap_horiz', desc: 'Transfer funds between wallets' },
+    { code: 'BILL_PAY', label: 'Bill Payment', icon: 'receipt_long', desc: 'Pay bills from wallet' },
+    { code: 'LOAN_APPLY', label: 'Loan Application', icon: 'request_quote', desc: 'Apply for micro-loans' },
+    { code: 'PAYOUT', label: 'Payout', icon: 'payments', desc: 'Receive salary/wage payouts' },
+    { code: 'INSURANCE_ENROLL', label: 'Insurance Enrollment', icon: 'health_and_safety', desc: 'Enroll in insurance policies' },
+    { code: 'ASSIGNMENT_ACCEPT', label: 'Accept Assignments', icon: 'assignment_turned_in', desc: 'Accept work assignments' },
+    { code: 'PROFILE_EDIT', label: 'Edit Profile', icon: 'edit', desc: 'Edit profile information' },
+    { code: 'DOCUMENT_UPLOAD', label: 'Upload Documents', icon: 'upload_file', desc: 'Upload documents beyond KYC' },
+    { code: 'CREDIT_SCORE_VIEW', label: 'View Credit Score', icon: 'analytics', desc: 'Access credit score details' },
+  ];
+
   ngOnInit(): void {
     const user = this.auth.currentUser();
     this.saccoId = user?.organization_id || '';
     if (this.saccoId) {
       this.loadAll();
     } else if (this.auth.isAdmin()) {
-      // System admin — load first sacco or show selector
-      this.api.getOrganizations({ per_page: '1' }).subscribe({
+      // System admin — load all orgs for the selector
+      this.api.getOrganizations({ per_page: '200' }).subscribe({
         next: r => {
+          this.allOrgs.set(r.data);
           if (r.data.length > 0) {
             this.saccoId = r.data[0].id;
             this.loadAll();
@@ -455,15 +655,50 @@ export class TenantSettingsComponent implements OnInit {
         error: () => this.loading.set(false),
       });
     } else {
-      // SACCO_ADMIN without org — show empty state
+      // EMPLOYER without org — show empty state
       this.loading.set(false);
     }
+  }
+
+  isSystemAdmin(): boolean {
+    return this.auth.isAdmin();
+  }
+
+  /** Called when the admin selects a different org from the autocomplete */
+  onTenantSelected(orgId: string): void {
+    if (!orgId || orgId === this.saccoId) return;
+    this.saccoId = orgId;
+    this.sacco.set(null);
+    this.jobTypes.set([]);
+    this.paySchedules.set([]);
+    this.bootstrapPreview.set(null);
+    this.bootstrapResult.set(null);
+    this.loadAll();
   }
 
   loadAll(): void {
     this.loading.set(true);
     this.api.getOrganization(this.saccoId).subscribe({
-      next: r => { this.sacco.set(r.data); this.loading.set(false); },
+      next: r => {
+        this.sacco.set(r.data);
+        this.loading.set(false);
+        // Hydrate KYC form from tenant config
+        const cfg = r.data.tenant_config;
+        if (cfg) {
+          this.kycForm.kyc_required = (cfg as any).kyc_required ?? true;
+          this.kycForm.kyc_verification_mode = (cfg as any).kyc_verification_mode || 'UPLOAD';
+          const actions = (cfg as any).kyc_restricted_actions as string[] | undefined;
+          // Default: all actions restricted
+          this.kycForm.kyc_restricted_actions = actions && actions.length > 0
+            ? [...actions]
+            : this.allRestrictableActions.map(a => a.code);
+        } else {
+          // No config yet — default everything to restricted
+          this.kycForm.kyc_required = true;
+          this.kycForm.kyc_verification_mode = 'UPLOAD';
+          this.kycForm.kyc_restricted_actions = this.allRestrictableActions.map(a => a.code);
+        }
+      },
       error: () => this.loading.set(false),
     });
     this.api.getJobTypes(this.saccoId).subscribe({
@@ -471,6 +706,39 @@ export class TenantSettingsComponent implements OnInit {
     });
     this.api.getPaySchedules(this.saccoId).subscribe({
       next: r => this.paySchedules.set(r.data || []),
+    });
+  }
+
+  // --- KYC Policy Methods ---
+  isActionRestricted(code: string): boolean {
+    return this.kycForm.kyc_restricted_actions.includes(code);
+  }
+
+  toggleAction(code: string): void {
+    const idx = this.kycForm.kyc_restricted_actions.indexOf(code);
+    if (idx >= 0) {
+      this.kycForm.kyc_restricted_actions.splice(idx, 1);
+    } else {
+      this.kycForm.kyc_restricted_actions.push(code);
+    }
+    this.saveKYCConfig();
+  }
+
+  saveKYCConfig(): void {
+    this.savingKYC.set(true);
+    this.api.updateTenantConfig(this.saccoId, {
+      tenant_config: {
+        kyc_required: this.kycForm.kyc_required,
+        kyc_verification_mode: this.kycForm.kyc_verification_mode,
+        kyc_restricted_actions: this.kycForm.kyc_restricted_actions,
+      },
+    }).subscribe({
+      next: r => {
+        this.sacco.set(r.data);
+        this.savingKYC.set(false);
+        this.toast.success('KYC policy updated');
+      },
+      error: () => this.savingKYC.set(false),
     });
   }
 

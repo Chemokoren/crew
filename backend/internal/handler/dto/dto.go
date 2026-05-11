@@ -14,16 +14,13 @@ import (
 // --- Auth DTOs ---
 
 type RegisterRequest struct {
-	Phone      string           `json:"phone" binding:"required"`
-	Email      string           `json:"email" binding:"omitempty,email"`
-	Password   string           `json:"password" binding:"required,min=8"`
-	Role       types.SystemRole `json:"role" binding:"required"`
-	FirstName  string           `json:"first_name"`
-	LastName   string           `json:"last_name"`
-	NationalID string           `json:"national_id"`
-	CrewRole   models.CrewRole  `json:"crew_role"`
-	JobTypeID  *uuid.UUID       `json:"job_type_id,omitempty"`
-	// Organization fields (required when role == SACCO_ADMIN)
+	Phone    string           `json:"phone" binding:"required"`
+	Email    string           `json:"email" binding:"omitempty,email"`
+	Password string           `json:"password" binding:"required,min=8"`
+	Role     types.SystemRole `json:"role" binding:"required"`
+	FirstName string          `json:"first_name"`
+	LastName  string          `json:"last_name"`
+	// Organization fields (required when role == EMPLOYER)
 	OrganizationName  string              `json:"organization_name"`
 	OrganizationRegNo string              `json:"organization_reg_no"`
 	OrganizationCounty string             `json:"organization_county"`
@@ -76,6 +73,44 @@ func UserToResponse(u *models.User) UserResponse {
 		LastLoginAt:  u.LastLoginAt,
 		CreatedAt:    u.CreatedAt,
 	}
+}
+
+// --- Enriched Profile (GET /auth/me) ---
+
+// CrewProfileDTO carries crew member info for the profile page.
+type CrewProfileDTO struct {
+	ID            uuid.UUID        `json:"id"`
+	CrewID        string           `json:"crew_id"`
+	FirstName     string           `json:"first_name"`
+	LastName      string           `json:"last_name"`
+	FullName      string           `json:"full_name"`
+	Role          models.CrewRole  `json:"role"`
+	JobTypeID     *uuid.UUID       `json:"job_type_id,omitempty"`
+	JobTitle      string           `json:"job_title,omitempty"`
+	KYCStatus     models.KYCStatus `json:"kyc_status"`
+	KYCVerifiedAt *time.Time       `json:"kyc_verified_at,omitempty"`
+}
+
+// EnrichedProfileResponse extends the /me response with crew and KYC data.
+type EnrichedProfileResponse struct {
+	UserResponse
+	CrewProfile         *CrewProfileDTO `json:"crew_profile,omitempty"`
+	KYCRestrictions     []string        `json:"kyc_restrictions,omitempty"`     // Actions blocked until KYC verified
+	KYCVerificationMode string          `json:"kyc_verification_mode,omitempty"` // "UPLOAD" (default) or "MANUAL"
+}
+
+// UpdateProfileRequest allows a user to update their job/specialization.
+type UpdateProfileRequest struct {
+	Role      *models.CrewRole `json:"role,omitempty"`
+	JobTitle  *string          `json:"job_title,omitempty"`
+	FirstName *string          `json:"first_name,omitempty"`
+	LastName  *string          `json:"last_name,omitempty"`
+}
+
+// InitiateKYCRequest starts a KYC verification by providing national ID + serial number.
+type InitiateKYCRequest struct {
+	NationalID   string `json:"national_id" binding:"required"`
+	SerialNumber string `json:"serial_number" binding:"required"`
 }
 
 // --- Crew Member DTOs ---
@@ -142,6 +177,7 @@ type CreateCrewRequest struct {
 type UpdateKYCRequest struct {
 	KYCStatus    models.KYCStatus `json:"kyc_status" binding:"required,oneof=PENDING VERIFIED REJECTED"`
 	SerialNumber string           `json:"serial_number,omitempty"` // Required for IPRS verification when status is VERIFIED
+	Reason       string           `json:"reason,omitempty"`        // Reason for status change (e.g. why unverified)
 }
 
 // --- SACCO DTOs ---

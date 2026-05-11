@@ -414,7 +414,8 @@ func main() {
 	// --- 13. Initialize handlers ---
 	healthHandler := handler.NewHealthHandler(db, redisClient)
 	authHandler := handler.NewAuthHandler(authSvc, otpSvc)
-	crewHandler := handler.NewCrewHandler(crewSvc)
+	authHandler.WithDocUpload(docSvc, fileStorage)
+	crewHandler := handler.NewCrewHandler(crewSvc, notifSvc)
 	walletHandler := handler.NewWalletHandler(walletSvc, cfg.CSVExportMaxRows)
 	assignmentHandler := handler.NewAssignmentHandler(assignmentSvc)
 	vehicleHandler := handler.NewVehicleHandler(vehicleSvc)
@@ -630,6 +631,9 @@ func main() {
 	{
 		// Current user
 		secured.GET("/auth/me", authHandler.Me)
+		secured.PUT("/auth/profile", authHandler.UpdateProfile)
+		secured.POST("/auth/kyc/initiate", authHandler.InitiateKYC)
+		secured.POST("/auth/kyc/upload", authHandler.UploadKYC)
 		secured.POST("/auth/change-password", adminHandler.ChangePassword) // Password change (requires auth)
 
 		// Crew members (SACCO admins & system admins)

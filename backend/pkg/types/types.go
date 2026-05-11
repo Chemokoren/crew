@@ -8,18 +8,24 @@ type SystemRole string
 
 const (
 	RoleSystemAdmin SystemRole = "SYSTEM_ADMIN"
-	RoleSaccoAdmin  SystemRole = "SACCO_ADMIN"
-	RoleCrewUser    SystemRole = "CREW"
+	RoleEmployer    SystemRole = "EMPLOYER"
+	RoleEmployee    SystemRole = "EMPLOYEE"
 	RoleLender      SystemRole = "LENDER"
 	RoleInsurer     SystemRole = "INSURER"
+)
+
+// Backward compatibility aliases — use new names in new code.
+var (
+	RoleSaccoAdmin = RoleEmployer
+	RoleCrewUser   = RoleEmployee
 )
 
 // ValidRoles returns all valid system roles.
 func ValidRoles() []SystemRole {
 	return []SystemRole{
 		RoleSystemAdmin,
-		RoleSaccoAdmin,
-		RoleCrewUser,
+		RoleEmployer,
+		RoleEmployee,
 		RoleLender,
 		RoleInsurer,
 	}

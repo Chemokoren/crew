@@ -1,6 +1,6 @@
 import { Component, inject, signal, model, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterLink, RouterLinkActive } from '@angular/router';
+import { RouterLink, RouterLinkActive, Router } from '@angular/router';
 import { AuthService } from '../../../core/services/auth.service';
 import { OrgContextService } from '../../../core/services/org-context.service';
 import { NotificationStateService } from '../../../core/services/notification-state.service';
@@ -14,6 +14,9 @@ interface NavItem {
   /** Feature key for industry-based visibility filtering. */
   feature?: string;
 }
+
+/** Routes exempt from KYC blocking */
+const KYC_EXEMPT_ROUTES = ['/profile', '/notifications'];
 
 @Component({
   selector: 'app-sidebar',
@@ -38,6 +41,17 @@ interface NavItem {
         </button>
       </div>
 
+      <!-- KYC blocked banner -->
+      @if (auth.isKycBlocked() && !collapsed()) {
+        <div class="kyc-banner" (click)="navigateTo('/profile')">
+          <span class="material-icons-round kyc-banner-icon">gpp_bad</span>
+          <div class="kyc-banner-text">
+            <strong>KYC Not Verified</strong>
+            <span>Complete verification to unlock all features</span>
+          </div>
+        </div>
+      }
+
       <nav class="sidebar-nav">
         @for (item of filteredNavItems(); track item.route; let i = $index) {
           @if (item.section && (i === 0 || filteredNavItems()[i - 1]?.section !== item.section)) {
@@ -47,17 +61,27 @@ interface NavItem {
               <div class="nav-divider"></div>
             }
           }
-          <a class="nav-item" [routerLink]="item.route" routerLinkActive="active"
-             [attr.id]="'nav-' + item.label.toLowerCase().replace(' ', '-')"
-             (click)="onNavClick()">
-            <span class="material-icons-round nav-icon">{{ item.icon }}</span>
-            @if (!collapsed()) {
-              <span class="nav-label">{{ item.label }}</span>
-              @if (item.label === 'Notifications' && notifState.unreadCount() > 0) {
-                <span class="nav-badge">{{ notifState.unreadCount() > 99 ? '99+' : notifState.unreadCount() }}</span>
+          @if (isItemLocked(item.route)) {
+            <div class="nav-item nav-item-locked" (click)="onLockedClick()" [attr.id]="'nav-' + item.label.toLowerCase().replace(' ', '-')">
+              <span class="material-icons-round nav-icon">{{ item.icon }}</span>
+              @if (!collapsed()) {
+                <span class="nav-label">{{ item.label }}</span>
+                <span class="material-icons-round nav-lock-icon">lock</span>
               }
-            }
-          </a>
+            </div>
+          } @else {
+            <a class="nav-item" [routerLink]="item.route" routerLinkActive="active"
+               [attr.id]="'nav-' + item.label.toLowerCase().replace(' ', '-')"
+               (click)="onNavClick()">
+              <span class="material-icons-round nav-icon">{{ item.icon }}</span>
+              @if (!collapsed()) {
+                <span class="nav-label">{{ item.label }}</span>
+                @if (item.label === 'Notifications' && notifState.unreadCount() > 0) {
+                  <span class="nav-badge">{{ notifState.unreadCount() > 99 ? '99+' : notifState.unreadCount() }}</span>
+                }
+              }
+            </a>
+          }
         }
       </nav>
 
@@ -176,6 +200,48 @@ interface NavItem {
 
     .mobile-only { display: none; }
 
+    /* ─── KYC Warning Banner ─── */
+    .kyc-banner {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: var(--space-sm);
+      padding: 10px 12px;
+      border-radius: var(--radius-md);
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid rgba(245, 158, 11, 0.25);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      flex-shrink: 0;
+    }
+    .kyc-banner:hover {
+      background: rgba(245, 158, 11, 0.16);
+      border-color: rgba(245, 158, 11, 0.4);
+    }
+    .kyc-banner-icon {
+      font-size: 22px;
+      color: #f59e0b;
+      flex-shrink: 0;
+    }
+    .kyc-banner-text {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      overflow: hidden;
+    }
+    .kyc-banner-text strong {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #f59e0b;
+    }
+    .kyc-banner-text span {
+      font-size: 0.6875rem;
+      color: var(--color-text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
     .sidebar-nav {
       flex: 1;
       padding: var(--space-sm);
@@ -230,6 +296,24 @@ interface NavItem {
 
         .nav-icon { color: var(--color-accent); }
       }
+    }
+
+    /* ─── Locked nav item (KYC blocked) ─── */
+    .nav-item-locked {
+      opacity: 0.38;
+      cursor: not-allowed;
+      user-select: none;
+
+      &:hover {
+        background: none;
+        color: var(--color-text-secondary);
+      }
+    }
+    .nav-lock-icon {
+      margin-left: auto;
+      font-size: 14px;
+      color: var(--color-text-muted);
+      opacity: 0.6;
     }
 
     .nav-icon {
@@ -343,6 +427,7 @@ export class SidebarComponent {
   auth = inject(AuthService);
   orgCtx = inject(OrgContextService);
   notifState = inject(NotificationStateService);
+  private router = inject(Router);
 
   collapsed = signal(false);
   mobileOpen = model(false);
@@ -350,26 +435,26 @@ export class SidebarComponent {
 
   private baseNavItems: Omit<NavItem, 'label'>[] = [
     { icon: 'dashboard', route: '/dashboard', section: 'Overview' },
-    { icon: 'groups', route: '/crew', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Operations' },
-    { icon: 'assignment', route: '/assignments', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Operations' },
-    { icon: 'playlist_add', route: '/assignments-bulk', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Operations' },
+    { icon: 'groups', route: '/crew', roles: ['SYSTEM_ADMIN', 'EMPLOYER'], section: 'Operations' },
+    { icon: 'assignment', route: '/assignments', roles: ['SYSTEM_ADMIN', 'EMPLOYER'], section: 'Operations' },
+    { icon: 'playlist_add', route: '/assignments-bulk', roles: ['SYSTEM_ADMIN', 'EMPLOYER'], section: 'Operations' },
     { icon: 'trending_up', route: '/earnings', section: 'Operations' },
     { icon: 'account_balance_wallet', route: '/wallets', section: 'Finance' },
     { icon: 'business', route: '/saccos', roles: ['SYSTEM_ADMIN'], section: 'Organization' },
-    { icon: 'business', route: '/settings/tenant', roles: ['SACCO_ADMIN'], section: 'Organization' },
-    { icon: 'directions_bus', route: '/vehicles', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Organization', feature: 'vehicles' },
-    { icon: 'route', route: '/routes', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Organization', feature: 'routes' },
-    { icon: 'location_on', route: '/work-sites', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Organization', feature: 'work-sites' },
-    { icon: 'support_agent', route: '/facilitators', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Operations', feature: 'facilitators' },
-    { icon: 'receipt_long', route: '/payroll', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Finance' },
-    { icon: 'event_repeat', route: '/pay-schedules', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'Finance' },
+    { icon: 'business', route: '/settings/tenant', roles: ['EMPLOYER'], section: 'Organization' },
+    { icon: 'directions_bus', route: '/vehicles', roles: ['SYSTEM_ADMIN', 'EMPLOYER'], section: 'Organization', feature: 'vehicles' },
+    { icon: 'route', route: '/routes', roles: ['SYSTEM_ADMIN', 'EMPLOYER'], section: 'Organization', feature: 'routes' },
+    { icon: 'location_on', route: '/work-sites', roles: ['SYSTEM_ADMIN', 'EMPLOYER'], section: 'Organization', feature: 'work-sites' },
+    { icon: 'support_agent', route: '/facilitators', roles: ['SYSTEM_ADMIN', 'EMPLOYER'], section: 'Operations', feature: 'facilitators' },
+    { icon: 'receipt_long', route: '/payroll', roles: ['SYSTEM_ADMIN', 'EMPLOYER'], section: 'Finance' },
+    { icon: 'event_repeat', route: '/pay-schedules', roles: ['SYSTEM_ADMIN', 'EMPLOYER'], section: 'Finance' },
     { icon: 'savings', route: '/loans', section: 'Finance' },
     { icon: 'credit_score', route: '/credit', section: 'Finance' },
     { icon: 'health_and_safety', route: '/insurance', section: 'Finance' },
-    { icon: 'folder', route: '/documents', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'System' },
+    { icon: 'folder', route: '/documents', roles: ['SYSTEM_ADMIN', 'EMPLOYER'], section: 'System' },
     { icon: 'notifications', route: '/notifications', section: 'System' },
     { icon: 'admin_panel_settings', route: '/admin', roles: ['SYSTEM_ADMIN'], section: 'System' },
-    { icon: 'tune', route: '/settings/tenant', roles: ['SYSTEM_ADMIN', 'SACCO_ADMIN'], section: 'System' },
+    { icon: 'tune', route: '/settings/tenant', roles: ['SYSTEM_ADMIN', 'EMPLOYER'], section: 'System' },
   ];
 
   /** Dynamic nav label mapping — adapts based on industry context */
@@ -385,7 +470,7 @@ export class SidebarComponent {
       case '/earnings':         return 'Earnings';
       case '/wallets':          return 'Wallets';
       case '/saccos':           return 'Organizations';
-      case '/settings/tenant':  return this.auth.isSaccoAdmin() ? ('My ' + (labels['organization'] || 'Organization')) : 'Tenant Settings';
+      case '/settings/tenant':  return this.auth.isEmployer() ? ('My ' + (labels['organization'] || 'Organization')) : 'Tenant Settings';
       case '/vehicles':         return labels['vehicle'] ? labels['vehicle'] + 's' : 'Vehicles';
       case '/routes':           return 'Routes';
       case '/work-sites':       return labels['work_site'] ? labels['work_site'] + 's' : 'Work Sites';
@@ -414,6 +499,24 @@ export class SidebarComponent {
         return true;
       })
       .map(item => ({ ...item, label: this.navLabel(item.route) }));
+  }
+
+  /** Check if a nav item should appear locked due to KYC restrictions */
+  isItemLocked(route: string): boolean {
+    if (!this.auth.isKycBlocked()) return false;
+    return !KYC_EXEMPT_ROUTES.some(r => route.startsWith(r));
+  }
+
+  /** Handle click on a locked nav item */
+  onLockedClick(): void {
+    this.navigateTo('/profile');
+  }
+
+  navigateTo(route: string): void {
+    this.router.navigate([route]);
+    if (window.innerWidth <= 768) {
+      this.closeMobile();
+    }
   }
 
   toggle(): void {

@@ -8,6 +8,7 @@ import (
 
 	"github.com/kibsoft/amy-mis/internal/models"
 	"github.com/kibsoft/amy-mis/internal/repository"
+	"github.com/kibsoft/amy-mis/pkg/types"
 	"log/slog"
 )
 
@@ -494,7 +495,7 @@ func (h *SessionHandler) handleUnregistered(ctx context.Context, parts []string,
 		newUser := &models.User{
 			Phone:             phone,
 			PasswordHash:      "", // PIN-only auth for USSD
-			SystemRole:        "CREW",
+			SystemRole:        types.RoleEmployee,
 			CrewMemberID:      &newCrew.ID,
 			PreferredLanguage: "sw",
 			IsActive:          true,

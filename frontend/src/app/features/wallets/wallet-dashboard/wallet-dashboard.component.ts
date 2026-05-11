@@ -842,7 +842,7 @@ export class WalletDashboardComponent implements OnInit {
   }
 
   isAdmin(): boolean {
-    return this.auth.hasRole('SYSTEM_ADMIN', 'SACCO_ADMIN');
+    return this.auth.hasRole('SYSTEM_ADMIN', 'EMPLOYER');
   }
 
   /** Resolve the active organization ID from user profile or selector */

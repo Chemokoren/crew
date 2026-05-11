@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -82,11 +81,37 @@ func (s *TenantService) UpdateTenantConfig(ctx context.Context, orgID uuid.UUID,
 	}
 
 	if input.TenantConfig != nil {
-		data, err := json.Marshal(input.TenantConfig)
-		if err != nil {
-			return nil, fmt.Errorf("%w: invalid tenant config JSON", ErrValidation)
+		// Merge with existing config so we don't wipe other fields
+		existing, _ := sacco.GetTenantConfig()
+		if existing == nil {
+			existing = &models.TenantConfig{}
 		}
-		sacco.TenantConfig = data
+		// Apply non-zero fields from input
+		incoming := input.TenantConfig
+		if incoming.UILabels != nil {
+			existing.UILabels = incoming.UILabels
+		}
+		if incoming.CreditScoringWeights != nil {
+			existing.CreditScoringWeights = incoming.CreditScoringWeights
+		}
+		if incoming.StatutoryExemptions != nil {
+			existing.StatutoryExemptions = incoming.StatutoryExemptions
+		}
+		if incoming.KYCVerificationMode != "" {
+			existing.KYCVerificationMode = incoming.KYCVerificationMode
+		}
+		if incoming.KYCRestrictedActions != nil {
+			existing.KYCRestrictedActions = incoming.KYCRestrictedActions
+		}
+		if incoming.KYCDocumentTypes != nil {
+			existing.KYCDocumentTypes = incoming.KYCDocumentTypes
+		}
+		// KYCRequired is a bool — always apply from input
+		existing.KYCRequired = incoming.KYCRequired
+
+		if err := sacco.SetTenantConfig(existing); err != nil {
+			return nil, fmt.Errorf("%w: invalid tenant config", ErrValidation)
+		}
 	}
 
 	if err := s.saccoRepo.Update(ctx, sacco); err != nil {

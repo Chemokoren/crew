@@ -40,7 +40,7 @@ func setupApiTestEnv() (*gin.Engine, *WalletHandler, *CrewHandler, *AssignmentHa
 	assignmentSvc := service.NewAssignmentService(assignmentRepo, earningRepo, walletSvc, notifSvc, nil, logger)
 
 	walletHandler := NewWalletHandler(walletSvc, 10000)
-	crewHandler := NewCrewHandler(crewSvc)
+	crewHandler := NewCrewHandler(crewSvc, notifSvc)
 	assignmentHandler := NewAssignmentHandler(assignmentSvc)
 
 	return router, walletHandler, crewHandler, assignmentHandler
@@ -147,5 +147,154 @@ func TestAssignmentHandler_Create(t *testing.T) {
 
 	if w.Code != http.StatusCreated {
 		t.Errorf("Expected status 201, got %d", w.Code)
+	}
+}
+
+// --- KYC Unverification Handler Tests ---
+
+func TestCrewHandler_UpdateKYC_Verify(t *testing.T) {
+	router, _, crewHandler, _ := setupApiTestEnv()
+	router.POST("/crew", mockAuthMiddleware(types.RoleSystemAdmin, nil), crewHandler.Create)
+	router.PUT("/crew/:id/kyc", mockAuthMiddleware(types.RoleSystemAdmin, nil), crewHandler.UpdateKYC)
+
+	// Create a crew member first
+	createBody, _ := json.Marshal(dto.CreateCrewRequest{
+		NationalID: "98765432",
+		FirstName:  "Hannah",
+		LastName:   "Wambui",
+		Role:       models.RoleDriver,
+	})
+	cw := httptest.NewRecorder()
+	cReq, _ := http.NewRequest("POST", "/crew", bytes.NewBuffer(createBody))
+	cReq.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(cw, cReq)
+
+	if cw.Code != http.StatusCreated {
+		t.Fatalf("Create crew failed: status=%d body=%s", cw.Code, cw.Body.String())
+	}
+
+	var createResp struct {
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	json.Unmarshal(cw.Body.Bytes(), &createResp)
+
+	// Verify KYC
+	kycBody, _ := json.Marshal(dto.UpdateKYCRequest{KYCStatus: models.KYCVerified})
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("PUT", "/crew/"+createResp.Data.ID+"/kyc", bytes.NewBuffer(kycBody))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Verify KYC failed: status=%d body=%s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	data := resp["data"].(map[string]interface{})
+	if data["kyc_status"] != "VERIFIED" {
+		t.Errorf("expected kyc_status=VERIFIED, got %v", data["kyc_status"])
+	}
+}
+
+func TestCrewHandler_UpdateKYC_UnverifyWithReason(t *testing.T) {
+	router, _, crewHandler, _ := setupApiTestEnv()
+	router.POST("/crew", mockAuthMiddleware(types.RoleSystemAdmin, nil), crewHandler.Create)
+	router.PUT("/crew/:id/kyc", mockAuthMiddleware(types.RoleSystemAdmin, nil), crewHandler.UpdateKYC)
+
+	// Create
+	createBody, _ := json.Marshal(dto.CreateCrewRequest{
+		NationalID: "44443333",
+		FirstName:  "Ian",
+		LastName:   "Kamau",
+		Role:       models.RoleConductor,
+	})
+	cw := httptest.NewRecorder()
+	cReq, _ := http.NewRequest("POST", "/crew", bytes.NewBuffer(createBody))
+	cReq.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(cw, cReq)
+	var createResp struct {
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	json.Unmarshal(cw.Body.Bytes(), &createResp)
+
+	// Verify first
+	kycBody, _ := json.Marshal(dto.UpdateKYCRequest{KYCStatus: models.KYCVerified})
+	vw := httptest.NewRecorder()
+	vReq, _ := http.NewRequest("PUT", "/crew/"+createResp.Data.ID+"/kyc", bytes.NewBuffer(kycBody))
+	vReq.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(vw, vReq)
+
+	// Now unverify with reason
+	unverifyBody, _ := json.Marshal(map[string]string{
+		"kyc_status": "PENDING",
+		"reason":     "Expired ID document — requires re-upload",
+	})
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("PUT", "/crew/"+createResp.Data.ID+"/kyc", bytes.NewBuffer(unverifyBody))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Unverify KYC failed: status=%d body=%s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	data := resp["data"].(map[string]interface{})
+	if data["kyc_status"] != "PENDING" {
+		t.Errorf("expected kyc_status=PENDING, got %v", data["kyc_status"])
+	}
+	if data["kyc_verified_at"] != nil {
+		t.Error("expected kyc_verified_at to be nil after unverification")
+	}
+}
+
+func TestCrewHandler_UpdateKYC_RejectWithReason(t *testing.T) {
+	router, _, crewHandler, _ := setupApiTestEnv()
+	router.POST("/crew", mockAuthMiddleware(types.RoleSystemAdmin, nil), crewHandler.Create)
+	router.PUT("/crew/:id/kyc", mockAuthMiddleware(types.RoleSystemAdmin, nil), crewHandler.UpdateKYC)
+
+	// Create
+	createBody, _ := json.Marshal(dto.CreateCrewRequest{
+		NationalID: "77778888",
+		FirstName:  "Jane",
+		LastName:   "Njoki",
+		Role:       models.RoleDriver,
+	})
+	cw := httptest.NewRecorder()
+	cReq, _ := http.NewRequest("POST", "/crew", bytes.NewBuffer(createBody))
+	cReq.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(cw, cReq)
+	var createResp struct {
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	json.Unmarshal(cw.Body.Bytes(), &createResp)
+
+	// Reject with reason
+	rejectBody, _ := json.Marshal(map[string]string{
+		"kyc_status": "REJECTED",
+		"reason":     "Blurry documents — cannot verify identity",
+	})
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("PUT", "/crew/"+createResp.Data.ID+"/kyc", bytes.NewBuffer(rejectBody))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Reject KYC failed: status=%d body=%s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	data := resp["data"].(map[string]interface{})
+	if data["kyc_status"] != "REJECTED" {
+		t.Errorf("expected kyc_status=REJECTED, got %v", data["kyc_status"])
 	}
 }

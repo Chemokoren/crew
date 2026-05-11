@@ -266,3 +266,110 @@ func TestCrewService_CRUD_WorksWithoutIPRS(t *testing.T) {
 		t.Errorf("FirstName = %q, want Mary", found.FirstName)
 	}
 }
+
+// --- KYC Unverification Tests ---
+
+func TestCrewService_UpdateKYCStatus_Unverify_ClearsTimestamp(t *testing.T) {
+	repo := mock.NewCrewRepo()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	svc := service.NewCrewService(repo, nil, nil, logger)
+
+	crew, _ := svc.CreateCrewMember(context.Background(), service.CreateCrewInput{
+		NationalID: "11112222",
+		FirstName:  "Alice",
+		LastName:   "Mwangi",
+		Role:       models.RoleDriver,
+	})
+
+	// First verify the crew member
+	verified, err := svc.UpdateKYCStatus(context.Background(), service.UpdateKYCInput{
+		CrewMemberID: crew.ID,
+		Status:       models.KYCVerified,
+	})
+	if err != nil {
+		t.Fatalf("verify failed: %v", err)
+	}
+	if verified.KYCVerifiedAt == nil {
+		t.Fatal("expected KYCVerifiedAt to be set after verification")
+	}
+
+	// Now unverify (revert to PENDING)
+	unverified, err := svc.UpdateKYCStatus(context.Background(), service.UpdateKYCInput{
+		CrewMemberID: crew.ID,
+		Status:       models.KYCPending,
+		Reason:       "Expired ID document",
+	})
+	if err != nil {
+		t.Fatalf("unverify failed: %v", err)
+	}
+	if unverified.KYCStatus != models.KYCPending {
+		t.Errorf("expected KYC status PENDING, got %s", unverified.KYCStatus)
+	}
+	if unverified.KYCVerifiedAt != nil {
+		t.Error("expected KYCVerifiedAt to be nil after unverification")
+	}
+}
+
+func TestCrewService_UpdateKYCStatus_Reject_ClearsTimestamp(t *testing.T) {
+	repo := mock.NewCrewRepo()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	svc := service.NewCrewService(repo, nil, nil, logger)
+
+	crew, _ := svc.CreateCrewMember(context.Background(), service.CreateCrewInput{
+		NationalID: "33334444",
+		FirstName:  "Bob",
+		LastName:   "Ochieng",
+		Role:       models.RoleConductor,
+	})
+
+	// First verify
+	_, err := svc.UpdateKYCStatus(context.Background(), service.UpdateKYCInput{
+		CrewMemberID: crew.ID,
+		Status:       models.KYCVerified,
+	})
+	if err != nil {
+		t.Fatalf("verify failed: %v", err)
+	}
+
+	// Now reject — should also clear timestamp
+	rejected, err := svc.UpdateKYCStatus(context.Background(), service.UpdateKYCInput{
+		CrewMemberID: crew.ID,
+		Status:       models.KYCRejected,
+		Reason:       "Fraudulent documents detected",
+	})
+	if err != nil {
+		t.Fatalf("reject failed: %v", err)
+	}
+	if rejected.KYCStatus != models.KYCRejected {
+		t.Errorf("expected KYC status REJECTED, got %s", rejected.KYCStatus)
+	}
+	if rejected.KYCVerifiedAt != nil {
+		t.Error("expected KYCVerifiedAt to be nil after rejection")
+	}
+}
+
+func TestCrewService_UpdateKYCStatus_ReasonAccepted(t *testing.T) {
+	repo := mock.NewCrewRepo()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	svc := service.NewCrewService(repo, nil, nil, logger)
+
+	crew, _ := svc.CreateCrewMember(context.Background(), service.CreateCrewInput{
+		NationalID: "55556666",
+		FirstName:  "Grace",
+		LastName:   "Akinyi",
+		Role:       models.RoleDriver,
+	})
+
+	// UpdateKYCStatus with reason should succeed without error
+	updated, err := svc.UpdateKYCStatus(context.Background(), service.UpdateKYCInput{
+		CrewMemberID: crew.ID,
+		Status:       models.KYCRejected,
+		Reason:       "National ID does not match uploaded documents",
+	})
+	if err != nil {
+		t.Fatalf("update with reason failed: %v", err)
+	}
+	if updated.KYCStatus != models.KYCRejected {
+		t.Errorf("expected REJECTED, got %s", updated.KYCStatus)
+	}
+}

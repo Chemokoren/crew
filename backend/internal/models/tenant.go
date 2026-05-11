@@ -94,6 +94,70 @@ type TenantConfig struct {
 	UILabels map[string]string `json:"ui_labels,omitempty"`
 	// Features toggles optional features per tenant.
 	Features map[string]bool `json:"features,omitempty"`
+
+	// --- KYC Gating (tenant-configurable) ---
+
+	// KYCRequired controls whether KYC verification is enforced for members.
+	KYCRequired bool `json:"kyc_required,omitempty"`
+	// KYCRestrictedActions lists action codes that require verified KYC.
+	// Examples: "WALLET_WITHDRAW", "WALLET_TRANSFER", "BILL_PAY", "LOAN_APPLY", "PAYOUT"
+	KYCRestrictedActions []string `json:"kyc_restricted_actions,omitempty"`
+	// KYCDocumentTypes lists acceptable KYC document types.
+	// Defaults to ["NATIONAL_ID"] if empty and KYCRequired is true.
+	KYCDocumentTypes []string `json:"kyc_document_types,omitempty"`
+	// KYCVerificationMode controls how users prove identity.
+	//   "UPLOAD" (default) — user uploads front + back photos of National ID.
+	//   "MANUAL"           — user enters ID number + serial number for IPRS lookup.
+	// The non-default mode is always shown as a fallback option in the UI.
+	KYCVerificationMode string `json:"kyc_verification_mode,omitempty"`
+}
+
+// KYC verification mode constants.
+const (
+	KYCModeUpload = "UPLOAD"
+	KYCModeManual = "MANUAL"
+)
+
+// ResolvedKYCMode returns the effective verification mode, defaulting to UPLOAD.
+func (tc *TenantConfig) ResolvedKYCMode() string {
+	if tc.KYCVerificationMode == KYCModeManual {
+		return KYCModeManual
+	}
+	return KYCModeUpload
+}
+
+// DefaultKYCRestrictedActions returns the default set of actions restricted when KYC is not verified.
+// By default everything on the employee side is restricted until KYC is verified.
+func DefaultKYCRestrictedActions() []string {
+	return []string{
+		"WALLET_WITHDRAW",
+		"WALLET_TRANSFER",
+		"BILL_PAY",
+		"LOAN_APPLY",
+		"PAYOUT",
+		"INSURANCE_ENROLL",
+		"ASSIGNMENT_ACCEPT",
+		"PROFILE_EDIT",
+		"DOCUMENT_UPLOAD",
+		"CREDIT_SCORE_VIEW",
+	}
+}
+
+// IsActionKYCRestricted checks whether a given action is restricted for unverified users under this tenant config.
+func (tc *TenantConfig) IsActionKYCRestricted(action string) bool {
+	if !tc.KYCRequired {
+		return false
+	}
+	actions := tc.KYCRestrictedActions
+	if len(actions) == 0 {
+		actions = DefaultKYCRestrictedActions()
+	}
+	for _, a := range actions {
+		if a == action {
+			return true
+		}
+	}
+	return false
 }
 
 // Scan implements sql.Scanner for GORM JSONB deserialization.

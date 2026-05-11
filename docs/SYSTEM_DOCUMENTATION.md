@@ -208,25 +208,41 @@ StatutoryRates (SHA, NSSF, Housing Levy)
 | Role | Code | Permissions |
 |------|------|-------------|
 | System Admin | `SYSTEM_ADMIN` | Full access to all resources |
-| SACCO Admin | `SACCO_ADMIN` | Manage crew, vehicles, assignments within SACCO |
-| Crew | `CREW` | View own profile, wallet, transactions |
-| Lender | `LENDER` | View loan-related data (Phase 3) |
-| Insurer | `INSURER` | View insurance-related data (Phase 3) |
+| Employer | `EMPLOYER` | Manage crew, vehicles, assignments within organization |
+| Employee | `EMPLOYEE` | View own profile, wallet, transactions |
+| Lender | `LENDER` | View loan-related data |
+| Insurer | `INSURER` | View insurance-related data |
 
-### 4.3 Route Protection
+### 4.3 KYC Enforcement
 
-| Route Group | Auth Required | Role Required |
-|-------------|--------------|---------------|
-| `/health`, `/ready`, `/metrics` | ❌ | — |
-| `/swagger/*` | ❌ | — |
-| `/api/v1/auth/register,login,refresh` | ❌ | — |
-| `/api/v1/auth/me` | ✅ JWT | Any |
-| `/api/v1/crew/*` | ✅ JWT | SYSTEM_ADMIN or SACCO_ADMIN |
-| `/api/v1/assignments/*` | ✅ JWT | SYSTEM_ADMIN or SACCO_ADMIN |
-| `/api/v1/wallets/:id` (GET) | ✅ JWT | Any (ownership enforced for CREW) |
-| `/api/v1/wallets/credit,debit` (POST) | ✅ JWT | Any (ownership enforced for CREW) |
-| `/api/v1/transactions/employee-payout` | ✅ JWT | SYSTEM_ADMIN or SACCO_ADMIN |
-| `/api/v1/transactions/transfer` | ✅ JWT | Any (sender derived from JWT) |
+Employees with non-verified KYC status (`PENDING` or `REJECTED`) are restricted to:
+- `/profile` — to upload/update KYC documents
+- `/notifications` — to view notifications (including unverification reasons)
+
+All other frontend routes are blocked by a `kycGuard`, and the sidebar visually disables locked items with a lock icon and warning banner.
+
+**KYC Unverification Workflow:**
+1. Admin clicks "Unverify" on a verified employee's KYC row in `/documents`
+2. A prompt dialog captures the reason for unverification
+3. `PUT /api/v1/crew/:id/kyc` is called with `{ kyc_status: "PENDING", reason: "..." }`
+4. Backend clears `KYCVerifiedAt`, updates status, and dispatches an IN_APP notification
+5. Employee's navigation is immediately restricted until re-verification
+
+### 4.4 Route Protection
+
+| Route Group | Auth Required | Role Required | KYC Required |
+|-------------|--------------|---------------|---------------|
+| `/health`, `/ready`, `/metrics` | ❌ | — | — |
+| `/swagger/*` | ❌ | — | — |
+| `/api/v1/auth/register,login,refresh` | ❌ | — | — |
+| `/api/v1/auth/me` | ✅ JWT | Any | ❌ |
+| `/profile`, `/notifications` | ✅ JWT | Any | ❌ (KYC-exempt) |
+| `/api/v1/crew/*` | ✅ JWT | SYSTEM_ADMIN or EMPLOYER | ❌ (admin routes) |
+| `/api/v1/assignments/*` | ✅ JWT | SYSTEM_ADMIN or EMPLOYER | ❌ (admin routes) |
+| `/dashboard`, `/earnings`, `/wallets`, etc. | ✅ JWT | Any | ✅ (employees) |
+| `/api/v1/wallets/:id` (GET) | ✅ JWT | Any (ownership enforced) | — |
+| `/api/v1/transactions/employee-payout` | ✅ JWT | SYSTEM_ADMIN or EMPLOYER | — |
+| `/api/v1/transactions/transfer` | ✅ JWT | Any (sender derived from JWT) | — |
 
 ---
 
@@ -495,7 +511,7 @@ Domain errors in `pkg/errs/`:
 
 ### 9.1 Test Coverage
 
-- **417+ tests** across **20 test packages** (all passing)
+- **425+ tests** across **20 test packages** (all passing)
 - **54 test files** covering services, handlers, middleware, integrations, and workers
 - **Mock repositories** for User, Crew, Wallet, Organization Float, and all others with thread-safe operations
 - **httptest servers** for all external integration tests (no real API calls)
@@ -511,6 +527,7 @@ Domain errors in `pkg/errs/`:
 | Concurrency | 20 parallel credits with race detector |
 | Atomic transactions | Employee payout validation (zero/negative/net>gross), wallet transfer validation (zero/negative/self-transfer) |
 | HTTP handlers | Register, login, refresh, /me, RBAC enforcement |
+| **KYC lifecycle** | Verify, unverify (→PENDING with reason), reject (→REJECTED with reason), timestamp clearing, notification dispatch |
 | JWT middleware | Missing token, invalid token, expired token |
 | SMS integration | Manager fallback chain, SetPrimary, Optimize token caching, AT bulk send |
 | JamboPay integration | OAuth2 auth, M-Pesa/bank/paybill payout, OTP verify, balance, token cache, collection STK push |
@@ -524,6 +541,8 @@ Domain errors in `pkg/errs/`:
 go test ./... -race -count=1 -v          # All tests with race detector
 go test ./internal/service/... -v         # Service layer only
 go test ./internal/handler/... -v         # HTTP handlers
+go test -run TestCrewService_UpdateKYC -v ./internal/service/...  # KYC unverification tests
+go test -run TestCrewHandler_UpdateKYC -v ./internal/handler/...  # KYC handler tests
 go test -run TestEmployeePayout -v ./internal/service/...  # Transaction tests only
 make test-coverage                        # HTML coverage report
 ```
@@ -595,6 +614,7 @@ make test-coverage                        # HTML coverage report
 | 23 | ~~No database seeding~~ | ✅ Idempotent seed script implemented for dev/staging environments. |
 | 24 | ~~Missing mock repositories~~ | ✅ 100% Mock parity achieved (19/19) for all repository interfaces. |
 | 25 | ~~Financial services logic missing~~ | ✅ Fully implemented Credit Scoring, Loan management, and Insurance workflows. |
+| 26 | ~~No KYC unverification workflow~~ | ✅ Admins can unverify employees with a reason; IN_APP notification dispatched; `KYCVerifiedAt` cleared; frontend navigation blocked for unverified employees (KYC guard + sidebar lock). |
 
 ### 11.2 Roadmap & Future Recommendations
 

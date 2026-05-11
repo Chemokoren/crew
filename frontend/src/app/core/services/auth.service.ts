@@ -66,9 +66,7 @@ export class AuthService {
     role: SystemRole;
     first_name?: string;
     last_name?: string;
-    national_id?: string;
-    crew_role?: string;
-    // Organization fields (for SACCO_ADMIN)
+    // Organization fields (for EMPLOYER)
     organization_name?: string;
     organization_reg_no?: string;
     organization_county?: string;
@@ -132,9 +130,23 @@ export class AuthService {
     return this.hasRole('SYSTEM_ADMIN');
   }
 
-  isSaccoAdmin(): boolean {
-    return this.hasRole('SACCO_ADMIN');
+  isEmployer(): boolean {
+    return this.hasRole('EMPLOYER');
   }
+
+  isEmployee(): boolean {
+    return this.hasRole('EMPLOYEE');
+  }
+
+  /** True when employee KYC is not VERIFIED — restricts navigation to profile & notifications only */
+  readonly isKycBlocked = computed(() => {
+    const user = this.currentUserSignal();
+    if (!user) return false;
+    // Only employees are subject to KYC blocking
+    if (user.system_role !== 'EMPLOYEE') return false;
+    const kycStatus = user.crew_profile?.kyc_status;
+    return kycStatus !== 'VERIFIED';
+  });
 
   private handleAuthSuccess(data: AuthResponse): void {
     localStorage.setItem('amy_access_token', data.tokens.access_token);

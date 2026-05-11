@@ -4,7 +4,7 @@ import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import {
   ApiResponse, ApiListResponse,
-  CrewMember, Assignment, Wallet, WalletTransaction,
+  CrewMember, CrewProfile, Assignment, Wallet, WalletTransaction,
   Organization, Vehicle, Route, PayrollRun, PayrollEntry,
   Earning, DailySummary, CreditScore, DetailedScoreResult, CreditScoreHistory,
   LoanApplication, LoanTier, InsurancePolicy, Notification, NotificationPreference,
@@ -33,7 +33,7 @@ export class ApiService {
     return this.http.post<ApiResponse<CrewMember>>(`${this.API}/crew`, data);
   }
 
-  updateKYC(id: string, data: { kyc_status: string; serial_number?: string }): Observable<ApiResponse<CrewMember>> {
+  updateKYC(id: string, data: { kyc_status: string; serial_number?: string; reason?: string }): Observable<ApiResponse<CrewMember>> {
     return this.http.put<ApiResponse<CrewMember>>(`${this.API}/crew/${id}/kyc`, data);
   }
 
@@ -529,5 +529,24 @@ export class ApiService {
 
   deleteWorkSite(id: string): Observable<void> {
     return this.http.delete<void>(`${this.API}/work-sites/${id}`);
+  }
+
+  // --- Profile & KYC ---
+  updateProfile(data: { role?: string; job_title?: string; first_name?: string; last_name?: string }): Observable<ApiResponse<CrewProfile>> {
+    return this.http.put<ApiResponse<CrewProfile>>(`${this.API}/auth/profile`, data);
+  }
+
+  initiateKYC(data: { national_id: string; serial_number: string }): Observable<ApiResponse<{ kyc_status: string; crew_id: string; message: string }>> {
+    return this.http.post<ApiResponse<{ kyc_status: string; crew_id: string; message: string }>>(`${this.API}/auth/kyc/initiate`, data);
+  }
+
+  uploadKYC(nationalId: string, idFront: File, idBack?: File): Observable<ApiResponse<{ kyc_status: string; crew_id: string; message: string }>> {
+    const fd = new FormData();
+    fd.append('national_id', nationalId);
+    fd.append('id_front', idFront);
+    if (idBack) {
+      fd.append('id_back', idBack);
+    }
+    return this.http.post<ApiResponse<{ kyc_status: string; crew_id: string; message: string }>>(`${this.API}/auth/kyc/upload`, fd);
   }
 }
