@@ -90,6 +90,8 @@ The AMY MIS backend is now a **fully feature-complete** workforce financial syst
 | **Earning Service** | ✅ Dedicated service layer for cleaner business logic |
 | **Centralized Validator** | ✅ Domain-specific validation (Phone, National ID, Amounts) |
 | **Float Top-Up Verification** | ✅ Configurable API/MANUAL/HYBRID bank verification, admin confirm/reject workflow, tenant-level `TopUpVerificationMode` config |
+| **Tenant Top-Up Methods** | ✅ Tenant-level `AllowedTopUpMethods` configuration to enable/disable mobile money, bank, and card channels per tenant |
+| **Active Payment Polling** | ✅ Dashboard auto-polling for STK push completion with `SyncMethod` and `SyncedAt` tracking to mitigate webhook delays |
 
 ---
 

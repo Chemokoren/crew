@@ -3,6 +3,7 @@ import { authGuard } from './core/guards/auth.guard';
 import { guestGuard } from './core/guards/guest.guard';
 import { roleGuard } from './core/guards/role.guard';
 import { kycGuard } from './core/guards/kyc.guard';
+import { platformGuard } from './core/guards/platform.guard';
 
 export const routes: Routes = [
   // --- Auth routes (guest-only) ---
@@ -22,7 +23,68 @@ export const routes: Routes = [
     loadComponent: () => import('./features/auth/register/register.component').then(m => m.RegisterComponent),
   },
 
-  // --- Authenticated routes ---
+  // --- Platform Admin routes (separate shell) ---
+  {
+    path: 'platform',
+    canActivate: [authGuard, platformGuard],
+    children: [
+      { path: '', redirectTo: 'command-center', pathMatch: 'full' },
+      {
+        path: 'command-center',
+        loadComponent: () => import('./features/platform/command-center/command-center.component').then(m => m.CommandCenterComponent),
+      },
+      {
+        path: 'organizations',
+        loadComponent: () => import('./features/platform/organizations/platform-organizations.component').then(m => m.PlatformOrganizationsComponent),
+      },
+      {
+        path: 'users',
+        loadComponent: () => import('./features/platform/users/platform-users.component').then(m => m.PlatformUsersComponent),
+      },
+      {
+        path: 'support',
+        loadComponent: () => import('./features/platform/support/platform-support.component').then(m => m.PlatformSupportComponent),
+      },
+      {
+        path: 'roles',
+        loadComponent: () => import('./features/platform/roles/platform-roles.component').then(m => m.PlatformRolesComponent),
+      },
+      {
+        path: 'settings',
+        loadComponent: () => import('./features/platform/settings/platform-settings.component').then(m => m.PlatformSettingsComponent),
+      },
+      {
+        path: 'notifications',
+        loadComponent: () => import('./features/platform/notifications/platform-notifications.component').then(m => m.PlatformNotificationsComponent),
+      },
+      {
+        path: 'integrations',
+        loadComponent: () => import('./features/platform/integrations/platform-integrations.component').then(m => m.PlatformIntegrationsComponent),
+      },
+      {
+        path: 'finance',
+        loadComponent: () => import('./features/platform/finance/platform-finance.component').then(m => m.PlatformFinanceComponent),
+      },
+      {
+        path: 'reports',
+        loadComponent: () => import('./features/platform/reports/platform-reports.component').then(m => m.PlatformReportsComponent),
+      },
+      {
+        path: 'compliance',
+        loadComponent: () => import('./features/platform/compliance/platform-compliance.component').then(m => m.PlatformComplianceComponent),
+      },
+      {
+        path: 'documents',
+        loadComponent: () => import('./features/platform/documents/platform-documents.component').then(m => m.PlatformDocumentsComponent),
+      },
+      {
+        path: 'team',
+        loadComponent: () => import('./features/platform/team/platform-team.component').then(m => m.PlatformTeamComponent),
+      },
+    ],
+  },
+
+  // --- Authenticated routes (Organization shell) ---
   {
     path: '',
     canActivate: [authGuard],
@@ -198,3 +260,4 @@ export const routes: Routes = [
     loadComponent: () => import('./features/not-found/not-found.component').then(m => m.NotFoundComponent),
   },
 ];
+

@@ -85,6 +85,17 @@ const KYC_EXEMPT_ROUTES = ['/profile', '/notifications'];
         }
       </nav>
 
+      <!-- Platform switch for admin users -->
+      @if (!collapsed() && auth.isPlatformUser()) {
+        <div class="sidebar-platform-switch">
+          <a routerLink="/platform" class="platform-switch-link" id="sidebar-platform-switch">
+            <span class="material-icons-round" style="font-size:18px;">hub</span>
+            <span>Platform Admin</span>
+            <span class="material-icons-round" style="font-size:14px;margin-left:auto;opacity:0.4;">arrow_forward</span>
+          </a>
+        </div>
+      }
+
       <div class="sidebar-footer">
         @if (!collapsed()) {
           <div class="sidebar-user-badge">
@@ -393,6 +404,33 @@ const KYC_EXEMPT_ROUTES = ['/profile', '/notifications'];
 
       &:hover {
         background: var(--color-danger-light) !important;
+      }
+    }
+
+    .sidebar-platform-switch {
+      padding: var(--space-sm);
+      flex-shrink: 0;
+    }
+
+    .platform-switch-link {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: 10px 12px;
+      border-radius: var(--radius-md);
+      border: 1px dashed rgba(139, 92, 246, 0.25);
+      background: rgba(139, 92, 246, 0.05);
+      color: rgba(139, 92, 246, 0.8);
+      font-size: 0.8125rem;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all var(--transition-fast);
+
+      &:hover {
+        background: rgba(139, 92, 246, 0.1);
+        border-color: rgba(139, 92, 246, 0.4);
+        color: #8b5cf6;
       }
     }
 

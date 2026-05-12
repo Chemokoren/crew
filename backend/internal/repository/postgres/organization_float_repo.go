@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/kibsoft/amy-mis/internal/database"
@@ -183,7 +184,8 @@ func (r *OrganizationFloatRepo) CreatePendingTransaction(ctx context.Context, fl
 // ConfirmPendingTransaction atomically credits the float balance and marks
 // the pending transaction as COMPLETED. Called when the payment provider
 // confirms a successful STK push payment.
-func (r *OrganizationFloatRepo) ConfirmPendingTransaction(ctx context.Context, txID uuid.UUID) (*models.OrganizationFloatTransaction, error) {
+// syncMethod indicates the source: CALLBACK (webhook), POLL (STK status check), or MANUAL (admin).
+func (r *OrganizationFloatRepo) ConfirmPendingTransaction(ctx context.Context, txID uuid.UUID, syncMethod models.SyncMethod) (*models.OrganizationFloatTransaction, error) {
 	var result models.OrganizationFloatTransaction
 
 	err := r.getDB(ctx).Transaction(func(dbTx *gorm.DB) error {
@@ -212,9 +214,12 @@ func (r *OrganizationFloatRepo) ConfirmPendingTransaction(ctx context.Context, t
 			return fmt.Errorf("update float balance: %w", err)
 		}
 
-		// 3. Update the transaction status
+		// 3. Update the transaction status and sync info
 		pendingTx.BalanceAfterCents = sf.BalanceCents
 		pendingTx.Status = models.TxCompleted
+		pendingTx.SyncMethod = syncMethod
+		syncedNow := time.Now()
+		pendingTx.SyncedAt = &syncedNow
 		if err := dbTx.Save(&pendingTx).Error; err != nil {
 			return fmt.Errorf("confirm pending tx: %w", err)
 		}
@@ -231,12 +236,15 @@ func (r *OrganizationFloatRepo) ConfirmPendingTransaction(ctx context.Context, t
 
 // FailPendingTransaction marks a pending transaction as FAILED without
 // modifying the float balance.
-func (r *OrganizationFloatRepo) FailPendingTransaction(ctx context.Context, txID uuid.UUID, reason string) error {
+func (r *OrganizationFloatRepo) FailPendingTransaction(ctx context.Context, txID uuid.UUID, reason string, syncMethod models.SyncMethod) error {
+	now := time.Now()
 	result := r.getDB(ctx).Model(&models.OrganizationFloatTransaction{}).
 		Where("id = ? AND status = ?", txID, models.TxPending).
 		Updates(map[string]interface{}{
-			"status":    models.TxFailed,
-			"reference": gorm.Expr("reference || ' | fail_reason:' || ?", reason),
+			"status":      models.TxFailed,
+			"reference":   gorm.Expr("reference || ' | fail_reason:' || ?", reason),
+			"sync_method": syncMethod,
+			"synced_at":   now,
 		})
 	if result.Error != nil {
 		return fmt.Errorf("fail pending tx: %w", result.Error)
@@ -268,4 +276,33 @@ func abs64(n int64) int64 {
 		return -n
 	}
 	return n
+}
+
+// ListPendingSTK returns PENDING float transactions that originated from STK push
+// (identified by "STK:" prefix in reference). Limited to recent transactions
+// (within 24 hours) to avoid polling very stale records.
+func (r *OrganizationFloatRepo) ListPendingSTK(ctx context.Context, limit int) ([]models.OrganizationFloatTransaction, error) {
+	var txs []models.OrganizationFloatTransaction
+	err := r.getDB(ctx).
+		Where("status = ? AND reference LIKE 'STK:%' AND created_at > NOW() - INTERVAL '24 hours'", models.TxPending).
+		Order("created_at ASC").
+		Limit(limit).
+		Find(&txs).Error
+	if err != nil {
+		return nil, fmt.Errorf("list pending STK transactions: %w", err)
+	}
+	return txs, nil
+}
+
+// GetPendingTransactionByID retrieves a single PENDING transaction by its ID.
+// No time restriction — allows syncing any pending transaction regardless of age.
+func (r *OrganizationFloatRepo) GetPendingTransactionByID(ctx context.Context, txID uuid.UUID) (*models.OrganizationFloatTransaction, error) {
+	var tx models.OrganizationFloatTransaction
+	err := r.getDB(ctx).
+		Where("id = ? AND status = ?", txID, models.TxPending).
+		First(&tx).Error
+	if err != nil {
+		return nil, fmt.Errorf("get pending transaction: %w", err)
+	}
+	return &tx, nil
 }

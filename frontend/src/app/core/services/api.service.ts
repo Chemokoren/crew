@@ -195,6 +195,25 @@ export class ApiService {
     return this.http.get<ApiListResponse<SACCOFloatTransaction>>(`${this.API}/organizations/${saccoId}/float/transactions`, { params: this.buildParams(params) });
   }
 
+  /** Poll JamboPay for status of pending STK push transactions */
+  pollSTK(saccoId: string): Observable<ApiResponse<{
+    message: string;
+    checked: number;
+    confirmed: number;
+    failed: number;
+    skipped: number;
+    results: Array<{ tx_id: string; order_id: string; jp_status?: string; action?: string; error?: string }>;
+  }>> {
+    return this.http.post<any>(`${this.API}/organizations/${saccoId}/float/poll-stk`, {});
+  }
+
+  /** Poll JamboPay for status of a single pending STK push transaction */
+  pollSingleSTK(saccoId: string, txId: string): Observable<ApiResponse<{
+    tx_id: string; order_id: string; jp_status?: string; action?: string; error?: string;
+  }>> {
+    return this.http.post<any>(`${this.API}/organizations/${saccoId}/float/poll-stk/${txId}`, {});
+  }
+
   // --- Vehicles ---
   getVehicles(params?: Record<string, string>): Observable<ApiListResponse<Vehicle>> {
     return this.http.get<ApiListResponse<Vehicle>>(`${this.API}/vehicles`, { params: this.buildParams(params) });

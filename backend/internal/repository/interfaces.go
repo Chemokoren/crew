@@ -206,10 +206,12 @@ type OrganizationFloatRepository interface {
 	// STK push / async collection flow
 	CreatePendingTransaction(ctx context.Context, floatID uuid.UUID, amountCents int64,
 		idempotencyKey, reference string) (*models.OrganizationFloatTransaction, error)
-	ConfirmPendingTransaction(ctx context.Context, txID uuid.UUID) (*models.OrganizationFloatTransaction, error)
-	FailPendingTransaction(ctx context.Context, txID uuid.UUID, reason string) error
+	ConfirmPendingTransaction(ctx context.Context, txID uuid.UUID, syncMethod models.SyncMethod) (*models.OrganizationFloatTransaction, error)
+	FailPendingTransaction(ctx context.Context, txID uuid.UUID, reason string, syncMethod models.SyncMethod) error
 	GetByIdempotencyKey(ctx context.Context, key string) (*models.OrganizationFloatTransaction, error)
 	AppendReference(ctx context.Context, txID uuid.UUID, refSuffix string) error
+	ListPendingSTK(ctx context.Context, limit int) ([]models.OrganizationFloatTransaction, error)
+	GetPendingTransactionByID(ctx context.Context, txID uuid.UUID) (*models.OrganizationFloatTransaction, error)
 }
 
 // DocumentFilter specifies filtering for document queries.

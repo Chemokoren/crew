@@ -138,6 +138,16 @@ export class AuthService {
     return this.hasRole('EMPLOYEE');
   }
 
+  isPlatformUser(): boolean {
+    const user = this.currentUserSignal();
+    if (!user) return false;
+    const platformRoles: SystemRole[] = [
+      'SYSTEM_ADMIN', 'PLATFORM_ADMIN', 'PLATFORM_SUPPORT',
+      'PLATFORM_FINANCE', 'PLATFORM_AUDITOR', 'PLATFORM_ASSISTANT',
+    ];
+    return platformRoles.includes(user.system_role);
+  }
+
   /** True when employee KYC is not VERIFIED — restricts navigation to profile & notifications only */
   readonly isKycBlocked = computed(() => {
     const user = this.currentUserSignal();

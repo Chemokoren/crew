@@ -165,7 +165,19 @@ func (p *JamboPayProvider) doRequest(ctx context.Context, method, path string, b
 		if err != nil {
 			return nil, 0, fmt.Errorf("marshal request body: %w", err)
 		}
+		// === DEBUG: Log serialized request body ===
+		p.logger.Debug("[HTTP] >>> request",
+			slog.String("method", method),
+			slog.String("url", p.cfg.BaseURL+path),
+			slog.String("body", string(b)),
+		)
 		reqBody = bytes.NewReader(b)
+	} else {
+		p.logger.Debug("[HTTP] >>> request",
+			slog.String("method", method),
+			slog.String("url", p.cfg.BaseURL+path),
+			slog.String("body", "<nil>"),
+		)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, method, p.cfg.BaseURL+path, reqBody)
@@ -184,6 +196,14 @@ func (p *JamboPayProvider) doRequest(ctx context.Context, method, path string, b
 	defer resp.Body.Close()
 
 	respBody, _ := io.ReadAll(resp.Body)
+
+	// === DEBUG: Log raw response ===
+	p.logger.Debug("[HTTP] <<< response",
+		slog.String("url", p.cfg.BaseURL+path),
+		slog.Int("status", resp.StatusCode),
+		slog.String("body", string(respBody)),
+	)
+
 	return respBody, resp.StatusCode, nil
 }
 
@@ -666,11 +686,32 @@ func (p *JamboPayProvider) InitiateMobileCollection(ctx context.Context, req Exp
 		req.Data.ServiceType = "TOPUP"
 	}
 
+	// === DEBUG: Log full payload before sending ===
+	payloadJSON, _ := json.MarshalIndent(req, "", "  ")
+	p.logger.Info("[STK_PUSH] >>> OUTGOING PAYLOAD to /checkout/express",
+		slog.String("url", p.cfg.BaseURL+"/checkout/express"),
+		slog.String("callback_url", req.CallbackURL),
+		slog.String("account_to", req.AccountTo),
+		slog.String("payload", string(payloadJSON)),
+	)
+
 	body, status, err := p.doRequest(ctx, http.MethodPost, "/checkout/express", req)
 	if err != nil {
+		p.logger.Error("[STK_PUSH] >>> REQUEST FAILED", slog.String("error", err.Error()))
 		return nil, fmt.Errorf("express checkout request: %w", err)
 	}
+
+	// === DEBUG: Log full response ===
+	p.logger.Info("[STK_PUSH] <<< RESPONSE from /checkout/express",
+		slog.Int("status_code", status),
+		slog.String("response_body", string(body)),
+	)
+
 	if status != http.StatusCreated && status != http.StatusOK {
+		p.logger.Error("[STK_PUSH] <<< NON-OK STATUS",
+			slog.Int("status", status),
+			slog.String("body", string(body)),
+		)
 		return nil, parseJamboPayError("express checkout", status, body)
 	}
 
@@ -678,7 +719,194 @@ func (p *JamboPayProvider) InitiateMobileCollection(ctx context.Context, req Exp
 	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("decode express checkout response: %w", err)
 	}
+
+	p.logger.Info("[STK_PUSH] <<< PARSED RESPONSE",
+		slog.String("ref", result.Ref),
+		slog.String("order_id", result.OrderID),
+		slog.String("callback_url_in_response", result.CallbackURL),
+		slog.String("checksum", result.Checksum),
+	)
+
 	return &result, nil
+}
+
+// ExpressStatusResponse represents the status of an express checkout/STK push.
+type ExpressStatusResponse struct {
+	OrderID     string `json:"orderId"`
+	Status      string `json:"status"`      // "PENDING", "SUCCESS", "FAILED", "CANCELLED"
+	Amount      string `json:"amount"`
+	Ref         string `json:"ref"`
+	Description string `json:"description"`
+}
+
+// CheckExpressStatus queries JamboPay for the current status of an express checkout (STK push).
+//
+// Tries multiple approaches since JamboPay docs are sparse:
+//  1. POST /wallet/transaction/ with orderId/ref in body
+//  2. GET /wallet/transaction/{ref} (ref as path parameter)
+//
+// Uses no-redirect client + trailing slash to bypass nginx 301 → port 8002 issue.
+func (p *JamboPayProvider) CheckExpressStatus(ctx context.Context, orderID string, jpRef ...string) (*ExpressStatusResponse, error) {
+	ref := ""
+	if len(jpRef) > 0 && jpRef[0] != "" {
+		ref = jpRef[0]
+	}
+
+	p.logger.Info("[STK_POLL] checking transaction status",
+		slog.String("order_id", orderID),
+		slog.String("jp_ref", ref),
+	)
+
+	// Get auth token
+	token, err := p.authenticate(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("GATEWAY_UNREACHABLE: authentication failed: %w", err)
+	}
+
+	// No-redirect client — trailing slash on /wallet/transaction/ is important
+	noRedirectClient := &http.Client{
+		Transport: p.client.Transport,
+		Timeout:   5 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	// ─── Strategy 1: POST /wallet/transaction/ with body ───
+	postBody := map[string]string{"orderId": orderID}
+	if ref != "" {
+		postBody["ref"] = ref
+	}
+	bodyBytes, _ := json.Marshal(postBody)
+	postURL := p.cfg.BaseURL + "/wallet/transaction/"
+
+	postReq, _ := http.NewRequestWithContext(ctx, http.MethodPost, postURL, bytes.NewReader(bodyBytes))
+	postReq.Header.Set("Authorization", "Bearer "+token)
+	postReq.Header.Set("Content-Type", "application/json")
+
+	p.logger.Debug("[STK_POLL] trying POST /wallet/transaction/",
+		slog.String("url", postURL),
+		slog.String("body", string(bodyBytes)),
+	)
+
+	postResp, postErr := noRedirectClient.Do(postReq)
+	if postErr == nil {
+		defer postResp.Body.Close()
+		postRespBody, _ := io.ReadAll(postResp.Body)
+
+		p.logger.Info("[STK_POLL] POST response",
+			slog.Int("http_status", postResp.StatusCode),
+			slog.String("body", string(postRespBody)),
+		)
+
+		if postResp.StatusCode == http.StatusOK || postResp.StatusCode == http.StatusCreated {
+			if result := p.parseTransactionStatus(orderID, ref, postRespBody); result != nil {
+				return result, nil
+			}
+		}
+	}
+
+	// ─── Strategy 2: GET /wallet/transaction/{ref} (ref as path param) ───
+	if ref != "" {
+		getURL := p.cfg.BaseURL + "/wallet/transaction/" + ref
+		getReq, _ := http.NewRequestWithContext(ctx, http.MethodGet, getURL, nil)
+		getReq.Header.Set("Authorization", "Bearer "+token)
+
+		p.logger.Debug("[STK_POLL] trying GET /wallet/transaction/{ref}",
+			slog.String("url", getURL),
+		)
+
+		getResp, getErr := noRedirectClient.Do(getReq)
+		if getErr == nil {
+			defer getResp.Body.Close()
+			getRespBody, _ := io.ReadAll(getResp.Body)
+
+			p.logger.Info("[STK_POLL] GET /{ref} response",
+				slog.Int("http_status", getResp.StatusCode),
+				slog.String("body", string(getRespBody)),
+			)
+
+			if getResp.StatusCode == http.StatusOK {
+				if result := p.parseTransactionStatus(orderID, ref, getRespBody); result != nil {
+					return result, nil
+				}
+			}
+		}
+	}
+
+	// ─── Strategy 3: GET /wallet/transaction/{orderId} ───
+	getURL3 := p.cfg.BaseURL + "/wallet/transaction/" + orderID
+	getReq3, _ := http.NewRequestWithContext(ctx, http.MethodGet, getURL3, nil)
+	getReq3.Header.Set("Authorization", "Bearer "+token)
+
+	p.logger.Debug("[STK_POLL] trying GET /wallet/transaction/{orderId}",
+		slog.String("url", getURL3),
+	)
+
+	getResp3, getErr3 := noRedirectClient.Do(getReq3)
+	if getErr3 == nil {
+		defer getResp3.Body.Close()
+		getRespBody3, _ := io.ReadAll(getResp3.Body)
+
+		p.logger.Info("[STK_POLL] GET /{orderId} response",
+			slog.Int("http_status", getResp3.StatusCode),
+			slog.String("body", string(getRespBody3)),
+		)
+
+		if getResp3.StatusCode == http.StatusOK {
+			if result := p.parseTransactionStatus(orderID, ref, getRespBody3); result != nil {
+				return result, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("GATEWAY_UNREACHABLE: JamboPay does not support transaction status queries. Please confirm this payment manually if you received an M-Pesa confirmation SMS")
+}
+
+// parseTransactionStatus extracts status from a JamboPay transaction response body.
+func (p *JamboPayProvider) parseTransactionStatus(orderID, ref string, body []byte) *ExpressStatusResponse {
+	var txData map[string]interface{}
+	if err := json.Unmarshal(body, &txData); err != nil {
+		return nil
+	}
+
+	result := &ExpressStatusResponse{OrderID: orderID, Ref: ref}
+	for _, key := range []string{"status", "transactionStatus", "orderStatus", "paymentStatus"} {
+		if s, ok := txData[key].(string); ok && s != "" {
+			result.Status = s
+		}
+	}
+	if s, ok := txData["ref"].(string); ok {
+		result.Ref = s
+	}
+	if s, ok := txData["amount"].(string); ok {
+		result.Amount = s
+	}
+
+	// Check nested data array
+	if dataArr, ok := txData["data"].([]interface{}); ok && len(dataArr) > 0 {
+		if firstItem, ok := dataArr[0].(map[string]interface{}); ok {
+			for _, key := range []string{"status", "transactionStatus"} {
+				if s, ok := firstItem[key].(string); ok && s != "" {
+					result.Status = s
+				}
+			}
+			if s, ok := firstItem["ref"].(string); ok {
+				result.Ref = s
+			}
+		}
+	}
+
+	p.logger.Info("[STK_POLL] parsed status",
+		slog.String("order_id", orderID),
+		slog.String("status", result.Status),
+		slog.String("ref", result.Ref),
+	)
+
+	if result.Status != "" {
+		return result
+	}
+	return nil // no status found — treat as unsupported
 }
 
 // GetTransaction retrieves a transaction record by reference or order ID.
@@ -691,7 +919,7 @@ func (p *JamboPayProvider) GetTransaction(ctx context.Context, ref, orderID stri
 	if orderID != "" {
 		query.Set("orderId", orderID)
 	}
-	path := "/wallet/transaction"
+	path := "/wallet/transaction/" // trailing slash avoids nginx 301 redirect
 	if len(query) > 0 {
 		path += "?" + query.Encode()
 	}
@@ -719,6 +947,20 @@ func (p *JamboPayProvider) InitiateCollection(ctx context.Context, req payment.C
 
 	amount := fmt.Sprintf("%.2f", float64(req.AmountCents)/100)
 
+	// === DEBUG: Log incoming collection request ===
+	p.logger.Info("[COLLECTION] incoming request",
+		slog.Int64("amount_cents", req.AmountCents),
+		slog.String("amount_formatted", amount),
+		slog.String("order_id", req.OrderID),
+		slog.String("provider_input", req.Provider),
+		slog.String("provider_mapped", jpProvider),
+		slog.String("phone", req.PhoneNumber),
+		slog.String("account_to_input", req.AccountTo),
+		slog.String("callback_url_input", req.CallbackURL),
+		slog.String("config_callback_url", p.cfg.CallbackURL),
+		slog.String("config_collection_account", p.cfg.CollectionAccount),
+	)
+
 	ecReq := ExpressCheckoutRequest{
 		OrderID:       req.OrderID,
 		Amount:        amount,
@@ -735,8 +977,15 @@ func (p *JamboPayProvider) InitiateCollection(ctx context.Context, req payment.C
 
 	resp, err := p.InitiateMobileCollection(ctx, ecReq)
 	if err != nil {
+		p.logger.Error("[COLLECTION] STK push failed", slog.String("error", err.Error()))
 		return nil, err
 	}
+
+	p.logger.Info("[COLLECTION] STK push initiated successfully",
+		slog.String("ref", resp.Ref),
+		slog.String("order_id", resp.OrderID),
+		slog.String("callback_url_returned", resp.CallbackURL),
+	)
 
 	return &payment.CollectionResult{
 		Provider:  p.Name(),

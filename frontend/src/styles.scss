@@ -1043,6 +1043,48 @@ th[appSortable] {
   border-right-color: var(--color-bg-tertiary);
 }
 
+/* ============================================
+   Platform Admin Theme Override
+   Creates a visually distinct purple/indigo experience
+   for platform-level admin pages (/platform/*)
+   ============================================ */
+.platform-layout {
+  --color-accent: #8b5cf6;
+  --color-accent-light: #a78bfa;
+  --color-accent-dark: #7c3aed;
+  --color-accent-glow: rgba(139, 92, 246, 0.15);
+  --gradient-accent: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
+  --gradient-accent-soft: linear-gradient(135deg, rgba(139, 92, 246, 0.12) 0%, rgba(236, 72, 153, 0.08) 100%);
+  --color-bg-sidebar: #0c0518;
+  --platform-bg-sidebar: #0c0518;
+  --platform-topbar-bg: rgba(12, 5, 24, 0.92);
+  --platform-border: rgba(139, 92, 246, 0.1);
+  --platform-text: #e9d5ff;
+  --platform-text-muted: rgba(196, 181, 253, 0.5);
+  --platform-accent: #c084fc;
+
+  .badge-accent {
+    background: rgba(139, 92, 246, 0.12);
+    color: #8b5cf6;
+  }
+}
+
+[data-theme="light"] .platform-layout {
+  --color-accent: #7c3aed;
+  --color-accent-light: #8b5cf6;
+  --color-accent-dark: #6d28d9;
+  --color-accent-glow: rgba(124, 58, 237, 0.15);
+  --gradient-accent: linear-gradient(135deg, #7c3aed 0%, #db2777 100%);
+  --gradient-accent-soft: linear-gradient(135deg, rgba(124, 58, 237, 0.08) 0%, rgba(219, 39, 119, 0.06) 100%);
+  --color-bg-sidebar: #faf5ff;
+  --platform-bg-sidebar: #faf5ff;
+  --platform-topbar-bg: rgba(250, 245, 255, 0.92);
+  --platform-border: rgba(124, 58, 237, 0.12);
+  --platform-text: #4c1d95;
+  --platform-text-muted: rgba(76, 29, 149, 0.5);
+  --platform-accent: #7c3aed;
+}
+
 /* Reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -1051,3 +1093,4 @@ th[appSortable] {
     transition-duration: 0.01ms !important;
   }
 }
+

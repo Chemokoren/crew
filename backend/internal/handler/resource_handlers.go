@@ -1,11 +1,14 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/kibsoft/amy-mis/internal/external/jambopay"
 	"github.com/kibsoft/amy-mis/internal/external/payment"
 	"github.com/kibsoft/amy-mis/internal/middleware"
 	"github.com/kibsoft/amy-mis/internal/models"
@@ -18,6 +21,14 @@ import (
 type OrganizationHandler struct {
 	saccoSvc   *service.OrganizationService
 	paymentMgr *payment.Manager // nil when no payment providers configured
+	jamboPay   JamboPaySTKChecker // for polling STK status — nil when JamboPay not configured
+	floatRepo  repository.OrganizationFloatRepository
+}
+
+// JamboPaySTKChecker is the interface for polling JamboPay express checkout status.
+// Implemented by jambopay.JamboPayProvider.
+type JamboPaySTKChecker interface {
+	CheckExpressStatus(ctx context.Context, orderID string, jpRef ...string) (*jambopay.ExpressStatusResponse, error)
 }
 
 func NewOrganizationHandler(svc *service.OrganizationService, paymentMgr ...*payment.Manager) *OrganizationHandler {
@@ -26,6 +37,12 @@ func NewOrganizationHandler(svc *service.OrganizationService, paymentMgr ...*pay
 		h.paymentMgr = paymentMgr[0]
 	}
 	return h
+}
+
+// WithSTKPoller injects the JamboPay provider and float repo for STK status polling.
+func (h *OrganizationHandler) WithSTKPoller(jp JamboPaySTKChecker, repo repository.OrganizationFloatRepository) {
+	h.jamboPay = jp
+	h.floatRepo = repo
 }
 
 func (h *OrganizationHandler) Create(c *gin.Context) {
@@ -259,6 +276,12 @@ func (h *OrganizationHandler) TopUpFloat(c *gin.Context) {
 			"The top-up method '"+req.Method+"' is not enabled for this organization. Contact your administrator.")
 		return
 	}
+	// Channel-level check: verify the specific provider is allowed (e.g. mpesa within mobile_money)
+	if req.Provider != "" && !tenantCfg.IsTopUpChannelAllowed(req.Provider) {
+		ErrorResponse(c, http.StatusForbidden, "CHANNEL_DISABLED",
+			"The payment channel '"+req.Provider+"' is not enabled for this organization. Contact your administrator.")
+		return
+	}
 
 	switch req.Method {
 	case "mobile_money":
@@ -302,7 +325,7 @@ func (h *OrganizationHandler) TopUpFloat(c *gin.Context) {
 			})
 			if collErr != nil {
 				// STK push failed to send — mark the pending tx as failed
-				_ = h.saccoSvc.FailPendingTopUp(c.Request.Context(), pendingTx.ID, collErr.Error())
+				_ = h.saccoSvc.FailPendingTopUp(c.Request.Context(), pendingTx.ID, collErr.Error(), models.SyncManual)
 				ErrorResponse(c, http.StatusBadGateway, "STK_PUSH_FAILED",
 					"Failed to initiate M-Pesa STK push: "+collErr.Error())
 				return
@@ -312,7 +335,7 @@ func (h *OrganizationHandler) TopUpFloat(c *gin.Context) {
 			_ = h.saccoSvc.UpdatePendingRef(c.Request.Context(), pendingTx.ID, " | jp_ref:"+collResult.Reference)
 		} else {
 			stkStatus = "Payment provider not configured"
-			_ = h.saccoSvc.FailPendingTopUp(c.Request.Context(), pendingTx.ID, "no payment provider")
+			_ = h.saccoSvc.FailPendingTopUp(c.Request.Context(), pendingTx.ID, "no payment provider", models.SyncManual)
 			ErrorResponse(c, http.StatusServiceUnavailable, "PROVIDER_UNAVAILABLE",
 				"Mobile payment provider is not configured")
 			return
@@ -471,7 +494,7 @@ func (h *OrganizationHandler) ConfirmTopUp(c *gin.Context) {
 		return
 	}
 
-	tx, err := h.saccoSvc.ConfirmPendingTopUp(c.Request.Context(), txID)
+	tx, err := h.saccoSvc.ConfirmPendingTopUp(c.Request.Context(), txID, models.SyncManual)
 	if err != nil {
 		MapServiceError(c, err)
 		return
@@ -503,7 +526,7 @@ func (h *OrganizationHandler) RejectTopUp(c *gin.Context) {
 		req.Reason = "Rejected by admin"
 	}
 
-	if err := h.saccoSvc.FailPendingTopUp(c.Request.Context(), txID, req.Reason); err != nil {
+	if err := h.saccoSvc.FailPendingTopUp(c.Request.Context(), txID, req.Reason, models.SyncManual); err != nil {
 		MapServiceError(c, err)
 		return
 	}
@@ -1124,4 +1147,184 @@ func (h *NotificationHandler) UpdatePreferences(c *gin.Context) {
 		return
 	}
 	SuccessResponse(c, http.StatusOK, p)
+}
+
+// ===================================================================
+// STK PUSH STATUS POLLING — Fallback when JamboPay callbacks fail
+// ===================================================================
+
+// PollPendingSTK checks the status of all pending STK push transactions
+// by querying JamboPay directly. Auto-confirms or fails based on response.
+//
+// POST /api/v1/organizations/:id/float/poll-stk
+//
+// This is a manual fallback endpoint. It can also be called by a cron/background job.
+func (h *OrganizationHandler) PollPendingSTK(c *gin.Context) {
+	if h.jamboPay == nil || h.floatRepo == nil {
+		ErrorResponse(c, http.StatusServiceUnavailable, "STK_POLLING_UNAVAILABLE",
+			"STK status polling is not configured (no JamboPay provider)")
+		return
+	}
+
+	ctx := c.Request.Context()
+
+	// Get all pending STK transactions (max 20, within last hour)
+	pendingTxs, err := h.floatRepo.ListPendingSTK(ctx, 20)
+	if err != nil {
+		ErrorResponse(c, http.StatusInternalServerError, "QUERY_FAILED", err.Error())
+		return
+	}
+
+	if len(pendingTxs) == 0 {
+		SuccessResponse(c, http.StatusOK, gin.H{
+			"message":     "No pending STK transactions to poll",
+			"checked":     0,
+			"confirmed":   0,
+			"failed":      0,
+		})
+		return
+	}
+
+	var confirmed, failed, skipped int
+	var results []gin.H
+
+	for _, tx := range pendingTxs {
+		// Extract the idempotency key (= JamboPay orderId)
+		orderID := tx.IdempotencyKey
+
+		// Also try to extract jp_ref from the reference string
+		jpRef := ""
+		if idx := strings.Index(tx.Reference, "jp_ref:"); idx >= 0 {
+			jpRef = strings.TrimSpace(tx.Reference[idx+7:])
+		}
+
+		statusResp, pollErr := h.jamboPay.CheckExpressStatus(ctx, orderID, jpRef)
+		if pollErr != nil {
+			results = append(results, gin.H{
+				"tx_id":    tx.ID.String(),
+				"order_id": orderID,
+				"error":    pollErr.Error(),
+			})
+			skipped++
+			continue
+		}
+
+		result := gin.H{
+			"tx_id":      tx.ID.String(),
+			"order_id":   orderID,
+			"jp_ref":     jpRef,
+			"jp_status":  statusResp.Status,
+		}
+
+		switch statusResp.Status {
+		case "SUCCESS", "COMPLETED", "COMPLETE":
+			_, confirmErr := h.saccoSvc.ConfirmPendingTopUp(ctx, tx.ID, models.SyncPoll)
+			if confirmErr != nil {
+				result["action"] = "confirm_failed"
+				result["error"] = confirmErr.Error()
+			} else {
+				result["action"] = "confirmed"
+				confirmed++
+			}
+		case "FAILED", "FAILURE", "CANCELLED", "REVERSED", "ERROR":
+			failErr := h.saccoSvc.FailPendingTopUp(ctx, tx.ID, "JamboPay status: "+statusResp.Status, models.SyncPoll)
+			if failErr != nil {
+				result["action"] = "fail_failed"
+				result["error"] = failErr.Error()
+			} else {
+				result["action"] = "failed"
+				failed++
+			}
+		default:
+			result["action"] = "still_pending"
+			skipped++
+		}
+
+		results = append(results, result)
+	}
+
+	SuccessResponse(c, http.StatusOK, gin.H{
+		"message":   "STK status poll completed",
+		"checked":   len(pendingTxs),
+		"confirmed": confirmed,
+		"failed":    failed,
+		"skipped":   skipped,
+		"results":   results,
+	})
+}
+
+// PollSingleSTK checks the status of a single pending STK push transaction
+// by querying JamboPay directly.
+//
+// POST /api/v1/organizations/:id/float/poll-stk/:tx_id
+func (h *OrganizationHandler) PollSingleSTK(c *gin.Context) {
+	if h.jamboPay == nil || h.floatRepo == nil {
+		ErrorResponse(c, http.StatusServiceUnavailable, "STK_POLLING_UNAVAILABLE",
+			"STK status polling is not configured")
+		return
+	}
+
+	txID, err := uuid.Parse(c.Param("tx_id"))
+	if err != nil {
+		BadRequest(c, "Invalid transaction ID")
+		return
+	}
+
+	ctx := c.Request.Context()
+
+	// Look up the specific pending transaction directly by ID (no time restriction)
+	targetTx, err := h.floatRepo.GetPendingTransactionByID(ctx, txID)
+	if err != nil {
+		ErrorResponse(c, http.StatusNotFound, "TX_NOT_FOUND",
+			"Transaction not found or not in PENDING status")
+		return
+	}
+
+	orderID := targetTx.IdempotencyKey
+
+	// Extract jp_ref from the reference string
+	jpRef := ""
+	if idx := strings.Index(targetTx.Reference, "jp_ref:"); idx >= 0 {
+		jpRef = strings.TrimSpace(targetTx.Reference[idx+7:])
+	}
+
+	statusResp, pollErr := h.jamboPay.CheckExpressStatus(ctx, orderID, jpRef)
+	if pollErr != nil {
+		SuccessResponse(c, http.StatusOK, gin.H{
+			"tx_id":    txID.String(),
+			"order_id": orderID,
+			"action":   "poll_failed",
+			"error":    pollErr.Error(),
+		})
+		return
+	}
+
+	result := gin.H{
+		"tx_id":     txID.String(),
+		"order_id":  orderID,
+		"jp_status": statusResp.Status,
+	}
+
+	switch statusResp.Status {
+	case "SUCCESS", "COMPLETED", "COMPLETE":
+		_, confirmErr := h.saccoSvc.ConfirmPendingTopUp(ctx, txID, models.SyncPoll)
+		if confirmErr != nil {
+			result["action"] = "confirm_failed"
+			result["error"] = confirmErr.Error()
+		} else {
+			result["action"] = "confirmed"
+		}
+	case "FAILED", "FAILURE", "CANCELLED", "REVERSED", "ERROR":
+		failErr := h.saccoSvc.FailPendingTopUp(ctx, txID, "JamboPay status: "+statusResp.Status, models.SyncPoll)
+		if failErr != nil {
+			result["action"] = "fail_failed"
+			result["error"] = failErr.Error()
+		} else {
+			result["action"] = "failed"
+		}
+	default:
+		result["action"] = "still_pending"
+	}
+
+	SuccessResponse(c, http.StatusOK, result)
 }

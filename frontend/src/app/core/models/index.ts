@@ -32,7 +32,15 @@ export interface User {
   kyc_verification_mode?: 'UPLOAD' | 'MANUAL';
 }
 
-export type SystemRole = 'SYSTEM_ADMIN' | 'EMPLOYER' | 'EMPLOYEE' | 'LENDER' | 'INSURER';
+export type SystemRole =
+  | 'SYSTEM_ADMIN' | 'EMPLOYER' | 'EMPLOYEE' | 'LENDER' | 'INSURER'
+  | 'PLATFORM_ADMIN' | 'PLATFORM_SUPPORT' | 'PLATFORM_FINANCE'
+  | 'PLATFORM_AUDITOR' | 'PLATFORM_ASSISTANT';
+
+export const PLATFORM_ROLES: SystemRole[] = [
+  'SYSTEM_ADMIN', 'PLATFORM_ADMIN', 'PLATFORM_SUPPORT',
+  'PLATFORM_FINANCE', 'PLATFORM_AUDITOR', 'PLATFORM_ASSISTANT',
+];
 
 export interface CrewProfile {
   id: string;
@@ -211,6 +219,7 @@ export interface TenantConfig {
   kyc_verification_mode?: 'UPLOAD' | 'MANUAL';
   topup_verification_mode?: 'API' | 'MANUAL' | 'HYBRID';
   allowed_topup_methods?: ('mobile_money' | 'bank' | 'card')[];
+  allowed_topup_channels?: string[];
 }
 
 // AD-13: Bootstrap result from industry template seeding
@@ -536,6 +545,8 @@ export interface SACCOFloatTransaction {
   reference?: string;
   idempotency_key: string;
   status: 'PENDING' | 'COMPLETED' | 'FAILED' | 'REVERSED';
+  sync_method?: '' | 'CALLBACK' | 'POLL' | 'MANUAL';
+  synced_at?: string;
   created_at: string;
 }
 

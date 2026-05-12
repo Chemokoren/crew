@@ -569,7 +569,12 @@ export class LoginComponent {
     this.auth.login(this.phone, this.password).subscribe({
       next: () => {
         this.toast.success('Welcome back!');
-        this.router.navigate(['/dashboard']);
+        // Platform admins go to the platform command center
+        if (this.auth.isPlatformUser()) {
+          this.router.navigate(['/platform/command-center']);
+        } else {
+          this.router.navigate(['/dashboard']);
+        }
       },
       error: (err) => {
         this.loading.set(false);

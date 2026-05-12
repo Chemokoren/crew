@@ -389,10 +389,16 @@ Organization (SACCO) float can be funded via three methods. **Mobile money** use
 ```
 
 **Key design decisions:**
-- The float balance is **never** credited until the payment is confirmed via callback
+- The float balance is **never** credited until the payment is confirmed via callback or polling
 - Pending transactions are idempotency-protected (`idempotency_key` as the JamboPay `orderId`)
+- The system supports multiple synchronization methods tracked via `sync_method` (`CALLBACK`, `POLL`, `MANUAL`) and `synced_at` timestamps on the transaction
+- Frontend dashboards actively poll JamboPay for STK push completion using `/organizations/:id/float/poll-stk`, enabling faster confirmation when webhooks are delayed
 - Failed STK pushes immediately mark the pending tx as `FAILED`
 - The webhook handler first checks for pending float tx (collection), then payout tx
+
+#### Tenant-Level Top-Up Configuration
+
+Top-up availability is governed by `TenantConfig.AllowedTopUpMethods` (`mobile_money`, `bank`, `card`). Handlers validate the requested method against this configuration and return `403 METHOD_DISABLED` if a tenant has disabled a specific channel. By default (nil/empty array), all methods are allowed.
 
 #### Bank & Card (Configurable Verification)
 
@@ -658,6 +664,8 @@ make test-coverage                        # HTML coverage report
 | 25 | ~~Financial services logic missing~~ | ✅ Fully implemented Credit Scoring, Loan management, and Insurance workflows. |
 | 26 | ~~No KYC unverification workflow~~ | ✅ Admins can unverify employees with a reason; IN_APP notification dispatched; `KYCVerifiedAt` cleared; frontend navigation blocked for unverified employees (KYC guard + sidebar lock). |
 | 27 | ~~Bank/card top-ups credited without verification~~ | ✅ Configurable verification system with 3 modes: **API** (verify via bank integration), **MANUAL** (admin approval), **HYBRID** (try API, fall back to manual). Tenant-level config in `TenantConfig.topup_verification_mode`. Admin confirm/reject endpoints. Frontend Pending Approvals panel in Wallet Dashboard. Finance tab in Tenant Settings. |
+| 28 | ~~No control over available top-up methods~~ | ✅ Tenant-level configuration `AllowedTopUpMethods` implemented. Handlers enforce availability dynamically. Frontend admin panel allows enabling/disabling of mobile money, bank, and card top-ups per tenant. |
+| 29 | ~~Silent failures on delayed JamboPay callbacks~~ | ✅ Active polling mechanism implemented. `SyncMethod` (`CALLBACK`, `POLL`, `MANUAL`) and `SyncedAt` added to transactions. Frontend Wallet Dashboard auto-polls pending STK transactions to provide real-time status updates and manual resolution options. |
 
 ### 11.2 Roadmap & Future Recommendations
 

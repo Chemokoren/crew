@@ -488,6 +488,11 @@ func main() {
 	// Create orgHandler after paymentMgr so it can trigger STK push for float top-ups
 	orgHandler := handler.NewOrganizationHandler(saccoSvc, paymentMgr)
 
+	// Inject JamboPay STK poller for callback-less status reconciliation
+	if jamboPayProvider != nil {
+		orgHandler.WithSTKPoller(jamboPayProvider, floatRepo)
+	}
+
 	// Initialize PayoutService after paymentMgr is available
 	payoutSvc := service.NewPayoutService(walletSvc, paymentMgr, auditSvc, logger)
 	payoutHandler := handler.NewPayoutHandler(payoutSvc)
@@ -715,6 +720,8 @@ func main() {
 			saccos.POST("/:id/float/topup", orgHandler.TopUpFloat)
 			saccos.POST("/:id/float/topup/:tx_id/confirm", orgHandler.ConfirmTopUp)
 			saccos.POST("/:id/float/topup/:tx_id/reject", orgHandler.RejectTopUp)
+		saccos.POST("/:id/float/poll-stk", orgHandler.PollPendingSTK)
+		saccos.POST("/:id/float/poll-stk/:tx_id", orgHandler.PollSingleSTK)
 			saccos.POST("/:id/float/debit", orgHandler.DebitFloat)
 			saccos.GET("/:id/float/transactions", orgHandler.ListFloatTransactions)
 		}
@@ -737,6 +744,8 @@ func main() {
 			orgs.POST("/:id/float/topup", orgHandler.TopUpFloat)
 			orgs.POST("/:id/float/topup/:tx_id/confirm", orgHandler.ConfirmTopUp)
 			orgs.POST("/:id/float/topup/:tx_id/reject", orgHandler.RejectTopUp)
+		orgs.POST("/:id/float/poll-stk", orgHandler.PollPendingSTK)
+		orgs.POST("/:id/float/poll-stk/:tx_id", orgHandler.PollSingleSTK)
 			orgs.POST("/:id/float/debit", orgHandler.DebitFloat)
 			orgs.GET("/:id/float/transactions", orgHandler.ListFloatTransactions)
 			// Tenant config, job types, pay schedules — also under /organizations/

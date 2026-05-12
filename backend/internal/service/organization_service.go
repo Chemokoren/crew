@@ -294,13 +294,13 @@ func (s *OrganizationService) CreatePendingTopUp(ctx context.Context, input Floa
 // ConfirmPendingTopUp atomically credits the float balance and marks the
 // pending transaction as COMPLETED. Called from the webhook handler when
 // the payment provider confirms a successful STK push payment.
-func (s *OrganizationService) ConfirmPendingTopUp(ctx context.Context, txID uuid.UUID) (*models.OrganizationFloatTransaction, error) {
-	return s.floatRepo.ConfirmPendingTransaction(ctx, txID)
+func (s *OrganizationService) ConfirmPendingTopUp(ctx context.Context, txID uuid.UUID, syncMethod models.SyncMethod) (*models.OrganizationFloatTransaction, error) {
+	return s.floatRepo.ConfirmPendingTransaction(ctx, txID, syncMethod)
 }
 
 // FailPendingTopUp marks a pending float transaction as FAILED.
-func (s *OrganizationService) FailPendingTopUp(ctx context.Context, txID uuid.UUID, reason string) error {
-	return s.floatRepo.FailPendingTransaction(ctx, txID, reason)
+func (s *OrganizationService) FailPendingTopUp(ctx context.Context, txID uuid.UUID, reason string, syncMethod models.SyncMethod) error {
+	return s.floatRepo.FailPendingTransaction(ctx, txID, reason, syncMethod)
 }
 
 // GetFloatTxByIdempotencyKey finds a float transaction by its idempotency key.

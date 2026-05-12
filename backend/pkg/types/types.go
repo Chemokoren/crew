@@ -12,6 +12,13 @@ const (
 	RoleEmployee    SystemRole = "EMPLOYEE"
 	RoleLender      SystemRole = "LENDER"
 	RoleInsurer     SystemRole = "INSURER"
+
+	// Platform staff roles — separated admin experience
+	RolePlatformAdmin     SystemRole = "PLATFORM_ADMIN"
+	RolePlatformSupport   SystemRole = "PLATFORM_SUPPORT"
+	RolePlatformFinance   SystemRole = "PLATFORM_FINANCE"
+	RolePlatformAuditor   SystemRole = "PLATFORM_AUDITOR"
+	RolePlatformAssistant SystemRole = "PLATFORM_ASSISTANT"
 )
 
 // Backward compatibility aliases — use new names in new code.
@@ -28,7 +35,22 @@ func ValidRoles() []SystemRole {
 		RoleEmployee,
 		RoleLender,
 		RoleInsurer,
+		RolePlatformAdmin,
+		RolePlatformSupport,
+		RolePlatformFinance,
+		RolePlatformAuditor,
+		RolePlatformAssistant,
 	}
+}
+
+// IsPlatformRole returns true if the role is a platform-level staff role.
+func (r SystemRole) IsPlatformRole() bool {
+	switch r {
+	case RoleSystemAdmin, RolePlatformAdmin, RolePlatformSupport,
+		RolePlatformFinance, RolePlatformAuditor, RolePlatformAssistant:
+		return true
+	}
+	return false
 }
 
 // IsValid checks if the role is a recognized system role.

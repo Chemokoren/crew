@@ -101,7 +101,7 @@ func (s *WebhookService) ProcessJamboPayWebhook(ctx context.Context, payload []b
 		if floatErr == nil && pendingTx.Status == models.TxPending {
 			switch cb.Status {
 			case "SUCCESS", "COMPLETED", "COMPLETE":
-				_, confirmErr := s.orgSvc.ConfirmPendingTopUp(ctx, pendingTx.ID)
+				_, confirmErr := s.orgSvc.ConfirmPendingTopUp(ctx, pendingTx.ID, models.SyncCallback)
 				if confirmErr != nil {
 					s.logger.Error("CRITICAL: failed to confirm float top-up",
 						slog.String("tx_id", pendingTx.ID.String()),
@@ -115,7 +115,7 @@ func (s *WebhookService) ProcessJamboPayWebhook(ctx context.Context, payload []b
 					)
 				}
 			case "FAILED", "FAILURE", "REVERSED", "ERROR":
-				_ = s.orgSvc.FailPendingTopUp(ctx, pendingTx.ID, "payment "+cb.Status+": "+cb.Description)
+				_ = s.orgSvc.FailPendingTopUp(ctx, pendingTx.ID, "payment "+cb.Status+": "+cb.Description, models.SyncCallback)
 				s.logger.Info("float top-up failed via callback",
 					slog.String("tx_id", pendingTx.ID.String()),
 					slog.String("status", cb.Status),

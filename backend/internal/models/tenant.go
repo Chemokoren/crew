@@ -121,10 +121,16 @@ type TenantConfig struct {
 
 	// --- Float Top-Up Method Availability ---
 
-	// AllowedTopUpMethods controls which top-up methods are available for this tenant.
+	// AllowedTopUpMethods controls which top-up method categories are available for this tenant.
 	// Valid values: "mobile_money", "bank", "card"
 	// When empty or nil, all methods are allowed (backward compatible).
 	AllowedTopUpMethods []string `json:"allowed_topup_methods,omitempty"`
+
+	// AllowedTopUpChannels provides fine-grained control over individual payment channels.
+	// Valid values: "mpesa", "airtel", "tkash", "kcb", "equity", "coop", "rtgs", "visa", "mastercard"
+	// When empty or nil, all channels within allowed methods are available (backward compatible).
+	// If populated, only these specific channels appear in the wallet top-up UI.
+	AllowedTopUpChannels []string `json:"allowed_topup_channels,omitempty"`
 }
 
 // KYC verification mode constants.
@@ -161,8 +167,22 @@ func (tc *TenantConfig) ResolvedTopUpVerificationMode() string {
 	}
 }
 
-// AllTopUpMethods is the complete set of supported top-up methods.
+// AllTopUpMethods is the complete set of supported top-up method categories.
 var AllTopUpMethods = []string{"mobile_money", "bank", "card"}
+
+// AllTopUpChannels is the complete set of supported individual payment channels.
+var AllTopUpChannels = []string{
+	"mpesa", "airtel", "tkash",          // mobile_money
+	"kcb", "equity", "coop", "rtgs",     // bank
+	"visa", "mastercard",                // card
+}
+
+// ChannelToMethod maps each individual channel to its parent method category.
+var ChannelToMethod = map[string]string{
+	"mpesa": "mobile_money", "airtel": "mobile_money", "tkash": "mobile_money",
+	"kcb": "bank", "equity": "bank", "coop": "bank", "rtgs": "bank",
+	"visa": "card", "mastercard": "card",
+}
 
 // ResolvedAllowedTopUpMethods returns the effective set of allowed top-up methods.
 // Defaults to all methods if not configured.
@@ -173,10 +193,34 @@ func (tc *TenantConfig) ResolvedAllowedTopUpMethods() []string {
 	return tc.AllowedTopUpMethods
 }
 
-// IsTopUpMethodAllowed checks whether a given top-up method is permitted.
+// IsTopUpMethodAllowed checks whether a given top-up method category is permitted.
 func (tc *TenantConfig) IsTopUpMethodAllowed(method string) bool {
 	for _, m := range tc.ResolvedAllowedTopUpMethods() {
 		if m == method {
+			return true
+		}
+	}
+	return false
+}
+
+// IsTopUpChannelAllowed checks whether a specific payment channel (provider) is permitted.
+// It first checks the method-level gate, then applies channel-level filtering if configured.
+func (tc *TenantConfig) IsTopUpChannelAllowed(channel string) bool {
+	// 1. Check the parent method category is allowed
+	parentMethod, ok := ChannelToMethod[channel]
+	if !ok {
+		return false // unknown channel
+	}
+	if !tc.IsTopUpMethodAllowed(parentMethod) {
+		return false
+	}
+	// 2. If no channel-level config, allow all channels within the method
+	if len(tc.AllowedTopUpChannels) == 0 {
+		return true
+	}
+	// 3. Check specific channel
+	for _, c := range tc.AllowedTopUpChannels {
+		if c == channel {
 			return true
 		}
 	}

@@ -63,16 +63,62 @@ import { Wallet, WalletTransaction, PaginationMeta, CrewMember, SACCOFloat, SACC
           </div>
         </div>
 
+        <!-- Recent Sync Status -->
+        @if (recentSyncedTopUps().length > 0) {
+          <div class="glass-card" style="margin-bottom:var(--space-lg);padding:var(--space-md);">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin:0 0 var(--space-sm) 0;">
+              <h3 style="display:flex;align-items:center;gap:8px;margin:0;font-size:0.95rem;font-weight:600;">
+                <span class="material-icons-round" style="color:var(--color-success);font-size:20px;">sync</span>
+                Recent Sync Activity
+              </h3>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              @for (stx of recentSyncedTopUps(); track stx.id) {
+                <div class="sync-status-row" [class.sync-status-row--completed]="stx.status === 'COMPLETED'" [class.sync-status-row--failed]="stx.status === 'FAILED'">
+                  <span class="material-icons-round" style="font-size:18px;">{{ stx.status === 'COMPLETED' ? 'check_circle' : 'cancel' }}</span>
+                  <div style="flex:1;min-width:0;">
+                    <div style="font-size:0.8rem;font-weight:500;color:var(--color-text-primary);">{{ stx.amount_cents | currencyKes }}</div>
+                    <div style="font-size:0.68rem;color:var(--color-text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ stx.reference || 'No reference' }}</div>
+                  </div>
+                  <span class="sync-badge" [class.sync-badge--callback]="stx.sync_method === 'CALLBACK'" [class.sync-badge--poll]="stx.sync_method === 'POLL'" [class.sync-badge--manual]="stx.sync_method === 'MANUAL'">
+                    <span class="material-icons-round" style="font-size:12px;">{{ getSyncIcon(stx.sync_method) }}</span>
+                    {{ getSyncLabel(stx.sync_method) }}
+                  </span>
+                  <span class="sync-status-chip" [class.sync-status-chip--synced]="stx.status === 'COMPLETED'" [class.sync-status-chip--failed]="stx.status === 'FAILED'">
+                    {{ stx.status === 'COMPLETED' ? 'Synced' : 'Failed' }}
+                  </span>
+                  <div style="font-size:0.68rem;color:var(--color-text-muted);white-space:nowrap;">{{ stx.synced_at ? (stx.synced_at | relativeTime) : (stx.created_at | relativeTime) }}</div>
+                </div>
+              }
+            </div>
+          </div>
+        }
+
         <!-- Pending Top-Up Approvals -->
         @if (pendingTopUps().length > 0) {
           <div class="glass-card" style="margin-bottom:var(--space-lg);padding:var(--space-md);">
-            <h3 style="display:flex;align-items:center;gap:8px;margin:0 0 var(--space-sm) 0;font-size:0.95rem;font-weight:600;">
-              <span class="material-icons-round" style="color:#f59e0b;font-size:20px;">pending_actions</span>
-              Pending Top-Up Approvals
-              <span style="background:#f59e0b;color:#fff;font-size:0.7rem;padding:2px 8px;border-radius:100px;font-weight:700;">{{ pendingTopUps().length }}</span>
-            </h3>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin:0 0 var(--space-sm) 0;">
+              <h3 style="display:flex;align-items:center;gap:8px;margin:0;font-size:0.95rem;font-weight:600;">
+                <span class="material-icons-round" style="color:#f59e0b;font-size:20px;">pending_actions</span>
+                Pending Top-Up Approvals
+                <span style="background:#f59e0b;color:#fff;font-size:0.7rem;padding:2px 8px;border-radius:100px;font-weight:700;">{{ pendingTopUps().length }}</span>
+              </h3>
+              <button class="btn-sync" (click)="pollPendingSTK()" [disabled]="polling()" id="btn-poll-stk" title="Check payment gateway for completed payments">
+                <span class="material-icons-round" [class.spin]="polling()" style="font-size:16px;">sync</span>
+                {{ polling() ? 'Checking...' : 'Sync Payments' }}
+              </button>
+            </div>
+            @if (pollResult()) {
+              <div class="poll-result" [class.poll-result--success]="pollResult()!.confirmed > 0" [class.poll-result--warning]="pollResult()!.confirmed === 0">
+                <span class="material-icons-round" style="font-size:16px;">{{ pollResult()!.confirmed > 0 ? 'check_circle' : 'info' }}</span>
+                <span>{{ pollResult()!.message }}</span>
+                @if (pollResult()!.confirmed > 0) {
+                  <span style="font-weight:600;"> — {{ pollResult()!.confirmed }} payment(s) confirmed!</span>
+                }
+              </div>
+            }
             <p style="font-size:0.75rem;color:var(--color-text-muted);margin:0 0 var(--space-sm);">
-              These top-ups require verification before the float balance is credited.
+              These top-ups require verification before the float balance is credited. Use <strong>Sync Payments</strong> to auto-check with the payment gateway, or confirm/reject manually.
             </p>
             <div style="display:flex;flex-direction:column;gap:8px;">
               @for (ptx of pendingTopUps(); track ptx.id) {
@@ -83,6 +129,13 @@ import { Wallet, WalletTransaction, PaginationMeta, CrewMember, SACCOFloat, SACC
                     <div style="font-size:0.7rem;color:var(--color-text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ ptx.reference || 'No reference' }}</div>
                   </div>
                   <div style="font-size:0.7rem;color:var(--color-text-muted);white-space:nowrap;">{{ ptx.created_at | relativeTime }}</div>
+                  <span class="sync-status-chip sync-status-chip--pending">
+                    <span class="material-icons-round" style="font-size:11px;">sync_disabled</span>
+                    Not Synced
+                  </span>
+                  <button class="btn-sync-sm" (click)="pollSingleTx(ptx.id)" [disabled]="pollingTxId() === ptx.id" title="Check this payment's status with JamboPay">
+                    <span class="material-icons-round" [class.spin]="pollingTxId() === ptx.id" style="font-size:14px;">sync</span>
+                  </button>
                   <button class="btn btn-primary" style="padding:4px 12px;font-size:0.72rem;min-height:28px;" (click)="confirmPendingTopUp(ptx.id)" id="btn-confirm-{{ptx.id}}">
                     <span class="material-icons-round" style="font-size:14px;">check</span> Confirm
                   </button>
@@ -683,6 +736,31 @@ import { Wallet, WalletTransaction, PaginationMeta, CrewMember, SACCOFloat, SACC
     .provider-chip--active { border-color: var(--color-accent); background: rgba(0,210,255,0.1); color: var(--color-accent); font-weight: 600; box-shadow: 0 0 0 2px rgba(0,210,255,0.12); }
     .provider-chip-icon { font-size: 1.1rem; }
     @media (max-width: 600px) { .tx-time, .tx-balance { display: none; } .pm-grid { grid-template-columns: 1fr; } }
+    .btn-sync { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 100px; border: 1.5px solid var(--color-accent); background: rgba(0,210,255,0.06); color: var(--color-accent); font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease; white-space: nowrap; }
+    .btn-sync:hover:not(:disabled) { background: rgba(0,210,255,0.14); transform: translateY(-1px); box-shadow: 0 3px 12px rgba(0,210,255,0.15); }
+    .btn-sync:disabled { opacity: 0.6; cursor: not-allowed; }
+    .spin { animation: spin 1s linear infinite; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .poll-result { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: var(--radius-md); font-size: 0.75rem; margin-bottom: var(--space-sm); transition: all 0.3s ease; }
+    .poll-result--success { background: rgba(34,197,94,0.08); color: #16a34a; border: 1px solid rgba(34,197,94,0.25); }
+    .poll-result--warning { background: rgba(251,191,36,0.08); color: #92400e; border: 1px solid rgba(251,191,36,0.25); }
+    .btn-sync-sm { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; border: 1.5px solid var(--color-border); background: var(--color-bg-secondary); color: var(--color-accent); cursor: pointer; transition: all 0.2s ease; flex-shrink: 0; padding: 0; }
+    .btn-sync-sm:hover:not(:disabled) { border-color: var(--color-accent); background: rgba(0,210,255,0.1); transform: rotate(90deg); }
+    .btn-sync-sm:disabled { opacity: 0.5; cursor: not-allowed; }
+    /* --- Sync Status Styles --- */
+    .sync-status-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 100px; font-size: 0.65rem; font-weight: 600; white-space: nowrap; letter-spacing: 0.02em; }
+    .sync-status-chip--synced { background: rgba(34,197,94,0.1); color: #16a34a; border: 1px solid rgba(34,197,94,0.3); }
+    .sync-status-chip--pending { background: rgba(251,191,36,0.1); color: #92400e; border: 1px solid rgba(251,191,36,0.3); }
+    .sync-status-chip--failed { background: rgba(239,68,68,0.1); color: #dc2626; border: 1px solid rgba(239,68,68,0.3); }
+    .sync-badge { display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 6px; font-size: 0.62rem; font-weight: 600; white-space: nowrap; text-transform: uppercase; letter-spacing: 0.04em; }
+    .sync-badge--callback { background: rgba(99,102,241,0.1); color: #6366f1; border: 1px solid rgba(99,102,241,0.25); }
+    .sync-badge--poll { background: rgba(0,210,255,0.1); color: var(--color-accent); border: 1px solid rgba(0,210,255,0.25); }
+    .sync-badge--manual { background: rgba(245,158,11,0.1); color: #d97706; border: 1px solid rgba(245,158,11,0.25); }
+    .sync-status-row { display: flex; align-items: center; gap: var(--space-sm); padding: 8px 12px; border-radius: var(--radius-md); transition: all 0.2s ease; }
+    .sync-status-row--completed { border: 1px solid rgba(34,197,94,0.2); background: rgba(34,197,94,0.03); }
+    .sync-status-row--completed > .material-icons-round:first-child { color: #16a34a; }
+    .sync-status-row--failed { border: 1px solid rgba(239,68,68,0.2); background: rgba(239,68,68,0.03); }
+    .sync-status-row--failed > .material-icons-round:first-child { color: #dc2626; }
   `]
 })
 export class WalletDashboardComponent implements OnInit {
@@ -699,10 +777,17 @@ export class WalletDashboardComponent implements OnInit {
   );
   /** Allowed top-up methods from tenant config (empty = all allowed) */
   allowedTopUpMethods = signal<string[]>([]);
+  /** Allowed top-up channels from tenant config (empty = all within allowed methods) */
+  allowedTopUpChannels = signal<string[]>([]);
   transactions = signal<WalletTransaction[]>([]);
   txMeta = signal<PaginationMeta | null>(null);
   loadingTxs = signal(true);
   pendingTopUps = signal<SACCOFloatTransaction[]>([]);
+  /** Recently synced (completed/failed) top-ups — shows last 10 for audit visibility */
+  recentSyncedTopUps = signal<SACCOFloatTransaction[]>([]);
+  polling = signal(false);
+  pollingTxId = signal<string | null>(null);
+  pollResult = signal<{ message: string; confirmed: number; failed: number; skipped: number } | null>(null);
   crewMembers = signal<CrewMember[]>([]);
   crewOptions = computed<AutocompleteOption[]>(() => this.crewMembers().map(c => ({
     value: c.id,
@@ -827,16 +912,35 @@ export class WalletDashboardComponent implements OnInit {
 
   /** All payment method definitions */
   readonly paymentMethods = [
-    { id: 'mobile_money' as const, icon: 'phone_android', label: 'Mobile Money', hint: 'M-Pesa, Airtel Money' },
-    { id: 'bank' as const, icon: 'account_balance', label: 'Bank Transfer', hint: 'KCB, Equity, RTGS' },
+    { id: 'mobile_money' as const, icon: 'phone_android', label: 'Mobile Money', hint: 'M-Pesa, Airtel Money, T-Kash' },
+    { id: 'bank' as const, icon: 'account_balance', label: 'Bank Transfer', hint: 'KCB, Equity, Co-op, RTGS' },
     { id: 'card' as const, icon: 'credit_card', label: 'Card', hint: 'Visa, Mastercard' },
   ];
 
-  /** Payment methods filtered by tenant config */
+  /** Payment methods filtered by tenant config, with dynamic hints based on enabled channels */
   availablePaymentMethods = computed(() => {
-    const allowed = this.allowedTopUpMethods();
-    if (!allowed || allowed.length === 0) return this.paymentMethods; // all allowed by default
-    return this.paymentMethods.filter(m => allowed.includes(m.id));
+    const allowedMethods = this.allowedTopUpMethods();
+    const allowedChannels = this.allowedTopUpChannels();
+
+    let methods = this.paymentMethods;
+    if (allowedMethods && allowedMethods.length > 0) {
+      methods = methods.filter(m => allowedMethods.includes(m.id));
+    }
+
+    // Generate dynamic hints based on allowed channels
+    if (allowedChannels && allowedChannels.length > 0) {
+      return methods.map(m => {
+        const allProviders = this.providers[m.id] || [];
+        const filtered = allProviders.filter(p => allowedChannels.includes(p.id));
+        return {
+          ...m,
+          hint: filtered.length > 0
+            ? filtered.map(p => p.label).join(', ')
+            : m.hint,
+        };
+      });
+    }
+    return methods;
   });
 
   private readonly providers: Record<string, { id: string; label: string; emoji: string }[]> = {
@@ -858,7 +962,12 @@ export class WalletDashboardComponent implements OnInit {
   };
 
   getProviders(method: string): { id: string; label: string; emoji: string }[] {
-    return this.providers[method] || [];
+    const all = this.providers[method] || [];
+    const channels = this.allowedTopUpChannels();
+    // If no channel config, return all providers
+    if (!channels || channels.length === 0) return all;
+    // Filter to only allowed channels
+    return all.filter(p => channels.includes(p.id));
   }
 
   selectTopUpMethod(method: 'mobile_money' | 'bank' | 'card'): void {
@@ -885,6 +994,26 @@ export class WalletDashboardComponent implements OnInit {
 
   isAdmin(): boolean {
     return this.auth.hasRole('SYSTEM_ADMIN', 'EMPLOYER');
+  }
+
+  /** Get Material icon name for a sync method */
+  getSyncIcon(method?: string): string {
+    switch (method) {
+      case 'CALLBACK': return 'webhook';
+      case 'POLL':     return 'sync';
+      case 'MANUAL':   return 'person';
+      default:         return 'help_outline';
+    }
+  }
+
+  /** Get human-readable label for a sync method */
+  getSyncLabel(method?: string): string {
+    switch (method) {
+      case 'CALLBACK': return 'Callback';
+      case 'POLL':     return 'Poll';
+      case 'MANUAL':   return 'Manual';
+      default:         return 'Unknown';
+    }
   }
 
   /** Resolve the active organization ID from user profile or selector */
@@ -979,13 +1108,22 @@ export class WalletDashboardComponent implements OnInit {
       next: (res) => {
         const cfg = res.data?.tenant_config;
         this.allowedTopUpMethods.set(cfg?.allowed_topup_methods || []);
+        this.allowedTopUpChannels.set(cfg?.allowed_topup_channels || []);
       },
     });
-    // Also load pending float transactions for approval
+    // Also load pending float transactions for approval + recently synced
     this.api.getFloatTransactions(orgId, { per_page: '50' }).subscribe({
       next: (res) => {
-        const pending = (res.data || []).filter((tx: SACCOFloatTransaction) => tx.status === 'PENDING');
+        const allTxs = res.data || [];
+        const pending = allTxs.filter((tx: SACCOFloatTransaction) => tx.status === 'PENDING');
         this.pendingTopUps.set(pending);
+        // Show recently synced (completed/failed with a sync_method) — last 10
+        const synced = allTxs
+          .filter((tx: SACCOFloatTransaction) =>
+            (tx.status === 'COMPLETED' || tx.status === 'FAILED') && tx.sync_method
+          )
+          .slice(0, 10);
+        this.recentSyncedTopUps.set(synced);
       },
     });
   }
@@ -1150,9 +1288,15 @@ export class WalletDashboardComponent implements OnInit {
       next: (res: any) => {
         const status = res?.data?.status;
         if (status === 'PENDING') {
-          // All methods now return PENDING — show appropriate message
           const msg = res?.data?.message || 'Top-up recorded as pending. It must be confirmed by an admin.';
           this.toast.success(msg);
+          // Reload pending list immediately so the new tx appears
+          this.loadOrgFloat();
+          // Auto-poll after 15s for mobile money STK push — gives M-Pesa time to complete
+          if (this.topupMethod === 'mobile_money') {
+            this.toast.info('We\u2019ll auto-check the payment status in 15 seconds...');
+            setTimeout(() => this.pollPendingSTK(), 15000);
+          }
         } else {
           this.toast.success(`Float topped up via ${providerLabel}`);
           this.loadOrgFloat();
@@ -1198,6 +1342,72 @@ export class WalletDashboardComponent implements OnInit {
       error: (err: any) => {
         const msg = err?.error?.message || 'Failed to reject top-up.';
         this.toast.error(msg);
+      },
+    });
+  }
+
+  /** Poll JamboPay for pending STK transaction statuses */
+  pollPendingSTK(): void {
+    const orgId = this.getActiveOrgId();
+    if (!orgId) return;
+    this.polling.set(true);
+    this.pollResult.set(null);
+    this.api.pollSTK(orgId).subscribe({
+      next: (res: any) => {
+        const data = res.data || res;
+        this.pollResult.set({
+          message: data.message || 'Poll completed',
+          confirmed: data.confirmed || 0,
+          failed: data.failed || 0,
+          skipped: data.skipped || 0,
+        });
+        if (data.confirmed > 0) {
+          this.toast.success(`${data.confirmed} payment(s) confirmed via gateway sync!`);
+          this.loadOrgFloat();
+        } else if (data.checked === 0) {
+          this.toast.info('No pending payments to check.');
+        } else {
+          this.toast.info('Payments still processing. You can confirm manually or try again later.');
+        }
+        this.polling.set(false);
+        // Clear result after 10 seconds
+        setTimeout(() => this.pollResult.set(null), 10000);
+      },
+      error: (err: any) => {
+        const msg = err?.error?.message || 'Failed to check payment status.';
+        this.toast.error(msg);
+        this.polling.set(false);
+      },
+    });
+  }
+
+  /** Poll JamboPay for a single pending STK transaction */
+  pollSingleTx(txId: string): void {
+    const orgId = this.getActiveOrgId();
+    if (!orgId) return;
+    this.pollingTxId.set(txId);
+    this.api.pollSingleSTK(orgId, txId).subscribe({
+      next: (res: any) => {
+        const data = res.data || res;
+        if (data.action === 'confirmed') {
+          this.toast.success('Payment confirmed! Float balance updated.');
+          this.loadOrgFloat();
+        } else if (data.action === 'failed') {
+          this.toast.error('Payment failed: ' + (data.jp_status || 'Unknown'));
+          this.loadOrgFloat();
+        } else if (data.action === 'still_pending') {
+          this.toast.info('Payment still processing. Try again shortly or confirm manually.');
+        } else if (data.error?.includes('GATEWAY_UNREACHABLE')) {
+          this.toast.info('Gateway auto-sync unavailable. Use Confirm ✓ if you received the M-Pesa SMS.');
+        } else if (data.error) {
+          this.toast.info('Could not verify payment. Use Confirm ✓ if you received the M-Pesa SMS.');
+        }
+        this.pollingTxId.set(null);
+      },
+      error: (err: any) => {
+        const msg = err?.error?.message || 'Failed to check payment status.';
+        this.toast.error(msg);
+        this.pollingTxId.set(null);
       },
     });
   }

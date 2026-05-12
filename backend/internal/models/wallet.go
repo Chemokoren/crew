@@ -92,6 +92,16 @@ type OrganizationFloat struct {
 
 func (OrganizationFloat) TableName() string { return "sacco_floats" }
 
+// SyncMethod indicates how a float transaction was confirmed/synced.
+type SyncMethod string
+
+const (
+	SyncNone     SyncMethod = ""         // Not yet synced (still pending)
+	SyncCallback SyncMethod = "CALLBACK" // Confirmed via JamboPay webhook callback
+	SyncPoll     SyncMethod = "POLL"     // Confirmed via manual STK status poll
+	SyncManual   SyncMethod = "MANUAL"   // Confirmed manually by admin
+)
+
 // OrganizationFloatTransaction records SACCO float funding and payout events.
 type OrganizationFloatTransaction struct {
 	ID                uuid.UUID         `json:"id" gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
@@ -103,6 +113,8 @@ type OrganizationFloatTransaction struct {
 	Currency          string            `json:"currency" gorm:"default:'KES';not null"`
 	Reference         string            `json:"reference,omitempty"`
 	Status            TransactionStatus `json:"status" gorm:"default:'PENDING'"`
+	SyncMethod        SyncMethod        `json:"sync_method" gorm:"type:varchar(20);default:''"`
+	SyncedAt          *time.Time        `json:"synced_at,omitempty"`
 	CreatedAt         time.Time         `json:"created_at"`
 	UpdatedAt         time.Time         `json:"updated_at"`
 }

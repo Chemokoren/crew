@@ -109,6 +109,19 @@ func (s *TenantService) UpdateTenantConfig(ctx context.Context, orgID uuid.UUID,
 		// KYCRequired is a bool — always apply from input
 		existing.KYCRequired = incoming.KYCRequired
 
+		// Float top-up configuration
+		if incoming.TopUpVerificationMode != "" {
+			existing.TopUpVerificationMode = incoming.TopUpVerificationMode
+		}
+		// AllowedTopUpMethods is a slice — always apply from input (nil means "no change", empty means "all allowed")
+		if incoming.AllowedTopUpMethods != nil {
+			existing.AllowedTopUpMethods = incoming.AllowedTopUpMethods
+		}
+		// AllowedTopUpChannels — fine-grained channel control (nil means "no change", empty means "all channels")
+		if incoming.AllowedTopUpChannels != nil {
+			existing.AllowedTopUpChannels = incoming.AllowedTopUpChannels
+		}
+
 		if err := sacco.SetTenantConfig(existing); err != nil {
 			return nil, fmt.Errorf("%w: invalid tenant config", ErrValidation)
 		}

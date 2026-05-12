@@ -603,12 +603,15 @@ func (r *OrganizationFloatRepo) CreatePendingTransaction(_ context.Context, floa
 	return &tx, nil
 }
 
-func (r *OrganizationFloatRepo) ConfirmPendingTransaction(_ context.Context, txID uuid.UUID) (*models.OrganizationFloatTransaction, error) {
+func (r *OrganizationFloatRepo) ConfirmPendingTransaction(_ context.Context, txID uuid.UUID, syncMethod models.SyncMethod) (*models.OrganizationFloatTransaction, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for i, tx := range r.txs {
 		if tx.ID == txID && tx.Status == models.TxPending {
 			r.txs[i].Status = models.TxCompleted
+			r.txs[i].SyncMethod = syncMethod
+			now := time.Now()
+			r.txs[i].SyncedAt = &now
 			if f, ok := r.floats[tx.OrganizationFloatID]; ok {
 				f.BalanceCents += tx.AmountCents
 				r.txs[i].BalanceAfterCents = f.BalanceCents
@@ -619,12 +622,15 @@ func (r *OrganizationFloatRepo) ConfirmPendingTransaction(_ context.Context, txI
 	return nil, errs.ErrNotFound
 }
 
-func (r *OrganizationFloatRepo) FailPendingTransaction(_ context.Context, txID uuid.UUID, reason string) error {
+func (r *OrganizationFloatRepo) FailPendingTransaction(_ context.Context, txID uuid.UUID, reason string, syncMethod models.SyncMethod) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for i, tx := range r.txs {
 		if tx.ID == txID && tx.Status == models.TxPending {
 			r.txs[i].Status = models.TxFailed
+			r.txs[i].SyncMethod = syncMethod
+			now := time.Now()
+			r.txs[i].SyncedAt = &now
 			return nil
 		}
 	}
@@ -652,6 +658,32 @@ func (r *OrganizationFloatRepo) AppendReference(_ context.Context, txID uuid.UUI
 		}
 	}
 	return errs.ErrNotFound
+}
+
+func (r *OrganizationFloatRepo) ListPendingSTK(_ context.Context, limit int) ([]models.OrganizationFloatTransaction, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var result []models.OrganizationFloatTransaction
+	for _, tx := range r.txs {
+		if tx.Status == models.TxPending {
+			result = append(result, tx)
+			if len(result) >= limit {
+				break
+			}
+		}
+	}
+	return result, nil
+}
+
+func (r *OrganizationFloatRepo) GetPendingTransactionByID(_ context.Context, txID uuid.UUID) (*models.OrganizationFloatTransaction, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, tx := range r.txs {
+		if tx.ID == txID && tx.Status == models.TxPending {
+			return &tx, nil
+		}
+	}
+	return nil, errs.ErrNotFound
 }
 
 // --- AuditLogRepo Mock ---

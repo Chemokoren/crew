@@ -6,16 +6,31 @@ import { AuthService } from './core/services/auth.service';
 import { OrgContextService } from './core/services/org-context.service';
 import { SidebarComponent } from './shared/components/sidebar/sidebar.component';
 import { TopbarComponent } from './shared/components/topbar/topbar.component';
+import { PlatformSidebarComponent } from './shared/components/platform-sidebar/platform-sidebar.component';
+import { PlatformTopbarComponent } from './shared/components/platform-topbar/platform-topbar.component';
 import { ToastComponent } from './shared/components/toast/toast.component';
 import { ConfirmDialogComponent } from './shared/components/confirm-dialog/confirm-dialog.component';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, RouterOutlet, SidebarComponent, TopbarComponent, ToastComponent, ConfirmDialogComponent],
+  imports: [
+    CommonModule, RouterOutlet,
+    SidebarComponent, TopbarComponent,
+    PlatformSidebarComponent, PlatformTopbarComponent,
+    ToastComponent, ConfirmDialogComponent,
+  ],
   template: `
     @if (isAuthRoute()) {
       <router-outlet />
+    } @else if (isPlatformRoute()) {
+      <div class="app-layout platform-layout">
+        <app-platform-sidebar [(mobileOpen)]="sidebarMobileOpen" />
+        <app-platform-topbar (menuToggle)="toggleMobileSidebar()" />
+        <main class="main-content" id="main-content">
+          <router-outlet />
+        </main>
+      </div>
     } @else {
       <div class="app-layout">
         <app-sidebar [(mobileOpen)]="sidebarMobileOpen" />
@@ -82,6 +97,11 @@ export class AppComponent implements OnInit {
   isAuthRoute(): boolean {
     const url = this.currentUrl || this.router.url;
     return url.startsWith('/auth');
+  }
+
+  isPlatformRoute(): boolean {
+    const url = this.currentUrl || this.router.url;
+    return url.startsWith('/platform');
   }
 
   toggleMobileSidebar(): void {

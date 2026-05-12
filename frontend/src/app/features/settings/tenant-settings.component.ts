@@ -433,38 +433,61 @@ const JOB_CATEGORIES: { value: JobTypeCategory; label: string; desc: string }[] 
           <!-- Allowed Top-Up Methods -->
           <div class="glass-card ts-section" style="margin-top:var(--space-md);">
             <h3 class="ts-section-title">Allowed Top-Up Methods</h3>
-            <p class="ts-section-desc">Enable or disable specific top-up methods for this organization. Disabled methods will not appear in the wallet dashboard.</p>
+            <p class="ts-section-desc">Enable or disable specific top-up methods and channels for this organization. Disabled methods and channels will not appear in the wallet dashboard.</p>
 
-            <div class="kyc-policy-grid" style="grid-template-columns: 1fr;">
-              <div class="kyc-policy-card">
-                @for (method of allTopUpMethods; track method.id) {
-                  <label class="kyc-mode-option" style="cursor:pointer;" [class.selected]="isTopUpMethodEnabled(method.id)"
-                    [style.opacity]="isTopUpMethodEnabled(method.id) ? '1' : '0.5'">
-                    <div style="display:flex;align-items:center;gap:var(--space-sm);width:100%;">
-                      <span class="material-icons-round" [style.color]="method.color" style="font-size:22px;">{{ method.icon }}</span>
-                      <div style="flex:1;">
-                        <strong>{{ method.label }}</strong>
-                        <span style="display:block;">{{ method.desc }}</span>
+            <div class="topup-methods-grid">
+              @for (method of allTopUpMethods; track method.id) {
+                <div class="topup-method-card" [class.topup-method-card--disabled]="!isTopUpMethodEnabled(method.id)">
+                  <!-- Method Header -->
+                  <div class="topup-method-header">
+                    <div class="topup-method-info">
+                      <span class="material-icons-round" [style.color]="method.color" style="font-size:24px;">{{ method.icon }}</span>
+                      <div>
+                        <div class="topup-method-label">{{ method.label }}</div>
+                        <div class="topup-method-desc">{{ method.desc }}</div>
                       </div>
-                      <label class="toggle-switch" (click)="$event.stopPropagation()">
-                        <input type="checkbox" [checked]="isTopUpMethodEnabled(method.id)"
-                          (change)="toggleTopUpMethod(method.id)" />
-                        <span class="toggle-slider"></span>
-                      </label>
                     </div>
-                  </label>
-                }
-
-                @if (financeForm.allowed_topup_methods.length === 0) {
-                  <div style="margin-top:var(--space-sm);padding:var(--space-sm) var(--space-md);border-radius:var(--radius-md);background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);">
-                    <div style="display:flex;align-items:center;gap:6px;">
-                      <span class="material-icons-round" style="font-size:16px;color:#ef4444;">warning</span>
-                      <span style="font-size:0.75rem;color:#ef4444;font-weight:500;">All methods are enabled by default when none are selected. Toggle at least one method to restrict access.</span>
-                    </div>
+                    <label class="toggle-switch" (click)="$event.stopPropagation()">
+                      <input type="checkbox" [checked]="isTopUpMethodEnabled(method.id)"
+                        (change)="toggleTopUpMethod(method.id)" [id]="'toggle-method-' + method.id" />
+                      <span class="toggle-slider"></span>
+                    </label>
                   </div>
-                }
-              </div>
+
+                  <!-- Channel List (only shown when method is enabled) -->
+                  @if (isTopUpMethodEnabled(method.id)) {
+                    <div class="topup-channels">
+                      <div class="topup-channels-label">
+                        <span class="material-icons-round" style="font-size:14px;color:var(--color-text-muted);">tune</span>
+                        Enabled Channels
+                      </div>
+                      @for (ch of method.channels; track ch.id) {
+                        <label class="topup-channel-item" [class.topup-channel--enabled]="isChannelEnabled(ch.id)">
+                          <div class="topup-channel-info">
+                            <span class="topup-channel-emoji">{{ ch.emoji }}</span>
+                            <span class="topup-channel-name">{{ ch.label }}</span>
+                          </div>
+                          <label class="toggle-switch toggle-switch--sm" (click)="$event.stopPropagation()">
+                            <input type="checkbox" [checked]="isChannelEnabled(ch.id)"
+                              (change)="toggleChannel(ch.id, method.id)" [id]="'toggle-ch-' + ch.id" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </label>
+                      }
+                    </div>
+                  }
+                </div>
+              }
             </div>
+
+            @if (financeForm.allowed_topup_methods.length === 0) {
+              <div style="margin-top:var(--space-sm);padding:var(--space-sm) var(--space-md);border-radius:var(--radius-md);background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.15);">
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <span class="material-icons-round" style="font-size:16px;color:var(--color-accent);">info</span>
+                  <span style="font-size:0.75rem;color:var(--color-text-muted);font-weight:500;">All methods and channels are enabled by default when none are explicitly selected. Toggle a method to start customizing.</span>
+                </div>
+              </div>
+            }
           </div>
         }
 
@@ -680,6 +703,51 @@ const JOB_CATEGORIES: { value: JobTypeCategory; label: string; desc: string }[] 
     .kyc-action-info { display: flex; flex-direction: column; }
     .kyc-action-name { font-size: 0.82rem; font-weight: 600; color: var(--color-text-primary); }
     .kyc-action-desc { font-size: 0.68rem; color: var(--color-text-muted); }
+
+    /* Top-Up Method / Channel Grid */
+    .topup-methods-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: var(--space-md); }
+    .topup-method-card {
+      border: 1px solid var(--color-border); border-radius: var(--radius-lg);
+      padding: var(--space-md); background: rgba(255,255,255,0.02);
+      transition: all 0.25s ease;
+    }
+    .topup-method-card:hover { border-color: var(--color-accent); }
+    .topup-method-card--disabled { opacity: 0.45; }
+    .topup-method-header {
+      display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm);
+    }
+    .topup-method-info { display: flex; align-items: center; gap: var(--space-sm); }
+    .topup-method-label { font-size: 0.9rem; font-weight: 700; color: var(--color-text-primary); }
+    .topup-method-desc { font-size: 0.72rem; color: var(--color-text-muted); margin-top: 2px; }
+
+    .topup-channels {
+      margin-top: var(--space-md); padding-top: var(--space-sm);
+      border-top: 1px dashed var(--color-border);
+      animation: fadeSlideUp 0.25s ease;
+    }
+    .topup-channels-label {
+      display: flex; align-items: center; gap: 4px;
+      font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--color-text-muted); margin-bottom: var(--space-sm);
+    }
+    .topup-channel-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 12px; border-radius: var(--radius-sm);
+      border: 1px solid transparent; cursor: pointer;
+      transition: all 0.2s; margin-bottom: 4px;
+    }
+    .topup-channel-item:hover { background: rgba(99,102,241,0.04); }
+    .topup-channel--enabled {
+      border-color: rgba(34,197,94,0.2); background: rgba(34,197,94,0.04);
+    }
+    .topup-channel-info { display: flex; align-items: center; gap: 8px; }
+    .topup-channel-emoji { font-size: 1rem; }
+    .topup-channel-name { font-size: 0.82rem; font-weight: 500; color: var(--color-text-primary); }
+
+    /* Small toggle variant */
+    .toggle-switch--sm { width: 36px; height: 20px; }
+    .toggle-switch--sm .toggle-slider::before { width: 14px; height: 14px; }
+    .toggle-switch--sm input:checked + .toggle-slider::before { transform: translateX(16px); }
   `]
 })
 export class TenantSettingsComponent implements OnInit {
@@ -732,13 +800,29 @@ export class TenantSettingsComponent implements OnInit {
   financeForm = {
     topup_verification_mode: 'HYBRID' as 'API' | 'MANUAL' | 'HYBRID',
     allowed_topup_methods: [] as string[],
+    allowed_topup_channels: [] as string[],
   };
 
-  /** Top-up method definitions for toggle switches */
+  /** Top-up method definitions with nested channels */
   readonly allTopUpMethods = [
-    { id: 'mobile_money', icon: 'phone_android', label: 'Mobile Money', desc: 'M-Pesa, Airtel Money, T-Kash', color: '#22c55e' },
-    { id: 'bank', icon: 'account_balance', label: 'Bank Transfer', desc: 'KCB, Equity, RTGS, EFT', color: '#3b82f6' },
-    { id: 'card', icon: 'credit_card', label: 'Card Payment', desc: 'Visa, Mastercard, debit/credit', color: '#a855f7' },
+    { id: 'mobile_money', icon: 'phone_android', label: 'Mobile Money', desc: 'Enable/disable mobile money providers', color: '#22c55e',
+      channels: [
+        { id: 'mpesa', label: 'M-Pesa (Safaricom)', emoji: '🟢' },
+        { id: 'airtel', label: 'Airtel Money', emoji: '🔴' },
+        { id: 'tkash', label: 'T-Kash (Telkom)', emoji: '🔵' },
+      ] },
+    { id: 'bank', icon: 'account_balance', label: 'Bank Transfer', desc: 'Enable/disable bank transfer channels', color: '#3b82f6',
+      channels: [
+        { id: 'kcb', label: 'KCB Bank', emoji: '🏦' },
+        { id: 'equity', label: 'Equity Bank', emoji: '🏦' },
+        { id: 'coop', label: 'Co-operative Bank', emoji: '🏦' },
+        { id: 'rtgs', label: 'RTGS (Real-time)', emoji: '⚡' },
+      ] },
+    { id: 'card', icon: 'credit_card', label: 'Card Payment', desc: 'Enable/disable card networks', color: '#a855f7',
+      channels: [
+        { id: 'visa', label: 'Visa', emoji: '💳' },
+        { id: 'mastercard', label: 'Mastercard', emoji: '💳' },
+      ] },
   ];
 
   readonly allRestrictableActions: { code: string; label: string; icon: string; desc: string }[] = [
@@ -814,6 +898,7 @@ export class TenantSettingsComponent implements OnInit {
           // Hydrate finance form
           this.financeForm.topup_verification_mode = (cfg as any).topup_verification_mode || 'HYBRID';
           this.financeForm.allowed_topup_methods = (cfg as any).allowed_topup_methods || [];
+          this.financeForm.allowed_topup_channels = (cfg as any).allowed_topup_channels || [];
         } else {
           // No config yet — default everything to restricted
           this.kycForm.kyc_required = true;
@@ -821,6 +906,7 @@ export class TenantSettingsComponent implements OnInit {
           this.kycForm.kyc_restricted_actions = this.allRestrictableActions.map(a => a.code);
           this.financeForm.topup_verification_mode = 'HYBRID';
           this.financeForm.allowed_topup_methods = [];
+          this.financeForm.allowed_topup_channels = [];
         }
       },
       error: () => this.loading.set(false),
@@ -857,6 +943,7 @@ export class TenantSettingsComponent implements OnInit {
         kyc_restricted_actions: this.kycForm.kyc_restricted_actions,
         topup_verification_mode: this.financeForm.topup_verification_mode,
         allowed_topup_methods: this.financeForm.allowed_topup_methods,
+        allowed_topup_channels: this.financeForm.allowed_topup_channels,
       },
     }).subscribe({
       next: r => {
@@ -876,6 +963,7 @@ export class TenantSettingsComponent implements OnInit {
         kyc_restricted_actions: this.kycForm.kyc_restricted_actions,
         topup_verification_mode: this.financeForm.topup_verification_mode,
         allowed_topup_methods: this.financeForm.allowed_topup_methods,
+        allowed_topup_channels: this.financeForm.allowed_topup_channels,
       },
     }).subscribe({
       next: r => {
@@ -894,14 +982,62 @@ export class TenantSettingsComponent implements OnInit {
 
   toggleTopUpMethod(methodId: string): void {
     const arr = this.financeForm.allowed_topup_methods;
+    const method = this.allTopUpMethods.find(m => m.id === methodId);
     const idx = arr.indexOf(methodId);
+    if (idx >= 0) {
+      // Disabling this method — also remove all its channels
+      arr.splice(idx, 1);
+      if (method) {
+        for (const ch of method.channels) {
+          const ci = this.financeForm.allowed_topup_channels.indexOf(ch.id);
+          if (ci >= 0) this.financeForm.allowed_topup_channels.splice(ci, 1);
+        }
+      }
+    } else {
+      // Enabling this method — also enable all its channels by default
+      arr.push(methodId);
+      if (method) {
+        for (const ch of method.channels) {
+          if (!this.financeForm.allowed_topup_channels.includes(ch.id)) {
+            this.financeForm.allowed_topup_channels.push(ch.id);
+          }
+        }
+      }
+    }
+    // Create new references so Angular detects the change
+    this.financeForm.allowed_topup_methods = [...arr];
+    this.financeForm.allowed_topup_channels = [...this.financeForm.allowed_topup_channels];
+    this.saveFinanceConfig();
+  }
+
+  /** Check if a specific channel (provider) is enabled */
+  isChannelEnabled(channelId: string): boolean {
+    // If no channels are configured, all are enabled (backward compat)
+    if (this.financeForm.allowed_topup_channels.length === 0) return true;
+    return this.financeForm.allowed_topup_channels.includes(channelId);
+  }
+
+  /** Toggle a specific channel within a method */
+  toggleChannel(channelId: string, methodId: string): void {
+    const arr = this.financeForm.allowed_topup_channels;
+    const idx = arr.indexOf(channelId);
     if (idx >= 0) {
       arr.splice(idx, 1);
     } else {
-      arr.push(methodId);
+      arr.push(channelId);
     }
-    // Create a new reference so Angular detects the change
-    this.financeForm.allowed_topup_methods = [...arr];
+    this.financeForm.allowed_topup_channels = [...arr];
+
+    // If all channels in this method are disabled, also disable the method
+    const method = this.allTopUpMethods.find(m => m.id === methodId);
+    if (method) {
+      const anyEnabled = method.channels.some(ch => this.financeForm.allowed_topup_channels.includes(ch.id));
+      const methodIdx = this.financeForm.allowed_topup_methods.indexOf(methodId);
+      if (!anyEnabled && methodIdx >= 0) {
+        this.financeForm.allowed_topup_methods.splice(methodIdx, 1);
+        this.financeForm.allowed_topup_methods = [...this.financeForm.allowed_topup_methods];
+      }
+    }
     this.saveFinanceConfig();
   }
 
