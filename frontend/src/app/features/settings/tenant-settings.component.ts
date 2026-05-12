@@ -429,6 +429,43 @@ const JOB_CATEGORIES: { value: JobTypeCategory; label: string; desc: string }[] 
               </div>
             </div>
           </div>
+
+          <!-- Allowed Top-Up Methods -->
+          <div class="glass-card ts-section" style="margin-top:var(--space-md);">
+            <h3 class="ts-section-title">Allowed Top-Up Methods</h3>
+            <p class="ts-section-desc">Enable or disable specific top-up methods for this organization. Disabled methods will not appear in the wallet dashboard.</p>
+
+            <div class="kyc-policy-grid" style="grid-template-columns: 1fr;">
+              <div class="kyc-policy-card">
+                @for (method of allTopUpMethods; track method.id) {
+                  <label class="kyc-mode-option" style="cursor:pointer;" [class.selected]="isTopUpMethodEnabled(method.id)"
+                    [style.opacity]="isTopUpMethodEnabled(method.id) ? '1' : '0.5'">
+                    <div style="display:flex;align-items:center;gap:var(--space-sm);width:100%;">
+                      <span class="material-icons-round" [style.color]="method.color" style="font-size:22px;">{{ method.icon }}</span>
+                      <div style="flex:1;">
+                        <strong>{{ method.label }}</strong>
+                        <span style="display:block;">{{ method.desc }}</span>
+                      </div>
+                      <label class="toggle-switch" (click)="$event.stopPropagation()">
+                        <input type="checkbox" [checked]="isTopUpMethodEnabled(method.id)"
+                          (change)="toggleTopUpMethod(method.id)" />
+                        <span class="toggle-slider"></span>
+                      </label>
+                    </div>
+                  </label>
+                }
+
+                @if (financeForm.allowed_topup_methods.length === 0) {
+                  <div style="margin-top:var(--space-sm);padding:var(--space-sm) var(--space-md);border-radius:var(--radius-md);background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);">
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      <span class="material-icons-round" style="font-size:16px;color:#ef4444;">warning</span>
+                      <span style="font-size:0.75rem;color:#ef4444;font-weight:500;">All methods are enabled by default when none are selected. Toggle at least one method to restrict access.</span>
+                    </div>
+                  </div>
+                }
+              </div>
+            </div>
+          </div>
         }
 
         <!-- Job Type Modal -->
@@ -694,7 +731,15 @@ export class TenantSettingsComponent implements OnInit {
   // --- Finance Config ---
   financeForm = {
     topup_verification_mode: 'HYBRID' as 'API' | 'MANUAL' | 'HYBRID',
+    allowed_topup_methods: [] as string[],
   };
+
+  /** Top-up method definitions for toggle switches */
+  readonly allTopUpMethods = [
+    { id: 'mobile_money', icon: 'phone_android', label: 'Mobile Money', desc: 'M-Pesa, Airtel Money, T-Kash', color: '#22c55e' },
+    { id: 'bank', icon: 'account_balance', label: 'Bank Transfer', desc: 'KCB, Equity, RTGS, EFT', color: '#3b82f6' },
+    { id: 'card', icon: 'credit_card', label: 'Card Payment', desc: 'Visa, Mastercard, debit/credit', color: '#a855f7' },
+  ];
 
   readonly allRestrictableActions: { code: string; label: string; icon: string; desc: string }[] = [
     { code: 'WALLET_WITHDRAW', label: 'Wallet Withdrawal', icon: 'account_balance_wallet', desc: 'Withdraw funds from wallet' },
@@ -768,12 +813,14 @@ export class TenantSettingsComponent implements OnInit {
             : this.allRestrictableActions.map(a => a.code);
           // Hydrate finance form
           this.financeForm.topup_verification_mode = (cfg as any).topup_verification_mode || 'HYBRID';
+          this.financeForm.allowed_topup_methods = (cfg as any).allowed_topup_methods || [];
         } else {
           // No config yet — default everything to restricted
           this.kycForm.kyc_required = true;
           this.kycForm.kyc_verification_mode = 'UPLOAD';
           this.kycForm.kyc_restricted_actions = this.allRestrictableActions.map(a => a.code);
           this.financeForm.topup_verification_mode = 'HYBRID';
+          this.financeForm.allowed_topup_methods = [];
         }
       },
       error: () => this.loading.set(false),
@@ -809,6 +856,7 @@ export class TenantSettingsComponent implements OnInit {
         kyc_verification_mode: this.kycForm.kyc_verification_mode,
         kyc_restricted_actions: this.kycForm.kyc_restricted_actions,
         topup_verification_mode: this.financeForm.topup_verification_mode,
+        allowed_topup_methods: this.financeForm.allowed_topup_methods,
       },
     }).subscribe({
       next: r => {
@@ -827,6 +875,7 @@ export class TenantSettingsComponent implements OnInit {
         kyc_verification_mode: this.kycForm.kyc_verification_mode,
         kyc_restricted_actions: this.kycForm.kyc_restricted_actions,
         topup_verification_mode: this.financeForm.topup_verification_mode,
+        allowed_topup_methods: this.financeForm.allowed_topup_methods,
       },
     }).subscribe({
       next: r => {
@@ -835,6 +884,25 @@ export class TenantSettingsComponent implements OnInit {
       },
       error: () => this.toast.error('Failed to save finance settings'),
     });
+  }
+
+  isTopUpMethodEnabled(methodId: string): boolean {
+    // Empty array = all methods enabled (default)
+    if (this.financeForm.allowed_topup_methods.length === 0) return false;
+    return this.financeForm.allowed_topup_methods.includes(methodId);
+  }
+
+  toggleTopUpMethod(methodId: string): void {
+    const arr = this.financeForm.allowed_topup_methods;
+    const idx = arr.indexOf(methodId);
+    if (idx >= 0) {
+      arr.splice(idx, 1);
+    } else {
+      arr.push(methodId);
+    }
+    // Create a new reference so Angular detects the change
+    this.financeForm.allowed_topup_methods = [...arr];
+    this.saveFinanceConfig();
   }
 
   bootstrapPreview = signal<any>(null);

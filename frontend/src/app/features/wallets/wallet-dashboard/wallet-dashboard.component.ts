@@ -294,7 +294,7 @@ import { Wallet, WalletTransaction, PaginationMeta, CrewMember, SACCOFloat, SACC
               <!-- Payment Method Selection -->
               <label class="form-label" style="margin-top:var(--space-md);">Payment Method <span class="field-required">*</span></label>
               <div class="pm-grid">
-                @for (method of paymentMethods; track method.id) {
+                @for (method of availablePaymentMethods(); track method.id) {
                   <button class="pm-card" [class.pm-card--active]="topupMethod === method.id" (click)="selectTopUpMethod(method.id)" type="button">
                     <span class="material-icons-round pm-icon">{{ method.icon }}</span>
                     <span class="pm-label">{{ method.label }}</span>
@@ -697,6 +697,8 @@ export class WalletDashboardComponent implements OnInit {
   showOrgSelector = computed(() =>
     this.isAdmin() && this.organizations().length > 1 && !this.auth.currentUser()?.organization_id
   );
+  /** Allowed top-up methods from tenant config (empty = all allowed) */
+  allowedTopUpMethods = signal<string[]>([]);
   transactions = signal<WalletTransaction[]>([]);
   txMeta = signal<PaginationMeta | null>(null);
   loadingTxs = signal(true);
@@ -823,12 +825,19 @@ export class WalletDashboardComponent implements OnInit {
     this.billAccountNo = '';
   }
 
-  /** Payment method definitions */
+  /** All payment method definitions */
   readonly paymentMethods = [
     { id: 'mobile_money' as const, icon: 'phone_android', label: 'Mobile Money', hint: 'M-Pesa, Airtel Money' },
     { id: 'bank' as const, icon: 'account_balance', label: 'Bank Transfer', hint: 'KCB, Equity, RTGS' },
     { id: 'card' as const, icon: 'credit_card', label: 'Card', hint: 'Visa, Mastercard' },
   ];
+
+  /** Payment methods filtered by tenant config */
+  availablePaymentMethods = computed(() => {
+    const allowed = this.allowedTopUpMethods();
+    if (!allowed || allowed.length === 0) return this.paymentMethods; // all allowed by default
+    return this.paymentMethods.filter(m => allowed.includes(m.id));
+  });
 
   private readonly providers: Record<string, { id: string; label: string; emoji: string }[]> = {
     mobile_money: [
@@ -964,6 +973,13 @@ export class WalletDashboardComponent implements OnInit {
     if (!orgId) return;
     this.api.getSACCOFloat(orgId).subscribe({
       next: (res) => this.orgFloat.set(res.data),
+    });
+    // Load org config to get allowed top-up methods
+    this.api.getOrganization(orgId).subscribe({
+      next: (res) => {
+        const cfg = res.data?.tenant_config;
+        this.allowedTopUpMethods.set(cfg?.allowed_topup_methods || []);
+      },
     });
     // Also load pending float transactions for approval
     this.api.getFloatTransactions(orgId, { per_page: '50' }).subscribe({

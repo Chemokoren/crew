@@ -118,6 +118,13 @@ type TenantConfig struct {
 	//   "MANUAL" — all bank/card top-ups require manual admin approval
 	//   "HYBRID" (default) — try API verification first; if API unavailable or inconclusive, fall back to manual approval
 	TopUpVerificationMode string `json:"topup_verification_mode,omitempty"`
+
+	// --- Float Top-Up Method Availability ---
+
+	// AllowedTopUpMethods controls which top-up methods are available for this tenant.
+	// Valid values: "mobile_money", "bank", "card"
+	// When empty or nil, all methods are allowed (backward compatible).
+	AllowedTopUpMethods []string `json:"allowed_topup_methods,omitempty"`
 }
 
 // KYC verification mode constants.
@@ -152,6 +159,28 @@ func (tc *TenantConfig) ResolvedTopUpVerificationMode() string {
 	default:
 		return TopUpVerifyHybrid
 	}
+}
+
+// AllTopUpMethods is the complete set of supported top-up methods.
+var AllTopUpMethods = []string{"mobile_money", "bank", "card"}
+
+// ResolvedAllowedTopUpMethods returns the effective set of allowed top-up methods.
+// Defaults to all methods if not configured.
+func (tc *TenantConfig) ResolvedAllowedTopUpMethods() []string {
+	if len(tc.AllowedTopUpMethods) == 0 {
+		return AllTopUpMethods
+	}
+	return tc.AllowedTopUpMethods
+}
+
+// IsTopUpMethodAllowed checks whether a given top-up method is permitted.
+func (tc *TenantConfig) IsTopUpMethodAllowed(method string) bool {
+	for _, m := range tc.ResolvedAllowedTopUpMethods() {
+		if m == method {
+			return true
+		}
+	}
+	return false
 }
 
 // DefaultKYCRestrictedActions returns the default set of actions restricted when KYC is not verified.

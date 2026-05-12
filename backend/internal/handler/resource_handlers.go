@@ -244,6 +244,22 @@ func (h *OrganizationHandler) TopUpFloat(c *gin.Context) {
 		return
 	}
 
+	// Validate that the requested top-up method is allowed by tenant config
+	org, orgErr := h.saccoSvc.GetSACCO(c.Request.Context(), orgID)
+	if orgErr != nil {
+		MapServiceError(c, orgErr)
+		return
+	}
+	tenantCfg := &models.TenantConfig{} // defaults (all methods allowed)
+	if cfg, parseErr := org.GetTenantConfig(); parseErr == nil && cfg != nil {
+		tenantCfg = cfg
+	}
+	if !tenantCfg.IsTopUpMethodAllowed(req.Method) {
+		ErrorResponse(c, http.StatusForbidden, "METHOD_DISABLED",
+			"The top-up method '"+req.Method+"' is not enabled for this organization. Contact your administrator.")
+		return
+	}
+
 	switch req.Method {
 	case "mobile_money":
 		// --- Async STK push flow ---
@@ -327,14 +343,8 @@ func (h *OrganizationHandler) TopUpFloat(c *gin.Context) {
 			ref += " | " + req.Reference
 		}
 
-		// Determine verification mode from tenant config
-		verifyMode := models.TopUpVerifyHybrid // default
-		org, orgErr := h.saccoSvc.GetSACCO(c.Request.Context(), orgID)
-		if orgErr == nil {
-			if cfg, _ := org.GetTenantConfig(); cfg != nil {
-				verifyMode = cfg.ResolvedTopUpVerificationMode()
-			}
-		}
+		// Determine verification mode from tenant config (already loaded above)
+		verifyMode := tenantCfg.ResolvedTopUpVerificationMode()
 
 		// API or HYBRID mode: try bank API verification first
 		if (verifyMode == models.TopUpVerifyAPI || verifyMode == models.TopUpVerifyHybrid) && h.paymentMgr != nil {

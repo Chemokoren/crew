@@ -209,6 +209,8 @@ export interface TenantConfig {
   kyc_restricted_actions?: string[];
   kyc_document_types?: string[];
   kyc_verification_mode?: 'UPLOAD' | 'MANUAL';
+  topup_verification_mode?: 'API' | 'MANUAL' | 'HYBRID';
+  allowed_topup_methods?: ('mobile_money' | 'bank' | 'card')[];
 }
 
 // AD-13: Bootstrap result from industry template seeding
