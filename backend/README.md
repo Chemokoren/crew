@@ -99,6 +99,8 @@ curl http://localhost:8080/swagger/index.html  # → Swagger UI
 |--------|------|-------------|
 | `GET` | `/api/v1/organizations/:id/float` | Get float balance |
 | `POST` | `/api/v1/organizations/:id/float/topup` | Top up float (mobile/bank/card) |
+| `POST` | `/api/v1/organizations/:id/float/topup/:tx_id/confirm` | Admin: confirm pending top-up |
+| `POST` | `/api/v1/organizations/:id/float/topup/:tx_id/reject` | Admin: reject pending top-up |
 | `POST` | `/api/v1/organizations/:id/float/credit` | Direct credit float |
 | `POST` | `/api/v1/organizations/:id/float/debit` | Debit float (payout) |
 | `GET` | `/api/v1/organizations/:id/float/transactions` | Float transaction history |
@@ -179,7 +181,7 @@ All integrations use the **Strategy design pattern** with automatic fallback cha
 | Integration | Provider(s) | Auth Method | Key Operations |
 |------------|-------------|-------------|----------------|
 | **SMS** | Optimize (default), Africa's Talking (fallback) | OAuth2 → JWT / API key header | `Send`, `SendBulk`, runtime `SetPrimary` |
-| **Payment** | JamboPay v2 | OAuth2 client_credentials | `InitiateCollection` (STK push), `InitiatePayout` (M-Pesa/bank/paybill), `VerifyPayout` (OTP), `CheckBalance` |
+| **Payment** | JamboPay v2 | OAuth2 client_credentials | `InitiateCollection` (STK push), `InitiatePayout` (M-Pesa/bank/paybill), `VerifyPayout` (OTP), `CheckBalance`, `VerifyBankTransfer` |
 | **Payroll** | PerPay | JWT (15min TTL) | `SubmitPayroll` (async 202), `GetStatus` (polling), idempotency replay |
 | **Identity** | IPRS | OAuth2 via JamboPay IdP (scope=iprs) | `VerifyCitizen` (national ID → name, DOB, photo) |
 
@@ -203,15 +205,19 @@ All integrations use the **Strategy design pattern** with automatic fallback cha
 
 ## 💳 Organization Float Top-Up Flow
 
-Float can be funded via mobile money (M-Pesa STK push), bank transfer, or card:
+Float can be funded via mobile money (M-Pesa STK push), bank transfer, or card. Bank and card top-ups use a **configurable verification workflow** (API, Manual, or Hybrid):
 
 | Method | Flow | Response |
 |--------|------|----------|
 | **Mobile Money** | Create PENDING tx → STK push → User enters PIN → Callback confirms → Balance credited | `202 Accepted` (async) |
-| **Bank** | Admin enters bank reference → Balance credited immediately | `201 Created` (sync) |
-| **Card** | Admin enters card details → Balance credited immediately | `201 Created` (sync) |
+| **Bank (HYBRID/default)** | Try bank API verification → if API unavailable, create PENDING for admin review | `201 Created` or `202 Accepted` |
+| **Bank (API mode)** | Verify via bank API → reject if API unavailable or ref invalid | `201 Created` or `422`/`503` |
+| **Bank (MANUAL mode)** | Always create PENDING → admin confirms/rejects in Wallet Dashboard | `202 Accepted` |
+| **Card** | Same as bank MANUAL mode → admin confirms/rejects | `202 Accepted` |
 
-**Key safety guarantee:** For mobile money, the float balance is **never** credited until the payment provider confirms via webhook callback. This prevents inflated balances from failed/incomplete STK pushes.
+**Verification mode** is tenant-configurable via **Tenant Settings → Finance** tab (`TenantConfig.topup_verification_mode`).
+
+**Key safety guarantee:** For mobile money, the float balance is **never** credited until the payment provider confirms via webhook callback. For bank/card, the balance is **never** credited until verified by API or manually confirmed by an admin.
 
 **Float transaction types:** `FUND` (inbound), `PAYOUT` (outbound), `ADJUSTMENT` (corrections)
 
@@ -291,6 +297,7 @@ go test ./internal/external/iprs/... -v    # IPRS client
 - **Atomic transactions:** Employee payout validation (zero/negative/net>gross), wallet transfer validation (zero/negative/self-transfer)
 - HTTP handler responses + RBAC enforcement
 - **KYC lifecycle:** Verify, unverify (→PENDING with reason), reject (→REJECTED with reason), timestamp clearing, notification dispatch
+- **Float verification:** Bank/card top-up pending workflow, confirm/reject handlers, verification mode branching
 - JWT middleware (missing, invalid, expired tokens)
 - **SMS**: Manager fallback chain, Optimize token caching, Africa's Talking bulk
 - **JamboPay**: OAuth2 auth, M-Pesa/bank payouts, OTP verify, balance check

@@ -1,6 +1,6 @@
 # AMY MIS — Backend System Documentation
 
-> **Version:** 1.3 | **Last Updated:** 2026-05-07 | **Go:** 1.25 | **Framework:** Gin 1.12
+> **Version:** 1.4 | **Last Updated:** 2026-05-12 | **Go:** 1.25 | **Framework:** Gin 1.12
 
 ---
 
@@ -297,11 +297,12 @@ All third-party integrations follow the **Strategy design pattern**. Each integr
 
 | Provider | Auth | Endpoints |
 |----------|------|-----------|
-| **JamboPay v2** | OAuth2 client_credentials → Bearer token | `InitiateCollection` (STK push), `InitiatePayout` (M-Pesa B2C/bank/paybill), `VerifyPayout` (OTP), `CheckBalance` |
+| **JamboPay v2** | OAuth2 client_credentials → Bearer token | `InitiateCollection` (STK push), `InitiatePayout` (M-Pesa B2C/bank/paybill), `VerifyPayout` (OTP), `CheckBalance`, `VerifyBankTransfer` |
 
 - **Channels:** `MOMO_B2C` (mobile money), `BANK` (bank transfer), `MOMO_B2B` (paybill/till)
 - **Collection flow (STK push):** `InitiateCollection` → phone prompt → user enters PIN → JamboPay callback → `ConfirmPendingTopUp`
 - **Payout OTP flow:** `InitiatePayout` → `pending_otp` → `VerifyPayout(ref, otp)` → `completed`
+- **Bank verification:** `VerifyBankTransfer(BankVerificationRequest)` → returns `VERIFIED`, `NOT_FOUND`, `MISMATCH`, or `UNAVAILABLE`. Providers that don't support verification return `ErrNotImplemented` and are skipped by the Manager.
 
 ### 6.4 Payroll — `payroll.Manager`
 
@@ -349,7 +350,7 @@ When an assignment is completed:
 
 ### 7.5 Organization Float Top-Up Flow
 
-Organization (SACCO) float can be funded via three methods. **Mobile money** uses an asynchronous STK push flow; **bank** and **card** are immediate manual entries.
+Organization (SACCO) float can be funded via three methods. **Mobile money** uses an asynchronous STK push flow; **bank** and **card** use a configurable verification workflow.
 
 #### Mobile Money (Async — STK Push)
 
@@ -393,13 +394,53 @@ Organization (SACCO) float can be funded via three methods. **Mobile money** use
 - Failed STK pushes immediately mark the pending tx as `FAILED`
 - The webhook handler first checks for pending float tx (collection), then payout tx
 
-#### Bank & Card (Immediate)
+#### Bank & Card (Configurable Verification)
 
-Bank and card top-ups credit the float balance immediately as they represent manual administrative entries:
+Bank and card top-ups use a **tenant-configurable verification workflow** controlled by `TenantConfig.TopUpVerificationMode`. This prevents unauthorized float inflation from unverified bank references.
+
+| Mode | Behavior | Response |
+|------|----------|----------|
+| **HYBRID** (default) | Try bank API verification first; if API unavailable, fall back to manual admin approval | `201 Created` (API verified) or `202 Accepted` (pending manual) |
+| **API** | Strictly verify via bank API; reject if API unavailable or reference invalid | `201 Created` (verified) or `422`/`503` (rejected) |
+| **MANUAL** | All top-ups create PENDING transactions requiring admin confirmation | `202 Accepted` (always pending) |
 
 ```
-POST /organizations/:id/float/topup  →  CreditFloat()  →  HTTP 201 Created
+ Bank top-up submitted
+   │
+   ▼
+ Load TenantConfig → ResolvedTopUpVerificationMode()
+   │
+   ├── API mode ──────────────────────────────────────────┐
+   │   ▼                                                  │
+   │   paymentMgr.VerifyBankTransfer(ref, amount)         │
+   │   ├── VERIFIED → CreditFloat immediately (201)       │
+   │   ├── NOT_FOUND/MISMATCH → Reject (422)              │
+   │   └── UNAVAILABLE → Block (503)                      │
+   │                                                      │
+   ├── HYBRID mode ───────────────────────────────────────┤
+   │   ▼                                                  │
+   │   paymentMgr.VerifyBankTransfer(ref, amount)         │
+   │   ├── VERIFIED → CreditFloat immediately (201)       │
+   │   ├── NOT_FOUND/MISMATCH → Create PENDING (202)      │
+   │   └── UNAVAILABLE → Create PENDING (202)             │
+   │                                                      │
+   └── MANUAL mode ───────────────────────────────────────┘
+       ▼
+       Create PENDING transaction (202)
+       ▼
+       Admin reviews in Wallet Dashboard
+       ├── Confirm → POST /:id/float/topup/:tx_id/confirm → Credit balance
+       └── Reject  → POST /:id/float/topup/:tx_id/reject  → Mark FAILED
 ```
+
+**Admin approval endpoints:**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/organizations/:id/float/topup/:tx_id/confirm` | Confirm PENDING top-up → atomically credit float balance |
+| `POST` | `/organizations/:id/float/topup/:tx_id/reject` | Reject PENDING top-up with reason → mark FAILED, no balance change |
+
+**Configuration:** Admins set the verification mode in **Tenant Settings → Finance** tab. The setting is stored in `TenantConfig.topup_verification_mode` (JSONB) and read by the handler on each top-up request.
 
 #### Float Transaction Types
 
@@ -415,9 +456,9 @@ The `sacco_float_transactions` table enforces a check constraint:
 
 | Status | Meaning |
 |--------|--------|
-| `PENDING` | STK push initiated, awaiting payment confirmation |
-| `COMPLETED` | Payment confirmed, balance updated |
-| `FAILED` | Payment failed or STK push error |
+| `PENDING` | Awaiting confirmation — STK push, bank API verification, or manual admin review |
+| `COMPLETED` | Payment confirmed (via callback, API, or admin), balance updated |
+| `FAILED` | Payment failed, STK push error, or admin rejected |
 | `REVERSED` | Previously completed transaction reversed |
 
 ---
@@ -437,8 +478,9 @@ The organization float repository mirrors wallet safety mechanisms:
 1. **Pessimistic locking:** `SELECT ... FOR UPDATE` on float row during credit/debit
 2. **Optimistic locking:** Version check prevents concurrent modification
 3. **Idempotency:** Float transactions keyed by `idempotency_key` (unique index)
-4. **Pending→Confirm pattern:** For STK push collections, a `PENDING` record is created first (no balance change), then atomically confirmed when the callback arrives — preventing premature balance inflation
-5. **Context-injected transactions:** Float repo uses `getDB(ctx)` to participate in externally-managed DB transactions (e.g., from `TransactionService`)
+4. **Pending→Confirm pattern:** For STK push and bank/card top-ups, a `PENDING` record is created first (no balance change), then atomically confirmed when verified — preventing premature balance inflation
+5. **Configurable verification:** Bank/card top-ups are gated by tenant-level `TopUpVerificationMode` (`API`, `MANUAL`, `HYBRID`). API mode verifies references via bank integration before crediting. HYBRID tries API first and falls back to manual admin approval. MANUAL always requires admin confirmation.
+6. **Context-injected transactions:** Float repo uses `getDB(ctx)` to participate in externally-managed DB transactions (e.g., from `TransactionService`)
 
 ### 8.3 Atomic Multi-Repository Transactions (TransactionService)
 
@@ -615,6 +657,7 @@ make test-coverage                        # HTML coverage report
 | 24 | ~~Missing mock repositories~~ | ✅ 100% Mock parity achieved (19/19) for all repository interfaces. |
 | 25 | ~~Financial services logic missing~~ | ✅ Fully implemented Credit Scoring, Loan management, and Insurance workflows. |
 | 26 | ~~No KYC unverification workflow~~ | ✅ Admins can unverify employees with a reason; IN_APP notification dispatched; `KYCVerifiedAt` cleared; frontend navigation blocked for unverified employees (KYC guard + sidebar lock). |
+| 27 | ~~Bank/card top-ups credited without verification~~ | ✅ Configurable verification system with 3 modes: **API** (verify via bank integration), **MANUAL** (admin approval), **HYBRID** (try API, fall back to manual). Tenant-level config in `TenantConfig.topup_verification_mode`. Admin confirm/reject endpoints. Frontend Pending Approvals panel in Wallet Dashboard. Finance tab in Tenant Settings. |
 
 ### 11.2 Roadmap & Future Recommendations
 
@@ -684,4 +727,4 @@ Required variables validated at startup:
 
 ---
 
-*Document updated from source code analysis on 2026-05-07.*
+*Document updated from source code analysis on 2026-05-12.*

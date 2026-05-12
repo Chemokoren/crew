@@ -1,6 +1,6 @@
 # AMY MIS — Backend Gap Analysis
 
-> **Date:** 2026-04-23 (updated) | **Audit Scope:** Full source code analysis of `backend/`
+> **Date:** 2026-05-12 (updated) | **Audit Scope:** Full source code analysis of `backend/`
 >
 > This document maps every entity, interface, and feature in the codebase to its implementation status across all architectural layers: **Model → Migration → Repository → Service → Handler → Test → Integration**.
 
@@ -21,7 +21,7 @@ The AMY MIS backend is now a **fully feature-complete** workforce financial syst
 | Mock Repositories (Testing) | 20 | 20 | **100%** |
 | Services (Business Logic) | 18 | 18 | **100%** |
 | HTTP Handlers | 16 | 16 | **100%** |
-| API Routes (endpoints) | ~78 | ~78 | **100%** |
+| API Routes (endpoints) | ~80 | ~80 | **100%** |
 | External Integrations | 7 | 7 | **100%** |
 | Background Workers | 4 | 4 | **100%** |
 | Test Files | 35 | 35 | **100%** |
@@ -47,7 +47,7 @@ The AMY MIS backend is now a **fully feature-complete** workforce financial syst
 | 9 | **Vehicle** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ VehicleService | ✅ VehicleHandler | ✅ 5 routes | ✅ |
 | 10 | **Route** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ RouteService | ✅ RouteHandler | ✅ 5 routes | ✅ |
 | 11 | **CrewSACCOMembership** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (in SACCOSvc) | ✅ (in SACCOHandler) | ✅ 3 routes | ✅ |
-| 12 | **SACCOFloat** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (in SACCOSvc) | ✅ (in SACCOHandler) | ✅ 4 routes | ✅ |
+| 12 | **SACCOFloat** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (in SACCOSvc) | ✅ (in SACCOHandler) | ✅ 6 routes | ✅ |
 | 13 | **SACCOFloatTransaction** | ✅ | ✅ | ✅ (in FloatRepo) | ✅ | ✅ | ✅ (in SACCOSvc) | ✅ (in SACCOHandler) | ✅ 1 route | ✅ |
 | 14 | **PayrollRun** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ PayrollService | ✅ PayrollHandler | ✅ 7 routes | ✅ |
 | 15 | **PayrollEntry** | ✅ | ✅ | ✅ (in PayrollRepo) | ✅ | ✅ | ✅ (in PayrollSvc) | ✅ (in PayrollHandler) | ✅ 1 route | ✅ |
@@ -89,6 +89,7 @@ The AMY MIS backend is now a **fully feature-complete** workforce financial syst
 | **Admin Dashboard** | ✅ System stats, user management, audit viewer, rate management |
 | **Earning Service** | ✅ Dedicated service layer for cleaner business logic |
 | **Centralized Validator** | ✅ Domain-specific validation (Phone, National ID, Amounts) |
+| **Float Top-Up Verification** | ✅ Configurable API/MANUAL/HYBRID bank verification, admin confirm/reject workflow, tenant-level `TopUpVerificationMode` config |
 
 ---
 
@@ -119,7 +120,7 @@ The AMY MIS backend is now a **fully feature-complete** workforce financial syst
 
 ## 5. API Final Route Map
 
-Total implemented routes: **~78**.
+Total implemented routes: **~80**.
 
 | Domain | Implemented Routes |
 |--------|-------------------|
@@ -127,7 +128,7 @@ Total implemented routes: **~78**.
 | Crew | ✅ 8 (CRUD + KYC + deactivate + bulk-import + search) |
 | Assignments | ✅ 6 (create, get, list, complete, cancel, reassign) |
 | Wallets | ✅ 6 (balance, transactions, export, credit, debit, payout) |
-| SACCOs | ✅ 12 (CRUD, list members, manage float, float transactions) |
+| SACCOs | ✅ 14 (CRUD, list members, manage float, float transactions, topup confirm/reject, tenant config) |
 | Vehicles | ✅ 5 (CRUD, list) |
 | Routes | ✅ 5 (CRUD, list) |
 | Payroll | ✅ 7 (Create, list, get, entries, process, approve, submit) |
@@ -144,4 +145,4 @@ Total implemented routes: **~78**.
 
 ---
 
-*Final Status: Feature Complete & Production Ready (2026-04-23). 98 source files, 35 test files, 25 tables, and 241 tests. All tests pass with `-race` flag.*
+*Final Status: Feature Complete & Production Ready (2026-05-12). 98 source files, 35 test files, 25 tables, and 241+ tests. All tests pass with `-race` flag.*
