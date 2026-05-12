@@ -533,6 +533,7 @@ export interface SACCOFloatTransaction {
   balance_after_cents: number;
   reference?: string;
   idempotency_key: string;
+  status: 'PENDING' | 'COMPLETED' | 'FAILED' | 'REVERSED';
   created_at: string;
 }
 

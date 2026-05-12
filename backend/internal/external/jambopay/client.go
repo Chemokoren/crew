@@ -803,6 +803,18 @@ func (p *JamboPayProvider) VerifyCallbackChecksum(ref, amount, checksum string) 
 }
 
 // ===================================================================
+// BANK TRANSFER VERIFICATION
+// ===================================================================
+
+// VerifyBankTransfer checks a bank transfer reference.
+// JamboPay does not currently support bank transfer verification.
+// This method returns ErrNotImplemented, allowing the Manager to
+// fall back to other providers or manual approval.
+func (p *JamboPayProvider) VerifyBankTransfer(_ context.Context, _ payment.BankVerificationRequest) (*payment.BankVerificationResult, error) {
+	return nil, payment.ErrNotImplemented
+}
+
+// ===================================================================
 // HELPERS
 // ===================================================================
 

@@ -713,6 +713,8 @@ func main() {
 			saccos.GET("/:id/float", orgHandler.GetFloat)
 			saccos.POST("/:id/float/credit", orgHandler.CreditFloat)
 			saccos.POST("/:id/float/topup", orgHandler.TopUpFloat)
+			saccos.POST("/:id/float/topup/:tx_id/confirm", orgHandler.ConfirmTopUp)
+			saccos.POST("/:id/float/topup/:tx_id/reject", orgHandler.RejectTopUp)
 			saccos.POST("/:id/float/debit", orgHandler.DebitFloat)
 			saccos.GET("/:id/float/transactions", orgHandler.ListFloatTransactions)
 		}
@@ -733,6 +735,8 @@ func main() {
 			orgs.GET("/:id/float", orgHandler.GetFloat)
 			orgs.POST("/:id/float/credit", orgHandler.CreditFloat)
 			orgs.POST("/:id/float/topup", orgHandler.TopUpFloat)
+			orgs.POST("/:id/float/topup/:tx_id/confirm", orgHandler.ConfirmTopUp)
+			orgs.POST("/:id/float/topup/:tx_id/reject", orgHandler.RejectTopUp)
 			orgs.POST("/:id/float/debit", orgHandler.DebitFloat)
 			orgs.GET("/:id/float/transactions", orgHandler.ListFloatTransactions)
 			// Tenant config, job types, pay schedules — also under /organizations/

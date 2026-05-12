@@ -5,12 +5,16 @@ package payment
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
 
 	"github.com/kibsoft/amy-mis/pkg/retry"
 )
+
+// ErrNotImplemented is returned by providers that don't support a specific operation.
+var ErrNotImplemented = errors.New("operation not implemented by this provider")
 
 // PayoutChannel identifies how money is sent.
 type PayoutChannel string
@@ -78,6 +82,24 @@ type CollectionResult struct {
 	Status    string `json:"status"`    // "pending", "completed", "failed"
 }
 
+// BankVerificationRequest holds data for verifying a bank transfer reference.
+type BankVerificationRequest struct {
+	BankRef     string `json:"bank_ref"`      // Transaction reference from the bank
+	BankCode    string `json:"bank_code"`      // Bank identifier (kcb, equity, coop, etc.)
+	AmountCents int64  `json:"amount_cents"`   // Expected amount
+	AccountTo   string `json:"account_to"`     // Receiving account number
+}
+
+// BankVerificationResult holds the result of a bank transfer verification.
+type BankVerificationResult struct {
+	Verified    bool   `json:"verified"`     // Whether the reference was successfully verified
+	Provider    string `json:"provider"`     // Provider that verified
+	Reference   string `json:"reference"`    // Verified bank reference
+	Status      string `json:"status"`       // "VERIFIED", "NOT_FOUND", "MISMATCH", "UNAVAILABLE"
+	Message     string `json:"message"`      // Human-readable status detail
+	AmountCents int64  `json:"amount_cents"` // Actual amount found (if verified)
+}
+
 // Provider defines the contract for payment/payout providers.
 type Provider interface {
 	Name() string
@@ -85,6 +107,9 @@ type Provider interface {
 	VerifyPayout(ctx context.Context, req PayoutVerifyRequest) (*PayoutResult, error)
 	CheckBalance(ctx context.Context, accountNo string) (*BalanceResult, error)
 	InitiateCollection(ctx context.Context, req CollectionRequest) (*CollectionResult, error)
+	// VerifyBankTransfer checks a bank transfer reference against the bank's records.
+	// Returns ErrNotImplemented if the provider does not support bank verification.
+	VerifyBankTransfer(ctx context.Context, req BankVerificationRequest) (*BankVerificationResult, error)
 }
 
 // Manager orchestrates payment providers with fallback support
@@ -190,6 +215,35 @@ func (m *Manager) InitiateCollection(ctx context.Context, req CollectionRequest)
 			return primary.InitiateCollection(ctx, req)
 		},
 	)
+}
+
+// VerifyBankTransfer checks a bank transfer reference against providers.
+// It tries each provider in order; providers that return ErrNotImplemented are skipped.
+// If no provider supports verification, returns a result with Status="UNAVAILABLE".
+func (m *Manager) VerifyBankTransfer(ctx context.Context, req BankVerificationRequest) (*BankVerificationResult, error) {
+	m.mu.RLock()
+	providers := m.providers
+	m.mu.RUnlock()
+
+	for _, p := range providers {
+		result, err := p.VerifyBankTransfer(ctx, req)
+		if err != nil {
+			if errors.Is(err, ErrNotImplemented) {
+				m.logger.Debug("provider does not support bank verification", slog.String("provider", p.Name()))
+				continue
+			}
+			m.logger.Warn("bank verification failed", slog.String("provider", p.Name()), slog.String("error", err.Error()))
+			continue
+		}
+		return result, nil
+	}
+
+	// No provider could verify — return UNAVAILABLE (not an error)
+	return &BankVerificationResult{
+		Verified: false,
+		Status:   "UNAVAILABLE",
+		Message:  "No payment provider supports bank transfer verification",
+	}, nil
 }
 
 // SetPrimary reorders providers so the named provider becomes primary.

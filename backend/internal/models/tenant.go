@@ -110,6 +110,14 @@ type TenantConfig struct {
 	//   "MANUAL"           — user enters ID number + serial number for IPRS lookup.
 	// The non-default mode is always shown as a fallback option in the UI.
 	KYCVerificationMode string `json:"kyc_verification_mode,omitempty"`
+
+	// --- Float Top-Up Verification ---
+
+	// TopUpVerificationMode controls how bank/card top-up references are verified.
+	//   "API"    — verify reference via bank API integration (auto-approve on success, reject on failure)
+	//   "MANUAL" — all bank/card top-ups require manual admin approval
+	//   "HYBRID" (default) — try API verification first; if API unavailable or inconclusive, fall back to manual approval
+	TopUpVerificationMode string `json:"topup_verification_mode,omitempty"`
 }
 
 // KYC verification mode constants.
@@ -118,12 +126,32 @@ const (
 	KYCModeManual = "MANUAL"
 )
 
+// Top-up verification mode constants.
+const (
+	TopUpVerifyAPI    = "API"
+	TopUpVerifyManual = "MANUAL"
+	TopUpVerifyHybrid = "HYBRID"
+)
+
 // ResolvedKYCMode returns the effective verification mode, defaulting to UPLOAD.
 func (tc *TenantConfig) ResolvedKYCMode() string {
 	if tc.KYCVerificationMode == KYCModeManual {
 		return KYCModeManual
 	}
 	return KYCModeUpload
+}
+
+// ResolvedTopUpVerificationMode returns the effective top-up verification mode.
+// Defaults to HYBRID if not set.
+func (tc *TenantConfig) ResolvedTopUpVerificationMode() string {
+	switch tc.TopUpVerificationMode {
+	case TopUpVerifyAPI:
+		return TopUpVerifyAPI
+	case TopUpVerifyManual:
+		return TopUpVerifyManual
+	default:
+		return TopUpVerifyHybrid
+	}
 }
 
 // DefaultKYCRestrictedActions returns the default set of actions restricted when KYC is not verified.

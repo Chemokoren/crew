@@ -100,6 +100,9 @@ const JOB_CATEGORIES: { value: JobTypeCategory; label: string; desc: string }[] 
           <button class="tab-item" [class.active]="activeTab === 'kyc'" (click)="activeTab='kyc'">
             <span class="material-icons-round" style="font-size:16px;">verified_user</span> KYC Policy
           </button>
+          <button class="tab-item" [class.active]="activeTab === 'finance'" (click)="activeTab='finance'">
+            <span class="material-icons-round" style="font-size:16px;">account_balance</span> Finance
+          </button>
         </div>
 
         <!-- Industry Tab -->
@@ -355,6 +358,72 @@ const JOB_CATEGORIES: { value: JobTypeCategory; label: string; desc: string }[] 
                         <span class="kyc-action-desc">{{ action.desc }}</span>
                       </div>
                     </label>
+                  }
+                </div>
+              </div>
+            </div>
+          </div>
+        }
+
+        <!-- Finance Tab -->
+        @if (activeTab === 'finance') {
+          <div class="glass-card ts-section">
+            <h3 class="ts-section-title">Float Top-Up Verification</h3>
+            <p class="ts-section-desc">Control how bank and card top-up references are verified before crediting the organization's float balance. This protects against unauthorized float inflation.</p>
+
+            <div class="kyc-policy-grid" style="grid-template-columns: 1fr;">
+              <div class="kyc-policy-card">
+                <div class="kyc-policy-title" style="margin-bottom:var(--space-sm);">Verification Method</div>
+                <div class="kyc-mode-options">
+                  <label class="kyc-mode-option" [class.selected]="financeForm.topup_verification_mode === 'HYBRID'">
+                    <input type="radio" name="topupVerifyMode" value="HYBRID" [(ngModel)]="financeForm.topup_verification_mode" (ngModelChange)="saveFinanceConfig()" />
+                    <span class="material-icons-round" style="font-size:20px;color:#8b5cf6;">sync_alt</span>
+                    <div>
+                      <strong>Hybrid <span style='font-size:0.65rem;background:rgba(139,92,246,0.15);color:#8b5cf6;padding:2px 6px;border-radius:4px;margin-left:4px;'>Recommended</span></strong>
+                      <span>Try bank API verification first. If the API is unavailable, fall back to manual admin approval. Best of both worlds.</span>
+                    </div>
+                  </label>
+                  <label class="kyc-mode-option" [class.selected]="financeForm.topup_verification_mode === 'API'">
+                    <input type="radio" name="topupVerifyMode" value="API" [(ngModel)]="financeForm.topup_verification_mode" (ngModelChange)="saveFinanceConfig()" />
+                    <span class="material-icons-round" style="font-size:20px;color:#0ea5e9;">api</span>
+                    <div>
+                      <strong>API Only</strong>
+                      <span>Strictly verify via bank API integration. Top-ups are rejected if the API is unavailable or the reference is invalid. Highest security.</span>
+                    </div>
+                  </label>
+                  <label class="kyc-mode-option" [class.selected]="financeForm.topup_verification_mode === 'MANUAL'">
+                    <input type="radio" name="topupVerifyMode" value="MANUAL" [(ngModel)]="financeForm.topup_verification_mode" (ngModelChange)="saveFinanceConfig()" />
+                    <span class="material-icons-round" style="font-size:20px;color:#f59e0b;">person_search</span>
+                    <div>
+                      <strong>Manual Only</strong>
+                      <span>All bank/card top-ups require manual admin approval. No API calls are made. Use when no bank integration is available.</span>
+                    </div>
+                  </label>
+                </div>
+
+                <!-- Mode explanation card -->
+                <div style="margin-top:var(--space-md);padding:var(--space-md);border-radius:var(--radius-md);background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.15);">
+                  <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                    <span class="material-icons-round" style="font-size:16px;color:var(--color-accent);">info</span>
+                    <span style="font-size:0.78rem;font-weight:600;">How it works</span>
+                  </div>
+                  @if (financeForm.topup_verification_mode === 'API') {
+                    <p style="font-size:0.75rem;color:var(--color-text-muted);margin:0;line-height:1.5;">
+                      When an admin submits a bank top-up, the system calls the bank API to verify the transaction reference and amount match.
+                      If verified, the float is credited immediately. If not found or amounts mismatch, the top-up is <strong>rejected</strong>.
+                      If the API is down, the top-up is <strong>blocked</strong> until the API is available.
+                    </p>
+                  } @else if (financeForm.topup_verification_mode === 'MANUAL') {
+                    <p style="font-size:0.75rem;color:var(--color-text-muted);margin:0;line-height:1.5;">
+                      All bank/card top-ups are created as <strong>pending</strong> transactions. An admin must manually verify the bank reference
+                      and then click "Confirm" in the Wallet page to credit the float. Unverified top-ups can be rejected.
+                    </p>
+                  } @else {
+                    <p style="font-size:0.75rem;color:var(--color-text-muted);margin:0;line-height:1.5;">
+                      The system first attempts to verify via bank API. If the API confirms the reference, the float is credited automatically.
+                      If the API is unavailable or inconclusive, the top-up is created as <strong>pending</strong> for manual admin review.
+                      This provides automation when possible with a safety net when it's not.
+                    </p>
                   }
                 </div>
               </div>
@@ -622,6 +691,11 @@ export class TenantSettingsComponent implements OnInit {
   };
   savingKYC = signal(false);
 
+  // --- Finance Config ---
+  financeForm = {
+    topup_verification_mode: 'HYBRID' as 'API' | 'MANUAL' | 'HYBRID',
+  };
+
   readonly allRestrictableActions: { code: string; label: string; icon: string; desc: string }[] = [
     { code: 'WALLET_WITHDRAW', label: 'Wallet Withdrawal', icon: 'account_balance_wallet', desc: 'Withdraw funds from wallet' },
     { code: 'WALLET_TRANSFER', label: 'Wallet Transfer', icon: 'swap_horiz', desc: 'Transfer funds between wallets' },
@@ -692,11 +766,14 @@ export class TenantSettingsComponent implements OnInit {
           this.kycForm.kyc_restricted_actions = actions && actions.length > 0
             ? [...actions]
             : this.allRestrictableActions.map(a => a.code);
+          // Hydrate finance form
+          this.financeForm.topup_verification_mode = (cfg as any).topup_verification_mode || 'HYBRID';
         } else {
           // No config yet — default everything to restricted
           this.kycForm.kyc_required = true;
           this.kycForm.kyc_verification_mode = 'UPLOAD';
           this.kycForm.kyc_restricted_actions = this.allRestrictableActions.map(a => a.code);
+          this.financeForm.topup_verification_mode = 'HYBRID';
         }
       },
       error: () => this.loading.set(false),
@@ -731,6 +808,7 @@ export class TenantSettingsComponent implements OnInit {
         kyc_required: this.kycForm.kyc_required,
         kyc_verification_mode: this.kycForm.kyc_verification_mode,
         kyc_restricted_actions: this.kycForm.kyc_restricted_actions,
+        topup_verification_mode: this.financeForm.topup_verification_mode,
       },
     }).subscribe({
       next: r => {
@@ -739,6 +817,23 @@ export class TenantSettingsComponent implements OnInit {
         this.toast.success('KYC policy updated');
       },
       error: () => this.savingKYC.set(false),
+    });
+  }
+
+  saveFinanceConfig(): void {
+    this.api.updateTenantConfig(this.saccoId, {
+      tenant_config: {
+        kyc_required: this.kycForm.kyc_required,
+        kyc_verification_mode: this.kycForm.kyc_verification_mode,
+        kyc_restricted_actions: this.kycForm.kyc_restricted_actions,
+        topup_verification_mode: this.financeForm.topup_verification_mode,
+      },
+    }).subscribe({
+      next: r => {
+        this.sacco.set(r.data);
+        this.toast.success('Finance settings updated');
+      },
+      error: () => this.toast.error('Failed to save finance settings'),
     });
   }
 

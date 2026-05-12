@@ -312,10 +312,11 @@ func (h *OrganizationHandler) TopUpFloat(c *gin.Context) {
 		})
 
 	case "bank":
-		// --- Immediate credit for bank transfers (manual entry) ---
+		// --- Configurable bank transfer verification ---
 		bankRef := req.BankRef
 		if bankRef == "" {
-			bankRef = "pending"
+			BadRequest(c, "bank_ref is required for bank transfers")
+			return
 		}
 		providerLabel := req.Provider
 		if providerLabel == "" {
@@ -326,7 +327,79 @@ func (h *OrganizationHandler) TopUpFloat(c *gin.Context) {
 			ref += " | " + req.Reference
 		}
 
-		tx, err := h.saccoSvc.CreditFloat(c.Request.Context(), service.FloatOperationInput{
+		// Determine verification mode from tenant config
+		verifyMode := models.TopUpVerifyHybrid // default
+		org, orgErr := h.saccoSvc.GetSACCO(c.Request.Context(), orgID)
+		if orgErr == nil {
+			if cfg, _ := org.GetTenantConfig(); cfg != nil {
+				verifyMode = cfg.ResolvedTopUpVerificationMode()
+			}
+		}
+
+		// API or HYBRID mode: try bank API verification first
+		if (verifyMode == models.TopUpVerifyAPI || verifyMode == models.TopUpVerifyHybrid) && h.paymentMgr != nil {
+			verifyResult, verifyErr := h.paymentMgr.VerifyBankTransfer(c.Request.Context(), payment.BankVerificationRequest{
+				BankRef:     bankRef,
+				BankCode:    providerLabel,
+				AmountCents: req.AmountCents,
+			})
+			if verifyErr == nil && verifyResult != nil {
+				switch verifyResult.Status {
+				case "VERIFIED":
+					// API confirmed — credit immediately
+					ref += " | api_verified:true"
+					tx, err := h.saccoSvc.CreditFloat(c.Request.Context(), service.FloatOperationInput{
+						OrganizationID: orgID,
+						AmountCents:    req.AmountCents,
+						IdempotencyKey: req.IdempotencyKey,
+						Reference:      ref,
+					})
+					if err != nil {
+						MapServiceError(c, err)
+						return
+					}
+					SuccessResponse(c, http.StatusCreated, gin.H{
+						"status":              "COMPLETED",
+						"message":             "Bank transfer verified via API and float credited.",
+						"transaction_id":      tx.ID,
+						"amount_cents":        req.AmountCents,
+						"bank_ref":            bankRef,
+						"verification_method": "API",
+					})
+					return
+
+				case "NOT_FOUND", "MISMATCH":
+					// API says the reference is invalid
+					if verifyMode == models.TopUpVerifyAPI {
+						// Strict API mode — reject outright
+						ErrorResponse(c, http.StatusUnprocessableEntity, "BANK_REF_INVALID",
+							"Bank reference could not be verified: "+verifyResult.Message)
+						return
+					}
+					// HYBRID mode: fall through to pending (admin can override)
+
+				case "UNAVAILABLE":
+					if verifyMode == models.TopUpVerifyAPI {
+						ErrorResponse(c, http.StatusServiceUnavailable, "BANK_API_UNAVAILABLE",
+							"Bank verification API is unavailable. Try again later or switch to HYBRID mode.")
+						return
+					}
+					// HYBRID mode: fall through to pending
+				}
+			} else if verifyMode == models.TopUpVerifyAPI {
+				// API mode with error — block the transaction
+				errMsg := "bank verification failed"
+				if verifyErr != nil {
+					errMsg = verifyErr.Error()
+				}
+				ErrorResponse(c, http.StatusBadGateway, "BANK_VERIFY_FAILED", errMsg)
+				return
+			}
+			// HYBRID mode with error or UNAVAILABLE: fall through to pending
+		}
+
+		// MANUAL mode (or HYBRID fallback): create pending transaction
+		pendingTx, err := h.saccoSvc.CreatePendingTopUp(c.Request.Context(), service.FloatOperationInput{
 			OrganizationID: orgID,
 			AmountCents:    req.AmountCents,
 			IdempotencyKey: req.IdempotencyKey,
@@ -336,16 +409,27 @@ func (h *OrganizationHandler) TopUpFloat(c *gin.Context) {
 			MapServiceError(c, err)
 			return
 		}
-		SuccessResponse(c, http.StatusCreated, tx)
+		msg := "Bank transfer recorded. An admin must confirm this top-up after verifying the bank reference."
+		if verifyMode == models.TopUpVerifyHybrid {
+			msg = "Bank API verification unavailable. Top-up recorded for manual admin approval."
+		}
+		SuccessResponse(c, http.StatusAccepted, gin.H{
+			"status":              "PENDING",
+			"message":             msg,
+			"transaction_id":      pendingTx.ID,
+			"amount_cents":        req.AmountCents,
+			"bank_ref":            bankRef,
+			"verification_method": verifyMode,
+		})
 
 	case "card":
-		// --- Immediate credit for card payments (manual entry) ---
+		// --- Card payments follow the same verification workflow as bank ---
 		ref := "CARD:" + req.Provider
 		if req.Reference != "" {
 			ref += " | " + req.Reference
 		}
 
-		tx, err := h.saccoSvc.CreditFloat(c.Request.Context(), service.FloatOperationInput{
+		pendingTx, err := h.saccoSvc.CreatePendingTopUp(c.Request.Context(), service.FloatOperationInput{
 			OrganizationID: orgID,
 			AmountCents:    req.AmountCents,
 			IdempotencyKey: req.IdempotencyKey,
@@ -355,11 +439,69 @@ func (h *OrganizationHandler) TopUpFloat(c *gin.Context) {
 			MapServiceError(c, err)
 			return
 		}
-		SuccessResponse(c, http.StatusCreated, tx)
+		SuccessResponse(c, http.StatusAccepted, gin.H{
+			"status":         "PENDING",
+			"message":        "Card payment recorded. An admin must confirm this top-up after verifying the payment.",
+			"transaction_id": pendingTx.ID,
+			"amount_cents":   req.AmountCents,
+		})
 
 	default:
 		BadRequest(c, "invalid method: must be mobile_money, bank, or card")
 	}
+}
+
+// ConfirmTopUp approves a PENDING float top-up transaction.
+// This atomically credits the float balance and marks the transaction as COMPLETED.
+// POST /organizations/:id/float/topup/:tx_id/confirm
+func (h *OrganizationHandler) ConfirmTopUp(c *gin.Context) {
+	txID, err := uuid.Parse(c.Param("tx_id"))
+	if err != nil {
+		BadRequest(c, "Invalid transaction ID")
+		return
+	}
+
+	tx, err := h.saccoSvc.ConfirmPendingTopUp(c.Request.Context(), txID)
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+
+	SuccessResponse(c, http.StatusOK, gin.H{
+		"status":         "COMPLETED",
+		"message":        "Top-up confirmed. Float balance has been credited.",
+		"transaction_id": tx.ID,
+		"amount_cents":   tx.AmountCents,
+	})
+}
+
+// RejectTopUp rejects a PENDING float top-up transaction.
+// This marks the transaction as FAILED without changing the float balance.
+// POST /organizations/:id/float/topup/:tx_id/reject
+func (h *OrganizationHandler) RejectTopUp(c *gin.Context) {
+	txID, err := uuid.Parse(c.Param("tx_id"))
+	if err != nil {
+		BadRequest(c, "Invalid transaction ID")
+		return
+	}
+
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	if req.Reason == "" {
+		req.Reason = "Rejected by admin"
+	}
+
+	if err := h.saccoSvc.FailPendingTopUp(c.Request.Context(), txID, req.Reason); err != nil {
+		MapServiceError(c, err)
+		return
+	}
+
+	SuccessResponse(c, http.StatusOK, gin.H{
+		"status":  "FAILED",
+		"message": "Top-up rejected: " + req.Reason,
+	})
 }
 
 func (h *OrganizationHandler) DebitFloat(c *gin.Context) {

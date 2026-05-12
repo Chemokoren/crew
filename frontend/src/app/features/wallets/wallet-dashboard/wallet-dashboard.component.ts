@@ -7,7 +7,7 @@ import { ToastService } from '../../../core/services/toast.service';
 import { CurrencyKesPipe } from '../../../shared/pipes/currency-kes.pipe';
 import { RelativeTimePipe } from '../../../shared/pipes/relative-time.pipe';
 import { AutocompleteComponent, AutocompleteOption } from '../../../shared/components/autocomplete/autocomplete.component';
-import { Wallet, WalletTransaction, PaginationMeta, CrewMember, SACCOFloat, Organization } from '../../../core/models';
+import { Wallet, WalletTransaction, PaginationMeta, CrewMember, SACCOFloat, SACCOFloatTransaction, Organization } from '../../../core/models';
 
 @Component({
   selector: 'app-wallet-dashboard',
@@ -62,6 +62,38 @@ import { Wallet, WalletTransaction, PaginationMeta, CrewMember, SACCOFloat, Orga
             <div class="stat-label">Organization Float</div>
           </div>
         </div>
+
+        <!-- Pending Top-Up Approvals -->
+        @if (pendingTopUps().length > 0) {
+          <div class="glass-card" style="margin-bottom:var(--space-lg);padding:var(--space-md);">
+            <h3 style="display:flex;align-items:center;gap:8px;margin:0 0 var(--space-sm) 0;font-size:0.95rem;font-weight:600;">
+              <span class="material-icons-round" style="color:#f59e0b;font-size:20px;">pending_actions</span>
+              Pending Top-Up Approvals
+              <span style="background:#f59e0b;color:#fff;font-size:0.7rem;padding:2px 8px;border-radius:100px;font-weight:700;">{{ pendingTopUps().length }}</span>
+            </h3>
+            <p style="font-size:0.75rem;color:var(--color-text-muted);margin:0 0 var(--space-sm);">
+              These top-ups require verification before the float balance is credited.
+            </p>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              @for (ptx of pendingTopUps(); track ptx.id) {
+                <div style="display:flex;align-items:center;gap:var(--space-sm);padding:10px 14px;border-radius:var(--radius-md);border:1.5px solid rgba(251,191,36,0.4);background:rgba(251,191,36,0.05);">
+                  <span class="material-icons-round" style="color:#f59e0b;font-size:20px;">schedule</span>
+                  <div style="flex:1;min-width:0;">
+                    <div style="font-size:0.82rem;font-weight:500;color:var(--color-text-primary);">{{ ptx.amount_cents | currencyKes }}</div>
+                    <div style="font-size:0.7rem;color:var(--color-text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ ptx.reference || 'No reference' }}</div>
+                  </div>
+                  <div style="font-size:0.7rem;color:var(--color-text-muted);white-space:nowrap;">{{ ptx.created_at | relativeTime }}</div>
+                  <button class="btn btn-primary" style="padding:4px 12px;font-size:0.72rem;min-height:28px;" (click)="confirmPendingTopUp(ptx.id)" id="btn-confirm-{{ptx.id}}">
+                    <span class="material-icons-round" style="font-size:14px;">check</span> Confirm
+                  </button>
+                  <button class="btn btn-ghost" style="padding:4px 10px;font-size:0.72rem;min-height:28px;color:var(--color-danger);" (click)="rejectPendingTopUp(ptx.id)" id="btn-reject-{{ptx.id}}">
+                    <span class="material-icons-round" style="font-size:14px;">close</span> Reject
+                  </button>
+                </div>
+              }
+            </div>
+          </div>
+        }
       }
 
       <!-- Admin: Crew member lookup -->
@@ -668,6 +700,7 @@ export class WalletDashboardComponent implements OnInit {
   transactions = signal<WalletTransaction[]>([]);
   txMeta = signal<PaginationMeta | null>(null);
   loadingTxs = signal(true);
+  pendingTopUps = signal<SACCOFloatTransaction[]>([]);
   crewMembers = signal<CrewMember[]>([]);
   crewOptions = computed<AutocompleteOption[]>(() => this.crewMembers().map(c => ({
     value: c.id,
@@ -932,6 +965,13 @@ export class WalletDashboardComponent implements OnInit {
     this.api.getSACCOFloat(orgId).subscribe({
       next: (res) => this.orgFloat.set(res.data),
     });
+    // Also load pending float transactions for approval
+    this.api.getFloatTransactions(orgId, { per_page: '50' }).subscribe({
+      next: (res) => {
+        const pending = (res.data || []).filter((tx: SACCOFloatTransaction) => tx.status === 'PENDING');
+        this.pendingTopUps.set(pending);
+      },
+    });
   }
 
   loadTransactions(): void {
@@ -1092,12 +1132,12 @@ export class WalletDashboardComponent implements OnInit {
       reference,
     }).subscribe({
       next: (res: any) => {
-        if (this.topupMethod === 'mobile_money') {
-          // Mobile money: balance NOT yet credited — waiting for callback
-          const msg = res?.data?.message || `STK push sent to ${this.topupPhone}. Check your phone to complete payment.`;
+        const status = res?.data?.status;
+        if (status === 'PENDING') {
+          // All methods now return PENDING — show appropriate message
+          const msg = res?.data?.message || 'Top-up recorded as pending. It must be confirmed by an admin.';
           this.toast.success(msg);
         } else {
-          // Bank/card: balance credited immediately
           this.toast.success(`Float topped up via ${providerLabel}`);
           this.loadOrgFloat();
         }
@@ -1108,6 +1148,40 @@ export class WalletDashboardComponent implements OnInit {
         const msg = err?.error?.message || 'Top-up failed. Please try again.';
         this.toast.error(msg);
         this.submitting.set(false);
+      },
+    });
+  }
+
+  /** Confirm a PENDING float top-up (admin approval) */
+  confirmPendingTopUp(txId: string): void {
+    const orgId = this.getActiveOrgId();
+    if (!orgId) return;
+    this.api.confirmTopUp(orgId, txId).subscribe({
+      next: () => {
+        this.toast.success('Top-up confirmed. Float balance credited.');
+        this.loadOrgFloat();
+      },
+      error: (err: any) => {
+        const msg = err?.error?.message || 'Failed to confirm top-up.';
+        this.toast.error(msg);
+      },
+    });
+  }
+
+  /** Reject a PENDING float top-up (admin denial) */
+  rejectPendingTopUp(txId: string): void {
+    const reason = prompt('Reason for rejecting this top-up:');
+    if (reason === null) return; // User cancelled
+    const orgId = this.getActiveOrgId();
+    if (!orgId) return;
+    this.api.rejectTopUp(orgId, txId, reason).subscribe({
+      next: () => {
+        this.toast.success('Top-up rejected.');
+        this.loadOrgFloat();
+      },
+      error: (err: any) => {
+        const msg = err?.error?.message || 'Failed to reject top-up.';
+        this.toast.error(msg);
       },
     });
   }

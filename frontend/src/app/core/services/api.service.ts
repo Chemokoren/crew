@@ -179,6 +179,14 @@ export class ApiService {
     return this.http.post(`${this.API}/organizations/${saccoId}/float/topup`, data);
   }
 
+  confirmTopUp(saccoId: string, txId: string): Observable<unknown> {
+    return this.http.post(`${this.API}/organizations/${saccoId}/float/topup/${txId}/confirm`, {});
+  }
+
+  rejectTopUp(saccoId: string, txId: string, reason?: string): Observable<unknown> {
+    return this.http.post(`${this.API}/organizations/${saccoId}/float/topup/${txId}/reject`, { reason: reason || '' });
+  }
+
   debitSACCOFloat(saccoId: string, data: Record<string, unknown>): Observable<unknown> {
     return this.http.post(`${this.API}/organizations/${saccoId}/float/debit`, data);
   }

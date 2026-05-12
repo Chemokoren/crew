@@ -69,6 +69,10 @@ func (m *mockPaymentProvider) InitiateCollection(ctx context.Context, req Collec
 	}, nil
 }
 
+func (m *mockPaymentProvider) VerifyBankTransfer(_ context.Context, _ BankVerificationRequest) (*BankVerificationResult, error) {
+	return nil, ErrNotImplemented
+}
+
 func TestManagerInitiatePayoutPrimary(t *testing.T) {
 	primary := &mockPaymentProvider{name: "primary"}
 	fallback := &mockPaymentProvider{name: "fallback"}

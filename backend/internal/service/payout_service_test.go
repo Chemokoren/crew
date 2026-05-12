@@ -43,6 +43,9 @@ func (m *MockPaymentProvider) InitiateCollection(ctx context.Context, req paymen
 		Status:    "pending",
 	}, nil
 }
+func (m *MockPaymentProvider) VerifyBankTransfer(_ context.Context, _ payment.BankVerificationRequest) (*payment.BankVerificationResult, error) {
+	return nil, payment.ErrNotImplemented
+}
 
 func TestPayoutService_InitiatePayout(t *testing.T) {
 	crewRepo := mock.NewCrewRepo()
