@@ -373,3 +373,64 @@ type WorkSiteRepository interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 	List(ctx context.Context, orgID *uuid.UUID, page, perPage int, search string) ([]models.WorkSite, int64, error)
 }
+
+// RoleFilter specifies filtering criteria for role queries.
+type RoleFilter struct {
+	TenantID     *uuid.UUID
+	IndustryType string
+	IsSystem     *bool
+	IsTemplate   *bool
+	IsActive     *bool
+	Search       string
+}
+
+// PermissionFilter specifies filtering criteria for permission queries.
+type PermissionFilter struct {
+	Module    string
+	Category  string
+	RiskLevel string
+	Search    string
+}
+
+// RBACRepository handles all RBAC data access operations.
+type RBACRepository interface {
+	// --- Roles ---
+	CreateRole(ctx context.Context, role *models.Role) error
+	GetRoleByID(ctx context.Context, id uuid.UUID) (*models.Role, error)
+	GetRoleBySlug(ctx context.Context, slug string, tenantID *uuid.UUID) (*models.Role, error)
+	UpdateRole(ctx context.Context, role *models.Role) error
+	DeleteRole(ctx context.Context, id uuid.UUID) error // soft delete
+	ListRoles(ctx context.Context, filter RoleFilter, page, perPage int) ([]models.Role, int64, error)
+	CloneRole(ctx context.Context, sourceID uuid.UUID, newName, newSlug string, tenantID *uuid.UUID, createdBy *uuid.UUID) (*models.Role, error)
+
+	// --- Permissions ---
+	ListPermissions(ctx context.Context, filter PermissionFilter) ([]models.PermissionDef, error)
+	GetPermissionByKey(ctx context.Context, key string) (*models.PermissionDef, error)
+	GetPermissionsByKeys(ctx context.Context, keys []string) ([]models.PermissionDef, error)
+	SyncPermissions(ctx context.Context, defs []models.PermissionDef) error // upsert from registry
+
+	// --- Role-Permission mapping ---
+	AssignPermissions(ctx context.Context, roleID uuid.UUID, permIDs []uuid.UUID, grantedBy *uuid.UUID) error
+	RevokePermissions(ctx context.Context, roleID uuid.UUID, permIDs []uuid.UUID) error
+	GetRolePermissions(ctx context.Context, roleID uuid.UUID) ([]models.PermissionDef, error)
+	GetRolePermissionKeys(ctx context.Context, roleID uuid.UUID) ([]string, error)
+	BulkSetPermissions(ctx context.Context, roleID uuid.UUID, permIDs []uuid.UUID, grantedBy *uuid.UUID) error
+
+	// --- User-Role mapping ---
+	AssignRoleToUser(ctx context.Context, userRole *models.UserRole) error
+	RevokeRoleFromUser(ctx context.Context, userID, roleID uuid.UUID, tenantID *uuid.UUID) error
+	GetUserRoles(ctx context.Context, userID uuid.UUID, tenantID *uuid.UUID) ([]models.UserRole, error)
+	GetUserPermissionKeys(ctx context.Context, userID uuid.UUID, tenantID *uuid.UUID) ([]string, error)
+	CountUsersWithRole(ctx context.Context, roleID uuid.UUID) (int64, error)
+
+	// --- Policies ---
+	CreatePolicy(ctx context.Context, policy *models.Policy) error
+	UpdatePolicy(ctx context.Context, policy *models.Policy) error
+	GetActivePolicies(ctx context.Context, permKey string, tenantID *uuid.UUID) ([]models.Policy, error)
+	ListPolicies(ctx context.Context, tenantID *uuid.UUID, page, perPage int) ([]models.Policy, int64, error)
+
+	// --- Templates ---
+	UpsertTemplate(ctx context.Context, tmpl *models.RoleTemplate) error
+	ListTemplates(ctx context.Context, industryType string) ([]models.RoleTemplate, error)
+	GetTemplateByID(ctx context.Context, id uuid.UUID) (*models.RoleTemplate, error)
+}

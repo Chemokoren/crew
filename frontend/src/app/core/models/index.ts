@@ -674,3 +674,93 @@ export interface WorkSite {
   created_at: string;
   updated_at: string;
 }
+
+// --- RBAC Models (Milestone 5) ---
+
+export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
+export type PermissionCategory = 'crud' | 'workflow' | 'financial' | 'compliance' | 'admin' | 'reporting';
+export type PolicyEffect = 'ALLOW' | 'DENY';
+
+export interface RBACRole {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  tenant_id?: string;
+  industry_type: string;
+  is_system: boolean;
+  is_template: boolean;
+  is_active: boolean;
+  parent_role_id?: string;
+  metadata?: Record<string, unknown>;
+  created_by?: string;
+  updated_by?: string;
+  created_at: string;
+  updated_at: string;
+  permission_count?: number;
+  user_count?: number;
+}
+
+export interface PermissionDef {
+  id: string;
+  key: string;
+  module: string;
+  description: string;
+  risk_level: RiskLevel;
+  category: PermissionCategory;
+  is_system: boolean;
+  depends_on?: string[];
+}
+
+export interface PermissionModule {
+  name: string;
+  permissions: PermissionDef[];
+}
+
+export interface RoleTemplate {
+  id: string;
+  industry_type: string;
+  role_name: string;
+  role_slug: string;
+  description: string;
+  permissions: string[];
+  is_default: boolean;
+  sort_order: number;
+}
+
+export interface UserRoleAssignment {
+  id: string;
+  user_id: string;
+  role_id: string;
+  role?: RBACRole;
+  tenant_id?: string;
+  assigned_by?: string;
+  assigned_at: string;
+  expires_at?: string;
+  is_active: boolean;
+}
+
+export interface RoleComparison {
+  only_in_a: string[];
+  only_in_b: string[];
+  shared: string[];
+}
+
+export interface PermissionMatrix {
+  roles: RBACRole[];
+  modules: string[];
+  grants: Record<string, string[]>; // roleID → permKey[]
+}
+
+export interface RBACPolicy {
+  id: string;
+  name: string;
+  description: string;
+  permission_key: string;
+  conditions: Record<string, unknown>;
+  effect: PolicyEffect;
+  is_active: boolean;
+  priority: number;
+  tenant_id?: string;
+  created_at: string;
+}

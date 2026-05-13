@@ -233,6 +233,7 @@ func main() {
 	jobTypeRepo := pgRepo.NewTenantJobTypeRepo(db)
 	payScheduleRepo := pgRepo.NewPayScheduleRepo(db)
 	workSiteRepo := pgRepo.NewWorkSiteRepo(db)
+	rbacRepo := pgRepo.NewRBACRepo(db)
 
 	// --- 8. Initialize transaction manager ---
 	txMgr := database.NewTxManager(db)
@@ -432,6 +433,26 @@ func main() {
 	tenantHandler := handler.NewTenantHandler(tenantSvc)
 	adminHandler := handler.NewAdminHandler(authSvc, notifSvc, auditRepo, statutoryRateRepo)
 	workSiteHandler := handler.NewWorkSiteHandler(workSiteRepo)
+
+	// --- RBAC (Enterprise Roles & Permissions) ---
+	permCache := service.NewPermissionCache(redisClient, 5*time.Minute)
+	rbacSvc := service.NewRBACService(rbacRepo, auditSvc, permCache)
+	rbacHandler := handler.NewRBACHandler(rbacSvc)
+
+	// Sync permission registry and templates to database on startup
+	go func() {
+		ctx := context.Background()
+		if err := rbacSvc.SyncRegistryPermissions(ctx); err != nil {
+			slog.Error("failed to sync RBAC permissions", slog.String("error", err.Error()))
+		} else {
+			slog.Info("RBAC permissions synced to database")
+		}
+		if err := rbacSvc.SyncTemplates(ctx); err != nil {
+			slog.Error("failed to sync RBAC templates", slog.String("error", err.Error()))
+		} else {
+			slog.Info("RBAC industry templates synced")
+		}
+	}()
 
 	// --- USSD Session Handler (Phase G) ---
 	ussdSession := ussd.NewSessionHandler(
@@ -920,6 +941,9 @@ func main() {
 			admin.POST("/notifications/templates", adminHandler.CreateTemplate)
 			admin.PUT("/notifications/templates", adminHandler.UpdateTemplate)
 		}
+
+		// RBAC — Roles & Permissions management (platform admins)
+		rbacHandler.RegisterRoutes(secured)
 	}
 
 	// --- 15. Start HTTP server ---

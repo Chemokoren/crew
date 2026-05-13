@@ -1,14 +1,16 @@
-import { Injectable, signal, computed } from '@angular/core';
+import { Injectable, signal, computed, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { Observable, tap, catchError, throwError, BehaviorSubject } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { User, AuthResponse, TokenPair, SystemRole, ApiResponse } from '../models';
+import { PermissionService } from './permission.service';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private readonly API = environment.apiUrl;
   private tokenRefreshInProgress = false;
+  private permissionService = inject(PermissionService);
 
   private readonly currentUserSignal = signal<User | null>(null);
   readonly currentUser = this.currentUserSignal.asReadonly();
@@ -163,6 +165,8 @@ export class AuthService {
     localStorage.setItem('amy_refresh_token', data.tokens.refresh_token);
     localStorage.setItem('amy_user', JSON.stringify(data.user));
     this.currentUserSignal.set(data.user);
+    // Load RBAC permissions for this user
+    this.permissionService.loadForUser(data.user.id, data.user.organization_id);
   }
 
   private clearAuth(): void {
@@ -170,5 +174,6 @@ export class AuthService {
     localStorage.removeItem('amy_refresh_token');
     localStorage.removeItem('amy_user');
     this.currentUserSignal.set(null);
+    this.permissionService.clear();
   }
 }
