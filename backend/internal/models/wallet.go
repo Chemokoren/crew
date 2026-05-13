@@ -44,6 +44,7 @@ const (
 	TxCatTopUp      TransactionCategory = "TOP_UP"
 	TxCatReversal   TransactionCategory = "REVERSAL"
 	TxCatLoan       TransactionCategory = "LOAN"
+	TxCatAdjustment TransactionCategory = "ADJUSTMENT" // manual balance correction
 )
 
 type TransactionStatus string

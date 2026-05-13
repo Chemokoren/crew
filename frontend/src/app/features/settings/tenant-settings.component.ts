@@ -1,5 +1,5 @@
 import { Component, inject, OnInit, signal, computed, ChangeDetectionStrategy } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { CommonModule, KeyValuePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/services/api.service';
 import { ToastService } from '../../core/services/toast.service';
@@ -38,7 +38,7 @@ const JOB_CATEGORIES: { value: JobTypeCategory; label: string; desc: string }[] 
 @Component({
   selector: 'app-tenant-settings',
   standalone: true,
-  imports: [CommonModule, FormsModule, AutocompleteComponent],
+  imports: [CommonModule, FormsModule, AutocompleteComponent, KeyValuePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="animate-fade-in">
@@ -489,6 +489,124 @@ const JOB_CATEGORIES: { value: JobTypeCategory; label: string; desc: string }[] 
               </div>
             }
           </div>
+
+          <!-- Payroll / Statutory Deductions -->
+          <div class="glass-card ts-section" style="margin-top:var(--space-md);">
+            <h3 class="ts-section-title">Payroll Configuration</h3>
+            <p class="ts-section-desc">Control statutory remittance and which deduction types appear in the Pay Employee modal. All deductions are <strong>off by default</strong> — suitable for informal workers who manage their own contributions.</p>
+
+            <!-- Statutory toggle -->
+            <div class="kyc-policy-card" style="margin-bottom:var(--space-md);">
+              <div class="kyc-policy-header">
+                <div>
+                  <div class="kyc-policy-title">Handle Statutory Deductions</div>
+                  <div class="kyc-policy-desc">
+                    When <strong>enabled</strong>, NSSF, SHA (NHIF), and Housing Levy fields appear in the Pay Employee modal.
+                    Enable for <strong>formal sector employers</strong> required to remit statutory contributions.
+                    <br><span style="color:var(--color-accent);font-size:0.72rem;font-weight:600;">⚠ Default: Off — informal worker mode.</span>
+                  </div>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" [(ngModel)]="financeForm.handle_statutory_deductions" (ngModelChange)="saveFinanceConfig()" id="toggle-statutory-deductions" />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              @if (financeForm.handle_statutory_deductions) {
+                <div style="margin-top:var(--space-sm);padding:8px 12px;border-radius:var(--radius-sm);background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.2);display:flex;align-items:center;gap:8px;">
+                  <span class="material-icons-round" style="color:var(--color-success);font-size:16px;">check_circle</span>
+                  <span style="font-size:0.75rem;color:var(--color-success);">Formal sector mode — NSSF, SHA, and Housing Levy active in Pay Employee modal.</span>
+                </div>
+              }
+            </div>
+
+            <!-- Deduction Types -->
+            <div style="border-top:1px solid var(--color-border);padding-top:var(--space-md);">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:var(--space-md);">
+                <div>
+                  <div style="font-size:0.9rem;font-weight:700;color:var(--color-text-primary);margin-bottom:3px;">Deduction Types</div>
+                  <div style="font-size:0.78rem;color:var(--color-text-muted);">Enable the deduction categories that apply to your employees. Disabled types are hidden from the payout modal.</div>
+                </div>
+              </div>
+
+              <!-- Standard deductions -->
+              <div style="display:flex;flex-direction:column;gap:var(--space-sm);margin-bottom:var(--space-md);">
+                @for (ded of standardDeductionDefs; track ded.code) {
+                  <div class="kyc-policy-card" style="padding:var(--space-sm) var(--space-md);">
+                    <div class="kyc-policy-header">
+                      <div>
+                        <div class="kyc-policy-title" style="font-size:0.85rem;">{{ ded.label }}</div>
+                        <div class="kyc-policy-desc" style="font-size:0.72rem;">{{ ded.desc }}</div>
+                      </div>
+                      <label class="toggle-switch">
+                        <input type="checkbox"
+                               [checked]="isDeductionEnabled(ded.code)"
+                               (change)="toggleDeduction(ded.code)"
+                               [id]="'toggle-ded-' + ded.code" />
+                        <span class="toggle-slider"></span>
+                      </label>
+                    </div>
+                  </div>
+                }
+              </div>
+
+              <!-- Custom deductions -->
+              @if (financeForm.custom_deduction_labels | keyvalue) {
+                @if ((financeForm.custom_deduction_labels | keyvalue).length > 0) {
+                  <div style="margin-bottom:var(--space-sm);">
+                    <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--color-text-muted);margin-bottom:6px;">Custom Deductions</div>
+                    <div style="display:flex;flex-direction:column;gap:6px;">
+                      @for (entry of financeForm.custom_deduction_labels | keyvalue; track entry.key) {
+                        <div class="kyc-policy-card" style="padding:var(--space-sm) var(--space-md);">
+                          <div class="kyc-policy-header">
+                            <div>
+                              <div class="kyc-policy-title" style="font-size:0.85rem;">{{ entry.value }}</div>
+                              <div class="kyc-policy-desc" style="font-size:0.7rem;font-family:monospace;">{{ entry.key }}</div>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:var(--space-sm);">
+                              <label class="toggle-switch">
+                                <input type="checkbox"
+                                       [checked]="isDeductionEnabled(entry.key)"
+                                       (change)="toggleDeduction(entry.key)"
+                                       [id]="'toggle-custom-' + entry.key" />
+                                <span class="toggle-slider"></span>
+                              </label>
+                              <button class="btn btn-ghost btn-sm" style="color:var(--color-danger);padding:4px;"
+                                      (click)="removeCustomDeduction(entry.key)" [id]="'remove-ded-' + entry.key">
+                                <span class="material-icons-round" style="font-size:16px;">delete</span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      }
+                    </div>
+                  </div>
+                }
+              }
+
+              <!-- Add custom deduction -->
+              <div style="padding:var(--space-md);border:1px dashed var(--color-border);border-radius:var(--radius-md);background:var(--color-bg-secondary);">
+                <div style="font-size:0.78rem;font-weight:600;color:var(--color-text-primary);margin-bottom:var(--space-sm);">
+                  <span class="material-icons-round" style="font-size:15px;vertical-align:middle;color:var(--color-accent);">add_circle</span>
+                  Add Custom Deduction
+                </div>
+                <div style="display:flex;gap:var(--space-sm);align-items:flex-end;">
+                  <div style="flex:1;">
+                    <label class="form-label" style="font-size:0.72rem;margin-bottom:4px;">Deduction Name</label>
+                    <input class="form-input" [(ngModel)]="newDeductionLabel"
+                           placeholder="e.g. Motor Vehicle Loan, SACCO Savings"
+                           id="input-custom-deduction" style="font-size:0.82rem;">
+                  </div>
+                  <button class="btn btn-primary btn-sm" (click)="addCustomDeduction()"
+                          [disabled]="!newDeductionLabel.trim()" id="btn-add-custom-deduction">
+                    <span class="material-icons-round" style="font-size:15px;">add</span> Add
+                  </button>
+                </div>
+                <div style="font-size:0.68rem;color:var(--color-text-muted);margin-top:6px;">
+                  A unique code is auto-generated from the name. The deduction will be enabled immediately after adding.
+                </div>
+              </div>
+            </div>
+          </div>
         }
 
         <!-- Job Type Modal -->
@@ -801,7 +919,20 @@ export class TenantSettingsComponent implements OnInit {
     topup_verification_mode: 'HYBRID' as 'API' | 'MANUAL' | 'HYBRID',
     allowed_topup_methods: [] as string[],
     allowed_topup_channels: [] as string[],
+    handle_statutory_deductions: false,
+    enabled_deductions: [] as string[],
+    custom_deduction_labels: {} as Record<string, string>,
   };
+
+  /** Standard deduction definitions shown in Settings */
+  readonly standardDeductionDefs = [
+    { code: 'LOAN',      label: 'Loan Repayment', desc: 'Loan instalments deducted before payout (e.g. SACCO loans, bank loans).' },
+    { code: 'INSURANCE', label: 'Insurance',       desc: 'Insurance premiums deducted before payout.' },
+    { code: 'OTHER',     label: 'Other',            desc: 'Any other agreed deduction not covered above.' },
+  ];
+
+  /** New custom deduction label input field */
+  newDeductionLabel = '';
 
   /** Top-up method definitions with nested channels */
   readonly allTopUpMethods = [
@@ -899,14 +1030,20 @@ export class TenantSettingsComponent implements OnInit {
           this.financeForm.topup_verification_mode = (cfg as any).topup_verification_mode || 'HYBRID';
           this.financeForm.allowed_topup_methods = (cfg as any).allowed_topup_methods || [];
           this.financeForm.allowed_topup_channels = (cfg as any).allowed_topup_channels || [];
+          this.financeForm.handle_statutory_deductions = (cfg as any).handle_statutory_deductions === true;
+          this.financeForm.enabled_deductions = (cfg as any).enabled_deductions || [];
+          this.financeForm.custom_deduction_labels = (cfg as any).custom_deduction_labels || {};
         } else {
-          // No config yet — default everything to restricted
+          // No config yet — default everything off
           this.kycForm.kyc_required = true;
           this.kycForm.kyc_verification_mode = 'UPLOAD';
           this.kycForm.kyc_restricted_actions = this.allRestrictableActions.map(a => a.code);
           this.financeForm.topup_verification_mode = 'HYBRID';
           this.financeForm.allowed_topup_methods = [];
           this.financeForm.allowed_topup_channels = [];
+          this.financeForm.handle_statutory_deductions = false;
+          this.financeForm.enabled_deductions = [];
+          this.financeForm.custom_deduction_labels = {};
         }
       },
       error: () => this.loading.set(false),
@@ -944,6 +1081,9 @@ export class TenantSettingsComponent implements OnInit {
         topup_verification_mode: this.financeForm.topup_verification_mode,
         allowed_topup_methods: this.financeForm.allowed_topup_methods,
         allowed_topup_channels: this.financeForm.allowed_topup_channels,
+        handle_statutory_deductions: this.financeForm.handle_statutory_deductions,
+        enabled_deductions: this.financeForm.enabled_deductions,
+        custom_deduction_labels: this.financeForm.custom_deduction_labels,
       },
     }).subscribe({
       next: r => {
@@ -964,6 +1104,9 @@ export class TenantSettingsComponent implements OnInit {
         topup_verification_mode: this.financeForm.topup_verification_mode,
         allowed_topup_methods: this.financeForm.allowed_topup_methods,
         allowed_topup_channels: this.financeForm.allowed_topup_channels,
+        handle_statutory_deductions: this.financeForm.handle_statutory_deductions,
+        enabled_deductions: this.financeForm.enabled_deductions,
+        custom_deduction_labels: this.financeForm.custom_deduction_labels,
       },
     }).subscribe({
       next: r => {
@@ -972,6 +1115,57 @@ export class TenantSettingsComponent implements OnInit {
       },
       error: () => this.toast.error('Failed to save finance settings'),
     });
+  }
+
+  // --- Deduction Type Methods ---
+
+  isDeductionEnabled(code: string): boolean {
+    return this.financeForm.enabled_deductions.includes(code);
+  }
+
+  toggleDeduction(code: string): void {
+    const idx = this.financeForm.enabled_deductions.indexOf(code);
+    if (idx >= 0) {
+      this.financeForm.enabled_deductions.splice(idx, 1);
+    } else {
+      this.financeForm.enabled_deductions.push(code);
+    }
+    this.saveFinanceConfig();
+  }
+
+  /** Convert a human label to a safe uppercase code, e.g. "Motor Vehicle Loan" → "MOTOR_VEHICLE_LOAN" */
+  private labelToCode(label: string): string {
+    return label.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '');
+  }
+
+  addCustomDeduction(): void {
+    const label = this.newDeductionLabel.trim();
+    if (!label) return;
+    const code = this.labelToCode(label);
+    if (!code) return;
+    // Prevent duplicates
+    if (this.financeForm.custom_deduction_labels[code]) {
+      this.toast.error(`A deduction with code ${code} already exists.`);
+      return;
+    }
+    this.financeForm.custom_deduction_labels = { ...this.financeForm.custom_deduction_labels, [code]: label };
+    // Enable it immediately
+    if (!this.financeForm.enabled_deductions.includes(code)) {
+      this.financeForm.enabled_deductions = [...this.financeForm.enabled_deductions, code];
+    }
+    this.newDeductionLabel = '';
+    this.saveFinanceConfig();
+    this.toast.success(`Custom deduction "${label}" added and enabled.`);
+  }
+
+  removeCustomDeduction(code: string): void {
+    const label = this.financeForm.custom_deduction_labels[code] || code;
+    const { [code]: _, ...rest } = this.financeForm.custom_deduction_labels;
+    this.financeForm.custom_deduction_labels = rest;
+    // Also disable it
+    this.financeForm.enabled_deductions = this.financeForm.enabled_deductions.filter(c => c !== code);
+    this.saveFinanceConfig();
+    this.toast.success(`Deduction "${label}" removed.`);
   }
 
   isTopUpMethodEnabled(methodId: string): boolean {

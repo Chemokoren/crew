@@ -230,6 +230,7 @@ import { Wallet, WalletTransaction, PaginationMeta, CrewMember, SACCOFloat, SACC
             <option value="TOP_UP">Top Up</option>
             <option value="REVERSAL">Reversal</option>
             <option value="LOAN">Loan</option>
+            <option value="ADJUSTMENT">Adjustment</option>
           </select>
           <input type="date" class="form-input" [(ngModel)]="filterDateFrom" (ngModelChange)="loadTransactions()" placeholder="From" id="filter-date-from" style="max-width:160px;">
           <input type="date" class="form-input" [(ngModel)]="filterDateTo" (ngModelChange)="loadTransactions()" placeholder="To" id="filter-date-to" style="max-width:160px;">
@@ -310,6 +311,7 @@ import { Wallet, WalletTransaction, PaginationMeta, CrewMember, SACCOFloat, SACC
                 <option value="TOP_UP">Top Up — Manual float top-up or balance correction</option>
                 <option value="REVERSAL">Reversal — Cancelling a previous incorrect debit</option>
                 <option value="LOAN">Loan — Disbursement of an approved loan to the member</option>
+                <option value="ADJUSTMENT">Adjustment — Manual balance correction by admin</option>
               </select>
               <label class="form-label" style="margin-top:var(--space-md);">Note (optional)</label>
               <p class="field-hint">Add a short note so the member and admin can see why this credit was made (e.g. "Shift 6am-2pm, Westlands route").</p>
@@ -419,10 +421,10 @@ import { Wallet, WalletTransaction, PaginationMeta, CrewMember, SACCOFloat, SACC
         </div>
       }
 
-      <!-- Pay Employee Modal (with deductions before payout) -->
+      <!-- Pay Employee Modal (Single or Bulk) -->
       @if (showModal() === 'payout') {
         <div class="modal-backdrop" (click)="closeModal()">
-          <div class="modal-content" (click)="$event.stopPropagation()" style="max-width:560px;">
+          <div class="modal-content" (click)="$event.stopPropagation()" style="max-width:620px;">
             <div class="modal-header">
               <h3 style="display:flex;align-items:center;gap:8px;">
                 <span class="material-icons-round" style="color:var(--color-success);font-size:22px;">payments</span>
@@ -430,68 +432,190 @@ import { Wallet, WalletTransaction, PaginationMeta, CrewMember, SACCOFloat, SACC
               </h3>
               <button class="btn-ghost" (click)="closeModal()"><span class="material-icons-round">close</span></button>
             </div>
-            <div class="modal-body">
-              <div class="modal-info-banner modal-info-banner--success">
-                <span class="material-icons-round" style="font-size:18px;flex-shrink:0;">info</span>
-                <span>Pay an employee from your organization's float. <strong>Deductions are applied before payout</strong> — the employee receives only the net amount in their wallet.</span>
-              </div>
-              <div style="position:relative; z-index: 54; margin-top:var(--space-md);">
-                <label class="form-label">Employee <span class="field-required">*</span></label>
-                <app-autocomplete [(ngModel)]="modalCrewId" [options]="crewOptions()" placeholder="— Search Employee —"></app-autocomplete>
-              </div>
-              <label class="form-label" style="margin-top:var(--space-md);">Gross Amount (KES) <span class="field-required">*</span></label>
-              <p class="field-hint">Total earnings before deductions.</p>
-              <input type="number" class="form-input" [(ngModel)]="modalAmount" min="1" step="1" placeholder="e.g. 15000" id="modal-payout-gross" (ngModelChange)="recalcNetPay()">
 
-              <!-- Deductions Section -->
-              <div style="margin-top:var(--space-md);padding:var(--space-md);background:var(--color-bg-secondary);border-radius:var(--radius-md);border:1px solid var(--color-border);">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-sm);">
-                  <label class="form-label" style="margin:0;font-size:0.85rem;">Deductions</label>
-                  <span style="font-size:0.72rem;color:var(--color-text-muted);">Applied before payout</span>
-                </div>
-                <div class="deduction-row">
-                  <label>NSSF</label>
-                  <input type="number" class="form-input form-input--sm" [(ngModel)]="deductionNSSF" min="0" step="1" placeholder="0" (ngModelChange)="recalcNetPay()">
-                </div>
-                <div class="deduction-row">
-                  <label>SHA (NHIF)</label>
-                  <input type="number" class="form-input form-input--sm" [(ngModel)]="deductionSHA" min="0" step="1" placeholder="0" (ngModelChange)="recalcNetPay()">
-                </div>
-                <div class="deduction-row">
-                  <label>Housing Levy</label>
-                  <input type="number" class="form-input form-input--sm" [(ngModel)]="deductionHousing" min="0" step="1" placeholder="0" (ngModelChange)="recalcNetPay()">
-                </div>
-                <div class="deduction-row">
-                  <label>Loan Repayment</label>
-                  <input type="number" class="form-input form-input--sm" [(ngModel)]="deductionLoan" min="0" step="1" placeholder="0" (ngModelChange)="recalcNetPay()">
-                </div>
-                <div class="deduction-row">
-                  <label>Insurance</label>
-                  <input type="number" class="form-input form-input--sm" [(ngModel)]="deductionInsurance" min="0" step="1" placeholder="0" (ngModelChange)="recalcNetPay()">
-                </div>
-                <div class="deduction-row">
-                  <label>Other</label>
-                  <input type="number" class="form-input form-input--sm" [(ngModel)]="deductionOther" min="0" step="1" placeholder="0" (ngModelChange)="recalcNetPay()">
-                </div>
-              </div>
-
-              <!-- Net Pay Summary -->
-              <div class="net-pay-summary" style="margin-top:var(--space-md);">
-                <div class="net-row"><span>Gross Pay</span><span>{{ (modalAmount || 0) | number:'1.0-0' }} KES</span></div>
-                <div class="net-row net-row--deduction"><span>Total Deductions</span><span>- {{ totalDeductions() | number:'1.0-0' }} KES</span></div>
-                <div class="net-row net-row--total"><span><strong>Net Pay (to wallet)</strong></span><span><strong>{{ netPay() | number:'1.0-0' }} KES</strong></span></div>
-              </div>
-
-              <label class="form-label" style="margin-top:var(--space-md);">Note (optional)</label>
-              <input type="text" class="form-input" [(ngModel)]="modalDescription" placeholder="e.g. May 2026 wages" id="modal-payout-desc">
-            </div>
-            <div class="modal-footer">
-              <button class="btn btn-ghost" (click)="closeModal()">Cancel</button>
-              <button class="btn btn-primary" (click)="submitEmployeePayout()" [disabled]="submitting() || netPay() <= 0" id="btn-submit-payout">
-                <span class="material-icons-round" style="font-size:18px;">{{ submitting() ? 'hourglass_empty' : 'payments' }}</span>
-                {{ submitting() ? 'Processing...' : 'Pay ' + (netPay() | number:'1.0-0') + ' KES' }}
+            <!-- Tab toggle -->
+            <div style="display:flex;gap:0;border-bottom:1px solid var(--color-border);padding:0 var(--space-lg);">
+              <button class="payout-tab" [class.payout-tab--active]="payoutTab() === 'single'"
+                      (click)="payoutTab.set('single')" id="tab-single-pay">
+                <span class="material-icons-round" style="font-size:16px;">person</span> Single Employee
+              </button>
+              <button class="payout-tab" [class.payout-tab--active]="payoutTab() === 'bulk'"
+                      (click)="payoutTab.set('bulk')" id="tab-bulk-pay">
+                <span class="material-icons-round" style="font-size:16px;">group</span> Bulk Upload
               </button>
             </div>
+
+            <!-- ── SINGLE EMPLOYEE TAB ── -->
+            @if (payoutTab() === 'single') {
+              <div class="modal-body">
+                <div class="modal-info-banner" [class.modal-info-banner--success]="statutoryEnabled()"
+                     [style]="!statutoryEnabled() ? 'background:rgba(99,102,241,0.07);color:#6366f1;border:1px solid rgba(99,102,241,0.2);' : ''">
+                  <span class="material-icons-round" style="font-size:18px;flex-shrink:0;">info</span>
+                  @if (statutoryEnabled()) {
+                    <span>Pay an employee from the org float. <strong>Statutory deductions (NSSF, SHA, Housing Levy) apply</strong> — the employee receives the net amount in their wallet.</span>
+                  } @else {
+                    <span><strong>Informal worker mode</strong> — statutory deductions are not applied. The employee receives the full gross amount. Enable statutory handling in organization settings for formal sector payroll.</span>
+                  }
+                </div>
+                <div style="position:relative; z-index: 54; margin-top:var(--space-md);">
+                  <label class="form-label">Employee <span class="field-required">*</span></label>
+                  <app-autocomplete [(ngModel)]="modalCrewId" [options]="crewOptions()" placeholder="— Search Employee —"></app-autocomplete>
+                </div>
+                <label class="form-label" style="margin-top:var(--space-md);">Gross Amount (KES) <span class="field-required">*</span></label>
+                <p class="field-hint">Total earnings before deductions.</p>
+                <input type="number" class="form-input" [(ngModel)]="modalAmount" min="1" step="1" placeholder="e.g. 15000" id="modal-payout-gross" (ngModelChange)="recalcNetPay()">
+
+                <!-- Deductions Section -->
+                <div style="margin-top:var(--space-md);padding:var(--space-md);background:var(--color-bg-secondary);border-radius:var(--radius-md);border:1px solid var(--color-border);">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-sm);">
+                    <label class="form-label" style="margin:0;font-size:0.85rem;">Deductions</label>
+                    <span style="font-size:0.72rem;color:var(--color-text-muted);">Applied before payout</span>
+                  </div>
+                  <!-- Statutory deductions — only shown when employer has formal mode enabled -->
+                  @if (statutoryEnabled()) {
+                    <div class="deduction-row">
+                      <label>NSSF <span style="font-size:0.65rem;color:var(--color-accent);">statutory</span></label>
+                      <input type="number" class="form-input form-input--sm" [(ngModel)]="deductionNSSF" min="0" step="1" placeholder="0" (ngModelChange)="recalcNetPay()">
+                    </div>
+                    <div class="deduction-row">
+                      <label>SHA (NHIF) <span style="font-size:0.65rem;color:var(--color-accent);">statutory</span></label>
+                      <input type="number" class="form-input form-input--sm" [(ngModel)]="deductionSHA" min="0" step="1" placeholder="0" (ngModelChange)="recalcNetPay()">
+                    </div>
+                    <div class="deduction-row">
+                      <label>Housing Levy <span style="font-size:0.65rem;color:var(--color-accent);">statutory</span></label>
+                      <input type="number" class="form-input form-input--sm" [(ngModel)]="deductionHousing" min="0" step="1" placeholder="0" (ngModelChange)="recalcNetPay()">
+                    </div>
+                  }
+                  <!-- Non-statutory deductions — only shown when configured in tenant settings -->
+                  @if (activeDeductions().length > 0) {
+                    @for (ded of activeDeductions(); track ded.code) {
+                      <div class="deduction-row">
+                        <label>{{ ded.label }}</label>
+                        <input type="number" class="form-input form-input--sm"
+                               [ngModel]="deductionValues[ded.code] || 0"
+                               (ngModelChange)="deductionValues[ded.code] = +$event; recalcNetPay()"
+                               min="0" step="1" placeholder="0">
+                      </div>
+                    }
+                  } @else if (!statutoryEnabled()) {
+                    <div style="padding:8px 0;font-size:0.75rem;color:var(--color-text-muted);display:flex;align-items:center;gap:6px;">
+                      <span class="material-icons-round" style="font-size:15px;">info</span>
+                      No deductions configured. Enable them in <strong>Settings → Finance → Deduction Types</strong>.
+                    </div>
+                  }
+                </div>
+
+                <!-- Net Pay Summary -->
+                <div class="net-pay-summary" style="margin-top:var(--space-md);">
+                  <div class="net-row"><span>Gross Pay</span><span>{{ (modalAmount || 0) | number:'1.0-0' }} KES</span></div>
+                  <div class="net-row net-row--deduction"><span>Total Deductions</span><span>- {{ totalDeductions() | number:'1.0-0' }} KES</span></div>
+                  <div class="net-row net-row--total"><span><strong>Net Pay (to wallet)</strong></span><span><strong>{{ netPay() | number:'1.0-0' }} KES</strong></span></div>
+                </div>
+                <label class="form-label" style="margin-top:var(--space-md);">Note (optional)</label>
+                <input type="text" class="form-input" [(ngModel)]="modalDescription" placeholder="e.g. May 2026 wages" id="modal-payout-desc">
+              </div>
+              <div class="modal-footer">
+                <button class="btn btn-ghost" (click)="closeModal()">Cancel</button>
+                <button class="btn btn-primary" (click)="submitEmployeePayout()" [disabled]="submitting() || netPay() <= 0" id="btn-submit-payout">
+                  <span class="material-icons-round" style="font-size:18px;">{{ submitting() ? 'hourglass_empty' : 'payments' }}</span>
+                  {{ submitting() ? 'Processing...' : 'Pay ' + (netPay() | number:'1.0-0') + ' KES' }}
+                </button>
+              </div>
+            }
+
+            <!-- ── BULK UPLOAD TAB ── -->
+            @if (payoutTab() === 'bulk') {
+              <div class="modal-body">
+                <div class="modal-info-banner" style="background:rgba(99,102,241,0.07);color:#6366f1;border:1px solid rgba(99,102,241,0.2);">
+                  <span class="material-icons-round" style="font-size:18px;flex-shrink:0;">upload_file</span>
+                  <span>Upload a <strong>.csv</strong> file to pay multiple employees at once. Each row is processed as an individual atomic payout (float debit + wallet credit).</span>
+                </div>
+
+                <!-- Template download -->
+                <div style="display:flex;align-items:center;gap:var(--space-sm);margin-top:var(--space-md);padding:10px 14px;border-radius:var(--radius-md);border:1px dashed var(--color-border);background:var(--color-bg-secondary);">
+                  <span class="material-icons-round" style="color:var(--color-text-muted);font-size:20px;">table_chart</span>
+                  <div style="flex:1;">
+                    <div style="font-size:0.8rem;font-weight:600;color:var(--color-text-primary);">CSV Format: <code style="font-size:0.75rem;background:rgba(0,0,0,0.08);padding:2px 6px;border-radius:4px;">crew_id, gross_amount, description</code></div>
+                    <div style="font-size:0.7rem;color:var(--color-text-muted);margin-top:2px;">Use crew IDs like CRW-00001. Gross = KES (not cents). Description is optional.</div>
+                  </div>
+                  <button class="btn btn-ghost btn-sm" (click)="downloadBulkTemplate()" id="btn-download-template" style="white-space:nowrap;font-size:0.75rem;">
+                    <span class="material-icons-round" style="font-size:14px;">download</span> Template
+                  </button>
+                </div>
+
+                <!-- File input -->
+                <div style="margin-top:var(--space-md);">
+                  <label class="form-label">Upload CSV File <span class="field-required">*</span></label>
+                  <label style="display:flex;align-items:center;gap:var(--space-sm);padding:12px 16px;border:2px dashed var(--color-border);border-radius:var(--radius-md);cursor:pointer;transition:border-color 0.2s;background:var(--color-bg-secondary);" for="bulk-file-input"
+                         [style.borderColor]="bulkFileName ? 'var(--color-accent)' : ''">
+                    <span class="material-icons-round" style="color:var(--color-accent);font-size:22px;">cloud_upload</span>
+                    <span style="font-size:0.82rem;color:var(--color-text-secondary);">{{ bulkFileName || 'Click to select .csv file' }}</span>
+                    <input id="bulk-file-input" type="file" accept=".csv,.txt" style="display:none;" (change)="onBulkFileChange($event)">
+                  </label>
+                </div>
+
+                <!-- Preview table -->
+                @if (bulkRows().length > 0) {
+                  <div style="margin-top:var(--space-md);">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                      <span style="font-size:0.8rem;font-weight:600;color:var(--color-text-primary);">Preview ({{ bulkRows().length }} rows, {{ bulkValidRowCount() }} valid)</span>
+                    </div>
+                    <div style="max-height:220px;overflow-y:auto;border:1px solid var(--color-border);border-radius:var(--radius-md);">
+                      <table style="width:100%;border-collapse:collapse;font-size:0.77rem;">
+                        <thead style="position:sticky;top:0;background:var(--color-bg-secondary);">
+                          <tr>
+                            <th style="padding:6px 10px;text-align:left;font-weight:600;color:var(--color-text-secondary);">Employee</th>
+                            <th style="padding:6px 10px;text-align:right;font-weight:600;color:var(--color-text-secondary);">Gross (KES)</th>
+                            <th style="padding:6px 10px;text-align:left;font-weight:600;color:var(--color-text-secondary);">Note</th>
+                            <th style="padding:6px 10px;text-align:center;font-weight:600;color:var(--color-text-secondary);">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          @for (row of bulkRows(); track $index) {
+                            <tr [style.background]="row.error ? 'rgba(239,68,68,0.04)' : 'transparent'">
+                              <td style="padding:6px 10px;color:var(--color-text-primary);">{{ row.name }}</td>
+                              <td style="padding:6px 10px;text-align:right;font-weight:500;">{{ row.gross | number:'1.0-0' }}</td>
+                              <td style="padding:6px 10px;color:var(--color-text-muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ row.description || '—' }}</td>
+                              <td style="padding:6px 10px;text-align:center;">
+                                @if (row.error) {
+                                  <span style="color:var(--color-danger);font-size:0.7rem;display:flex;align-items:center;gap:3px;justify-content:center;">
+                                    <span class="material-icons-round" style="font-size:14px;">error</span> {{ row.error }}
+                                  </span>
+                                } @else {
+                                  <span style="color:var(--color-success);font-size:0.7rem;display:flex;align-items:center;gap:3px;justify-content:center;">
+                                    <span class="material-icons-round" style="font-size:14px;">check_circle</span> OK
+                                  </span>
+                                }
+                              </td>
+                            </tr>
+                          }
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                }
+
+                <!-- Bulk result summary -->
+                @if (bulkSubmitResult(); as result) {
+                  <div style="margin-top:var(--space-md);padding:12px 16px;border-radius:var(--radius-md);"
+                       [style.background]="result.failed === 0 ? 'rgba(34,197,94,0.07)' : 'rgba(251,191,36,0.07)'"
+                       [style.border]="result.failed === 0 ? '1px solid rgba(34,197,94,0.25)' : '1px solid rgba(251,191,36,0.3)'">
+                    <div style="display:flex;align-items:center;gap:8px;font-size:0.85rem;font-weight:600;" [style.color]="result.failed === 0 ? '#16a34a' : '#92400e'">
+                      <span class="material-icons-round" style="font-size:18px;">{{ result.failed === 0 ? 'check_circle' : 'warning' }}</span>
+                      {{ result.succeeded }} of {{ result.total }} payouts succeeded{{ result.failed > 0 ? ' · ' + result.failed + ' failed' : '' }}
+                    </div>
+                  </div>
+                }
+              </div>
+              <div class="modal-footer">
+                <button class="btn btn-ghost" (click)="closeModal()">Cancel</button>
+                <button class="btn btn-primary" (click)="submitBulkPayout()"
+                        [disabled]="submitting() || bulkValidRowCount() === 0" id="btn-submit-bulk-payout">
+                  <span class="material-icons-round" style="font-size:18px;">{{ submitting() ? 'hourglass_empty' : 'rocket_launch' }}</span>
+                  {{ submitting() ? 'Processing...' : 'Pay ' + bulkValidRowCount() + ' Employees' }}
+                </button>
+              </div>
+            }
           </div>
         </div>
       }
@@ -761,6 +885,10 @@ import { Wallet, WalletTransaction, PaginationMeta, CrewMember, SACCOFloat, SACC
     .sync-status-row--completed > .material-icons-round:first-child { color: #16a34a; }
     .sync-status-row--failed { border: 1px solid rgba(239,68,68,0.2); background: rgba(239,68,68,0.03); }
     .sync-status-row--failed > .material-icons-round:first-child { color: #dc2626; }
+    /* --- Payout Modal Tabs --- */
+    .payout-tab { display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; border: none; border-bottom: 2px solid transparent; background: none; cursor: pointer; font-size: 0.82rem; font-weight: 500; color: var(--color-text-muted); transition: all 0.18s ease; margin-bottom: -1px; }
+    .payout-tab:hover { color: var(--color-text-primary); }
+    .payout-tab--active { color: var(--color-accent); border-bottom-color: var(--color-accent); font-weight: 600; }
   `]
 })
 export class WalletDashboardComponent implements OnInit {
@@ -826,9 +954,58 @@ export class WalletDashboardComponent implements OnInit {
   deductionNSSF = 0;
   deductionSHA = 0;
   deductionHousing = 0;
-  deductionLoan = 0;
-  deductionInsurance = 0;
-  deductionOther = 0;
+
+  /** Dynamic deduction values keyed by deduction code (e.g. 'LOAN', 'INSURANCE', 'MOTOR_VEHICLE_LOAN') */
+  deductionValues: Record<string, number> = {};
+
+  /** Whether this tenant handles statutory deductions (NSSF, SHA, Housing Levy). Default: false = informal mode. */
+  statutoryEnabled = signal(false);
+
+  /** Enabled non-statutory deduction codes from tenant config. Default: [] (none active). */
+  enabledDeductions = signal<string[]>([]);
+
+  /** Custom deduction labels from tenant config. e.g. { 'MOTOR_VEHICLE_LOAN': 'Motor Vehicle Loan' } */
+  customDeductionLabels = signal<Record<string, string>>({});
+
+  /** Standard deduction definitions */
+  readonly standardDeductions = [
+    { code: 'LOAN', label: 'Loan Repayment' },
+    { code: 'INSURANCE', label: 'Insurance' },
+    { code: 'OTHER', label: 'Other' },
+  ];
+
+  /** Resolved list of all active deductions for this tenant (standard + custom), in order */
+  activeDeductions = computed(() => {
+    const enabled = this.enabledDeductions();
+    const customLabels = this.customDeductionLabels();
+    // Standard ones that are enabled
+    const std = this.standardDeductions
+      .filter(d => enabled.includes(d.code))
+      .map(d => ({ code: d.code, label: d.label }));
+    // Custom ones
+    const custom = Object.entries(customLabels)
+      .filter(([code]) => enabled.includes(code))
+      .map(([code, label]) => ({ code, label }));
+    return [...std, ...custom];
+  });
+
+  /** Get label for a deduction code */
+  deductionLabel(code: string): string {
+    const std = this.standardDeductions.find(d => d.code === code);
+    if (std) return std.label;
+    return this.customDeductionLabels()[code] || code;
+  }
+
+
+  /** Tab in the Pay Employee modal: 'single' or 'bulk' */
+  payoutTab = signal<'single' | 'bulk'>('single');
+
+  bulkFile: File | null = null;
+  bulkFileName = '';
+  bulkRows = signal<Array<{ crew_member_id: string; name: string; gross: number; net: number; description: string; error?: string }>>([]);
+  bulkSubmitResult = signal<{ total: number; succeeded: number; failed: number; results?: any } | null>(null);
+  bulkIdempotencyPrefix = '';
+
 
   // Top-up payment method fields
   topupMethod: 'mobile_money' | 'bank' | 'card' | '' = '';
@@ -1028,8 +1205,9 @@ export class WalletDashboardComponent implements OnInit {
   }
 
   totalDeductions(): number {
-    return (this.deductionNSSF || 0) + (this.deductionSHA || 0) + (this.deductionHousing || 0) +
-      (this.deductionLoan || 0) + (this.deductionInsurance || 0) + (this.deductionOther || 0);
+    const statutory = (this.deductionNSSF || 0) + (this.deductionSHA || 0) + (this.deductionHousing || 0);
+    const nonStatutory = Object.values(this.deductionValues).reduce((s, v) => s + (v || 0), 0);
+    return statutory + nonStatutory;
   }
 
   netPay(): number {
@@ -1109,6 +1287,9 @@ export class WalletDashboardComponent implements OnInit {
         const cfg = res.data?.tenant_config;
         this.allowedTopUpMethods.set(cfg?.allowed_topup_methods || []);
         this.allowedTopUpChannels.set(cfg?.allowed_topup_channels || []);
+        this.statutoryEnabled.set(cfg?.handle_statutory_deductions === true);
+        this.enabledDeductions.set(cfg?.enabled_deductions || []);
+        this.customDeductionLabels.set(cfg?.custom_deduction_labels || {});
       },
     });
     // Also load pending float transactions for approval + recently synced
@@ -1195,9 +1376,7 @@ export class WalletDashboardComponent implements OnInit {
     this.deductionNSSF = 0;
     this.deductionSHA = 0;
     this.deductionHousing = 0;
-    this.deductionLoan = 0;
-    this.deductionInsurance = 0;
-    this.deductionOther = 0;
+    this.deductionValues = {};
     this.topupMethod = '';
     this.topupProvider = '';
     this.topupPhone = '';
@@ -1210,6 +1389,13 @@ export class WalletDashboardComponent implements OnInit {
     this.billCategory = '';
     this.billProvider = '';
     this.billAccountNo = '';
+    // Bulk payout reset
+    this.payoutTab.set('single');
+    this.bulkFile = null;
+    this.bulkFileName = '';
+    this.bulkRows.set([]);
+    this.bulkSubmitResult.set(null);
+    this.bulkIdempotencyPrefix = 'bulk-' + Date.now();
   }
 
   closeModal(): void {
@@ -1429,15 +1615,14 @@ export class WalletDashboardComponent implements OnInit {
     if (this.deductionNSSF > 0) parts.push(`NSSF: ${this.deductionNSSF}`);
     if (this.deductionSHA > 0) parts.push(`SHA: ${this.deductionSHA}`);
     if (this.deductionHousing > 0) parts.push(`Housing: ${this.deductionHousing}`);
-    if (this.deductionLoan > 0) parts.push(`Loan: ${this.deductionLoan}`);
-    if (this.deductionInsurance > 0) parts.push(`Insurance: ${this.deductionInsurance}`);
-    if (this.deductionOther > 0) parts.push(`Other: ${this.deductionOther}`);
+    for (const [code, val] of Object.entries(this.deductionValues)) {
+      if ((val || 0) > 0) parts.push(`${this.deductionLabel(code)}: ${val}`);
+    }
     const deductionSummary = parts.length > 0 ? ` | Deductions: ${parts.join(', ')}` : '';
     const desc = `Gross: ${this.modalAmount} KES, Net: ${net} KES${deductionSummary}${this.modalDescription ? ' | ' + this.modalDescription : ''}`;
 
     this.submitting.set(true);
 
-    // Single atomic call — backend handles float debit + wallet credit in one DB transaction
     this.api.employeePayout({
       crew_member_id: this.modalCrewId,
       gross_cents: Math.round(this.modalAmount * 100),
@@ -1455,6 +1640,121 @@ export class WalletDashboardComponent implements OnInit {
       },
       error: (err: any) => {
         const msg = err?.error?.message || 'Employee payout failed. No funds were moved.';
+        this.toast.error(msg);
+        this.submitting.set(false);
+      },
+    });
+  }
+
+  /** Handle CSV file selection for bulk payout */
+  onBulkFileChange(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input?.files?.[0];
+    if (!file) return;
+    this.bulkFile = file;
+    this.bulkFileName = file.name;
+    this.bulkSubmitResult.set(null);
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      const parsed = this.parseCSV(text);
+      this.bulkRows.set(parsed);
+    };
+    reader.readAsText(file);
+  }
+
+  /** Parse CSV text into bulk payout rows. Expected columns: crew_id,gross_amount,description */
+  private parseCSV(text: string): Array<{ crew_member_id: string; name: string; gross: number; net: number; description: string; error?: string }> {
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    if (lines.length === 0) return [];
+
+    // Skip header row if it starts with 'crew_id' or 'crew'
+    const startIdx = lines[0].toLowerCase().startsWith('crew') ? 1 : 0;
+    const rows: Array<{ crew_member_id: string; name: string; gross: number; net: number; description: string; error?: string }> = [];
+
+    for (let i = startIdx; i < lines.length; i++) {
+      const cols = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+      const crewIdOrCode = cols[0] || '';
+      const grossRaw = parseFloat(cols[1] || '0');
+      const desc = cols[2] || '';
+
+      if (!crewIdOrCode) continue;
+
+      // Look up UUID by crew_id string or match full UUID
+      const match = this.crewMembers().find(c =>
+        c.crew_id === crewIdOrCode || c.id === crewIdOrCode
+      );
+
+      const gross = isNaN(grossRaw) || grossRaw <= 0 ? 0 : grossRaw;
+      const row: { crew_member_id: string; name: string; gross: number; net: number; description: string; error?: string } = {
+        crew_member_id: match?.id || '',
+        name: match ? `${match.first_name} ${match.last_name}` : crewIdOrCode,
+        gross,
+        net: gross,  // no deductions applied in bulk mode; admins set same gross=net
+        description: desc,
+        error: !match ? `Unknown crew ID: ${crewIdOrCode}` : gross <= 0 ? 'Invalid amount' : undefined,
+      };
+      rows.push(row);
+    }
+    return rows;
+  }
+
+  /** Download a CSV template for bulk payouts */
+  downloadBulkTemplate(): void {
+    const header = 'crew_id,gross_amount,description';
+    const sample = this.crewMembers().slice(0, 2)
+      .map(c => `${c.crew_id},15000,May 2026 wages`)
+      .join('\n') || 'CRW-00001,15000,May 2026 wages';
+    const csv = `${header}\n${sample}`;
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'bulk_payout_template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  /** Count valid bulk rows (no errors and non-zero amount) */
+  bulkValidRowCount(): number {
+    return this.bulkRows().filter(r => !r.error && r.gross > 0).length;
+  }
+
+  /** Submit the bulk payout */
+  submitBulkPayout(): void {
+    const validRows = this.bulkRows().filter(r => !r.error && r.gross > 0);
+    if (validRows.length === 0) {
+      this.toast.error('No valid rows to process. Fix errors in the preview table.');
+      return;
+    }
+    this.submitting.set(true);
+    this.bulkSubmitResult.set(null);
+
+    const payouts = validRows.map(r => ({
+      crew_member_id: r.crew_member_id,
+      gross_cents: Math.round(r.gross * 100),
+      net_cents: Math.round(r.net * 100),
+      description: r.description || 'Bulk payout',
+    }));
+
+    this.api.bulkEmployeePayout({
+      payouts,
+      idempotency_prefix: this.bulkIdempotencyPrefix,
+    }).subscribe({
+      next: (res: any) => {
+        const data = res?.data || res;
+        this.bulkSubmitResult.set(data);
+        if (data.failed === 0) {
+          this.toast.success(`All ${data.succeeded} payouts processed successfully!`);
+        } else {
+          this.toast.warning(`${data.succeeded} succeeded, ${data.failed} failed. See results below.`);
+        }
+        this.submitting.set(false);
+        this.loadOrgFloat();
+      },
+      error: (err: any) => {
+        const msg = err?.error?.message || 'Bulk payout failed.';
         this.toast.error(msg);
         this.submitting.set(false);
       },

@@ -98,7 +98,7 @@ type TenantConfig struct {
 	// --- KYC Gating (tenant-configurable) ---
 
 	// KYCRequired controls whether KYC verification is enforced for members.
-	KYCRequired bool `json:"kyc_required,omitempty"`
+	KYCRequired bool `json:"kyc_required"`
 	// KYCRestrictedActions lists action codes that require verified KYC.
 	// Examples: "WALLET_WITHDRAW", "WALLET_TRANSFER", "BILL_PAY", "LOAN_APPLY", "PAYOUT"
 	KYCRestrictedActions []string `json:"kyc_restricted_actions,omitempty"`
@@ -131,6 +131,43 @@ type TenantConfig struct {
 	// When empty or nil, all channels within allowed methods are available (backward compatible).
 	// If populated, only these specific channels appear in the wallet top-up UI.
 	AllowedTopUpChannels []string `json:"allowed_topup_channels,omitempty"`
+
+	// --- Statutory Deduction Handling ---
+
+	// HandleStatutoryDeductions controls whether the employer remits statutory
+	// deductions (NSSF, SHA / NHIF, Housing Levy) on behalf of employees during payout.
+	//
+	// Default: false — informal worker / casual labour mode.
+	//   The employer pays out gross earnings to employee wallets; employees manage
+	//   their own statutory contributions. This is the correct default for matatu
+	//   crews, farm workers, gig workers, and other informal sector workers.
+	//
+	// Set to true for formal sector employers who must deduct and remit:
+	//   NSSF (pension), SHA/NHIF (health insurance), Housing Levy, and PAYE (income tax).
+	HandleStatutoryDeductions bool `json:"handle_statutory_deductions"`
+
+	// --- Non-Statutory Deduction Configuration ---
+
+	// EnabledDeductions lists the deduction types active during employee payout.
+	// When empty or nil, NO non-statutory deductions are applied (informal worker default).
+	//
+	// Standard codes: "LOAN" (Loan Repayment), "INSURANCE", "OTHER"
+	// Custom codes: any string added via CustomDeductionLabels (e.g. "MOTOR_VEHICLE_LOAN")
+	EnabledDeductions []string `json:"enabled_deductions"`
+
+	// CustomDeductionLabels maps custom deduction codes to their human-readable display labels.
+	// e.g. {"MOTOR_VEHICLE_LOAN": "Motor Vehicle Loan", "SACCO_SAVINGS": "SACCO Savings"}
+	// Codes listed here must also appear in EnabledDeductions to be active.
+	CustomDeductionLabels map[string]string `json:"custom_deduction_labels,omitempty"`
+}
+
+// StatutoryEnabled returns true if the employer is configured to handle
+// statutory deductions (formal sector mode). Defaults to false for informal workers.
+func (tc *TenantConfig) StatutoryEnabled() bool {
+	if tc == nil {
+		return false
+	}
+	return tc.HandleStatutoryDeductions
 }
 
 // KYC verification mode constants.

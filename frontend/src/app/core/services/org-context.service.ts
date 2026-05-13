@@ -18,6 +18,9 @@ export class OrgContextService {
   /** Current org industry type — defaults to GENERAL until loaded. */
   readonly industryType = signal<IndustryType>('GENERAL');
 
+  /** The organization ID for the current authenticated user. */
+  readonly currentOrgId = computed(() => this.auth.currentUser()?.organization_id || null);
+
   /** Whether the org context has been loaded. */
   readonly loaded = signal(false);
 

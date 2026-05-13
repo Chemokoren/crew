@@ -154,8 +154,8 @@ func (r *CrewRepo) Count(ctx context.Context) (int64, error) {
 
 func (r *CrewRepo) BulkCreate(ctx context.Context, members []models.CrewMember) ([]repository.BulkError, error) {
 	var bulkErrors []repository.BulkError
-	for i, m := range members {
-		if err := r.getDB(ctx).Create(&m).Error; err != nil {
+	for i := range members {
+		if err := r.getDB(ctx).Create(&members[i]).Error; err != nil {
 			bulkErrors = append(bulkErrors, repository.BulkError{Index: i, Error: err.Error()})
 		}
 	}

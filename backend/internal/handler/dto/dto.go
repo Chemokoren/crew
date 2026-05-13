@@ -167,6 +167,7 @@ func CrewListToResponse(members []models.CrewMember) []CrewMemberResponse {
 
 type CreateCrewRequest struct {
 	NationalID string          `json:"national_id" binding:"required"`
+	Phone      string          `json:"phone,omitempty"`
 	FirstName  string          `json:"first_name" binding:"required"`
 	LastName   string          `json:"last_name" binding:"required"`
 	Role       models.CrewRole `json:"role" binding:"required"`

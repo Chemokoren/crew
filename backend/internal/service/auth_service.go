@@ -24,6 +24,7 @@ type AuthService struct {
 	jwt       *jwt.Manager
 	txMgr     *database.TxManager
 	tenantSvc *TenantService
+	notifSvc  *NotificationService
 	logger    *slog.Logger
 }
 
@@ -60,6 +61,11 @@ func WithOrgRepo(repo repository.OrganizationRepository) AuthServiceOption {
 // WithTenantSvc sets the tenant service (needed for industry bootstrap on registration).
 func WithTenantSvc(svc *TenantService) AuthServiceOption {
 	return func(s *AuthService) { s.tenantSvc = svc }
+}
+
+// WithNotifSvc sets the notification service (sends welcome SMS on registration).
+func WithNotifSvc(svc *NotificationService) AuthServiceOption {
+	return func(s *AuthService) { s.notifSvc = svc }
 }
 
 // RegisterInput holds the data required to register a new user.
@@ -244,6 +250,27 @@ func (s *AuthService) Register(ctx context.Context, input RegisterInput) (*Regis
 		slog.String("phone", user.Phone),
 		slog.String("role", string(user.SystemRole)),
 	)
+
+	// 8. Send welcome SMS (async — don't block response)
+	if s.notifSvc != nil && user.Phone != "" {
+		phone := user.Phone
+		go func() {
+			smsCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			msg := fmt.Sprintf(
+				"Welcome to Crew! Your account has been created. "+
+					"Login with your phone number %s. "+
+					"Please keep your credentials safe.",
+				phone,
+			)
+			if err := s.notifSvc.SendSMSToPhone(smsCtx, phone, msg); err != nil {
+				s.logger.Warn("failed to send registration welcome SMS",
+					slog.String("phone", phone),
+					slog.Any("err", err),
+				)
+			}
+		}()
+	}
 
 	return &RegisterResult{
 		User:       user,

@@ -478,7 +478,7 @@ export class SidebarComponent {
     { icon: 'playlist_add', route: '/assignments-bulk', roles: ['SYSTEM_ADMIN', 'EMPLOYER'], section: 'Operations' },
     { icon: 'trending_up', route: '/earnings', section: 'Operations' },
     { icon: 'account_balance_wallet', route: '/wallets', section: 'Finance' },
-    { icon: 'business', route: '/saccos', roles: ['SYSTEM_ADMIN'], section: 'Organization' },
+    { icon: 'business', route: '/employers', roles: ['SYSTEM_ADMIN'], section: 'Organization' },
     { icon: 'business', route: '/settings/tenant', roles: ['EMPLOYER'], section: 'Organization' },
     { icon: 'directions_bus', route: '/vehicles', roles: ['SYSTEM_ADMIN', 'EMPLOYER'], section: 'Organization', feature: 'vehicles' },
     { icon: 'route', route: '/routes', roles: ['SYSTEM_ADMIN', 'EMPLOYER'], section: 'Organization', feature: 'routes' },
@@ -507,7 +507,7 @@ export class SidebarComponent {
       case '/assignments-bulk': return 'Bulk ' + assignment;
       case '/earnings':         return 'Earnings';
       case '/wallets':          return 'Wallets';
-      case '/saccos':           return 'Organizations';
+      case '/employers':        return 'Employers';
       case '/settings/tenant':  return this.auth.isEmployer() ? ('My ' + (labels['organization'] || 'Organization')) : 'Tenant Settings';
       case '/vehicles':         return labels['vehicle'] ? labels['vehicle'] + 's' : 'Vehicles';
       case '/routes':           return 'Routes';

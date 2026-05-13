@@ -4,6 +4,8 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { ApiService } from '../../../core/services/api.service';
 import { ToastService } from '../../../core/services/toast.service';
+import { AuthService } from '../../../core/services/auth.service';
+import { OrgContextService } from '../../../core/services/org-context.service';
 import { Vehicle, Organization } from '../../../core/models';
 import { AutocompleteComponent, AutocompleteOption } from '../../../shared/components/autocomplete/autocomplete.component';
 import { ConfirmDialogService } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
@@ -20,9 +22,12 @@ import { ConfirmDialogService } from '../../../shared/components/confirm-dialog/
 
       <!-- Filters -->
       <div class="filters-bar" style="display:flex;gap:var(--space-md);flex-wrap:wrap;align-items:center;">
-        <div style="min-width:220px;max-width:280px;flex:1;position:relative;z-index:52;">
-          <app-autocomplete [options]="filterSaccoOptions()" [ngModel]="filterSacco" (ngModelChange)="filterSacco=$event;load()" placeholder="All Organizations" inputId="filter-sacco"></app-autocomplete>
-        </div>
+        <!-- Organization filter — SYSTEM_ADMIN only -->
+        @if (isSystemAdmin()) {
+          <div style="min-width:220px;max-width:280px;flex:1;position:relative;z-index:52;">
+            <app-autocomplete [options]="filterSaccoOptions()" [ngModel]="filterSacco" (ngModelChange)="filterSacco=$event;load()" placeholder="All Organizations" inputId="filter-sacco"></app-autocomplete>
+          </div>
+        }
         <div style="min-width:180px;max-width:240px;flex:1;position:relative;z-index:51;">
           <app-autocomplete [options]="filterTypeOptions()" [ngModel]="filterType" (ngModelChange)="filterType=$event;applyLocalFilter()" placeholder="All Types" inputId="filter-type"></app-autocomplete>
         </div>
@@ -54,9 +59,20 @@ import { ConfirmDialogService } from '../../../shared/components/confirm-dialog/
           <div class="modal-header"><h3>Add Vehicle</h3><button class="btn btn-ghost btn-icon" (click)="showModal.set(false)"><span class="material-icons-round">close</span></button></div>
           <div class="modal-body">
             <div class="form-group"><label class="form-label">Registration Number</label><input class="form-input" [(ngModel)]="form.registration_no" placeholder="KAA 123A" /></div>
-            <div class="form-group" style="position:relative; z-index: 55;"><label class="form-label">Organization</label>
-              <app-autocomplete [(ngModel)]="form.organization_id" [options]="saccoOptions()" placeholder="Search Organization..."></app-autocomplete>
-            </div>
+            <!-- Organization field: editable for SYSTEM_ADMIN, read-only label for org users -->
+            @if (isSystemAdmin()) {
+              <div class="form-group" style="position:relative; z-index: 55;"><label class="form-label">Organization</label>
+                <app-autocomplete [(ngModel)]="form.organization_id" [options]="saccoOptions()" placeholder="Search Organization..."></app-autocomplete>
+              </div>
+            } @else {
+              <div class="form-group">
+                <label class="form-label">Organization</label>
+                <div class="form-input" style="background:var(--color-bg-secondary);color:var(--color-text-muted);cursor:default;display:flex;align-items:center;gap:8px;">
+                  <span class="material-icons-round" style="font-size:16px;color:var(--color-accent);">business</span>
+                  {{ currentOrgName() }}
+                </div>
+              </div>
+            }
             <div class="form-group" style="position:relative; z-index: 54;"><label class="form-label">Type</label>
               <app-autocomplete [(ngModel)]="form.vehicle_type" [options]="typeOptions()" placeholder="Search Type..."></app-autocomplete>
             </div>
@@ -68,16 +84,31 @@ import { ConfirmDialogService } from '../../../shared/components/confirm-dialog/
     </div>`,
 })
 export class VehicleListComponent implements OnInit {
-  private api = inject(ApiService); private toast = inject(ToastService); private router = inject(Router);
+  private api = inject(ApiService);
+  private toast = inject(ToastService);
+  private router = inject(Router);
+  private auth = inject(AuthService);
+  private orgCtx = inject(OrgContextService);
   private confirmService = inject(ConfirmDialogService);
+
   items = signal<Vehicle[]>([]); filtered = signal<Vehicle[]>([]); saccos = signal<Organization[]>([]);
   loading = signal(true); showModal = signal(false); creating = signal(false);
   filterSacco = ''; filterType = '';
   form = { registration_no: '', organization_id: '', vehicle_type: 'MATATU', capacity: 14 };
 
+  /** True only for SYSTEM_ADMIN — org users see only their own data */
+  isSystemAdmin = computed(() => this.auth.userRole() === 'SYSTEM_ADMIN');
+
+  /** Current org name for display in the read-only field */
+  currentOrgName = computed(() => {
+    const orgId = this.orgCtx.currentOrgId();
+    const match = this.saccos().find(s => s.id === orgId);
+    return match?.name || 'Your Organization';
+  });
+
   saccoOptions = computed<AutocompleteOption[]>(() => this.saccos().map(s => ({ value: s.id, label: s.name, sublabel: `Reg: ${s.registration_number||'N/A'}`, searchText: `${s.name} ${s.registration_number||''}` })));
 
-  // Filter autocomplete options (include 'All' as empty value)
+  // Filter autocomplete options (include 'All' as empty value) — only used by SYSTEM_ADMIN
   filterSaccoOptions = computed<AutocompleteOption[]>(() => [
     { value: '', label: 'All Organizations', searchText: 'All Organizations' },
     ...this.saccos().map(s => ({ value: s.id, label: s.name, sublabel: s.county || '', searchText: `${s.name} ${s.registration_number||''} ${s.county||''}` })),
@@ -96,7 +127,22 @@ export class VehicleListComponent implements OnInit {
   ]);
 
   ngOnInit() {
-    this.api.getOrganizations({ per_page: '200' }).subscribe({ next: r => this.saccos.set(r.data) });
+    // SYSTEM_ADMIN loads all orgs for the filter; org users only need their own
+    if (this.isSystemAdmin()) {
+      this.api.getOrganizations({ per_page: '200' }).subscribe({ next: r => this.saccos.set(r.data) });
+    } else {
+      // Seed saccos with only the current org so currentOrgName() resolves
+      const orgId = this.orgCtx.currentOrgId();
+      if (orgId) {
+        this.api.getOrganization(orgId).subscribe({
+          next: r => { if (r.data) this.saccos.set([r.data]); },
+        });
+        // Lock the form's org_id to the current org immediately
+        this.form.organization_id = orgId;
+        // Lock the filter so load() always scopes to this org
+        this.filterSacco = orgId;
+      }
+    }
     this.load();
   }
 
@@ -116,13 +162,25 @@ export class VehicleListComponent implements OnInit {
     this.filtered.set(data);
   }
 
-  create() { this.creating.set(true); this.api.createVehicle(this.form as any).subscribe({ next: () => { this.toast.success('Vehicle added'); this.showModal.set(false); this.creating.set(false); this.load(); }, error: () => this.creating.set(false) }); }
-  deleteVehicle(v: Vehicle) { 
+  create() {
+    // Ensure org_id is always set for non-admin users
+    if (!this.isSystemAdmin()) {
+      this.form.organization_id = this.orgCtx.currentOrgId() || this.form.organization_id;
+    }
+    this.creating.set(true);
+    this.api.createVehicle(this.form as any).subscribe({
+      next: () => { this.toast.success('Vehicle added'); this.showModal.set(false); this.creating.set(false); this.load(); },
+      error: () => this.creating.set(false),
+    });
+  }
+
+  deleteVehicle(v: Vehicle) {
     this.confirmService.danger('Delete Vehicle', `Are you sure you want to delete ${v.registration_no}?`).subscribe(res => {
       if (res.confirmed) {
         this.api.deleteVehicle(v.id).subscribe({ next: () => { this.toast.success('Vehicle deleted'); this.load(); } });
       }
     });
   }
+
   viewVehicle(v: Vehicle) { this.router.navigate(['/vehicles', v.id]); }
 }

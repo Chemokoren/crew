@@ -758,18 +758,13 @@ func (h *WalletHandler) ExportCSV(c *gin.Context) {
 		return
 	}
 
-	wallet, err := h.walletSvc.GetBalance(c.Request.Context(), crewMemberID)
-	if err != nil {
-		MapServiceError(c, err)
-		return
-	}
 
 	// Use configurable row cap (injected at handler construction, default 10000)
 	maxRows := h.csvMaxRows
 	if maxRows <= 0 {
 		maxRows = 10000
 	}
-	txns, _, err := h.walletSvc.GetTransactions(c.Request.Context(), wallet.ID, repository.TxFilter{}, 1, maxRows)
+	txns, _, err := h.walletSvc.GetTransactions(c.Request.Context(), crewMemberID, repository.TxFilter{}, 1, maxRows)
 	if err != nil {
 		MapServiceError(c, err)
 		return
@@ -849,6 +844,7 @@ func (h *CrewHandler) Create(c *gin.Context) {
 
 	crew, err := h.crewSvc.CreateCrewMember(c.Request.Context(), service.CreateCrewInput{
 		NationalID:     req.NationalID,
+		Phone:          req.Phone,
 		FirstName:      req.FirstName,
 		LastName:       req.LastName,
 		Role:           req.Role,
@@ -1067,6 +1063,7 @@ func (h *CrewHandler) BulkImport(c *gin.Context) {
 	for i, m := range req.Members {
 		inputs[i] = service.CreateCrewInput{
 			NationalID:     m.NationalID,
+			Phone:          m.Phone,
 			FirstName:      m.FirstName,
 			LastName:       m.LastName,
 			Role:           m.Role,
@@ -1103,6 +1100,54 @@ func (h *CrewHandler) SearchByNationalID(c *gin.Context) {
 		return
 	}
 	SuccessResponse(c, http.StatusOK, dto.CrewToResponse(crew))
+}
+
+// LookupByNationalID checks if an employee exists before adding them.
+// GET /api/v1/crew/lookup?national_id=12345678
+func (h *CrewHandler) LookupByNationalID(c *gin.Context) {
+	nationalID := c.Query("national_id")
+	if nationalID == "" {
+		BadRequest(c, "national_id query parameter is required")
+		return
+	}
+
+	claims := middleware.GetClaims(c)
+	result, err := h.crewSvc.LookupByNationalID(c.Request.Context(), nationalID, claims.OrganizationID)
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+
+	if result.Found {
+		SuccessResponse(c, http.StatusOK, gin.H{
+			"found":       true,
+			"linked":      result.Linked,
+			"crew_member": dto.CrewToResponse(result.CrewMember),
+		})
+	} else {
+		SuccessResponse(c, http.StatusOK, gin.H{
+			"found":  false,
+			"linked": false,
+		})
+	}
+}
+
+// ResendCredentials sends the welcome SMS with default credentials again.
+// POST /api/v1/crew/:id/resend-credentials
+func (h *CrewHandler) ResendCredentials(c *gin.Context) {
+	idParam := c.Param("id")
+	id, err := uuid.Parse(idParam)
+	if err != nil {
+		BadRequest(c, "Invalid crew ID")
+		return
+	}
+
+	if err := h.crewSvc.ResendCredentials(c.Request.Context(), id); err != nil {
+		MapServiceError(c, err)
+		return
+	}
+
+	SuccessResponse(c, http.StatusOK, gin.H{"message": "Credentials sent successfully"})
 }
 
 // --- Helpers ---

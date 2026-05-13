@@ -56,5 +56,5 @@ export class SaccoListComponent implements OnInit {
   load() { this.loading.set(true); this.api.getOrganizations(this.search?{search:this.search}:undefined).subscribe({next:r=>{this.items.set(r.data);this.loading.set(false);},error:()=>this.loading.set(false)}); }
   create() { this.creating.set(true); this.api.createOrganization(this.form).subscribe({next:()=>{this.toast.success('Organization created');this.showModal.set(false);this.creating.set(false);this.load();},error:()=>this.creating.set(false)}); }
   deleteOrganization(s:Organization) { if(confirm(`Delete ${s.name}?`)){this.api.deleteOrganization(s.id).subscribe({next:()=>{this.toast.success('Organization deleted');this.load();}}); } }
-  viewSACCO(s:Organization) { this.router.navigate(['/saccos', s.id]); }
+  viewSACCO(s:Organization) { this.router.navigate(['/employers', s.id]); }
 }

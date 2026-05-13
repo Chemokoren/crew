@@ -329,7 +329,7 @@ export class PlatformOrganizationsComponent implements OnInit {
 
   viewAsOrg(org: Organization): void {
     // Navigate to the org-level dashboard for this org
-    window.open(`/saccos/${org.id}`, '_blank');
+    window.open(`/employers/${org.id}`, '_blank');
   }
 
   industryIcon(type: string | undefined): string {

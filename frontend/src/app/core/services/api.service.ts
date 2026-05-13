@@ -29,7 +29,7 @@ export class ApiService {
     return this.http.get<ApiResponse<CrewMember>>(`${this.API}/crew/${id}`);
   }
 
-  createCrewMember(data: { national_id: string; first_name: string; last_name: string; role: string }): Observable<ApiResponse<CrewMember>> {
+  createCrewMember(data: { national_id: string; phone?: string; first_name: string; last_name: string; role: string }): Observable<ApiResponse<CrewMember>> {
     return this.http.post<ApiResponse<CrewMember>>(`${this.API}/crew`, data);
   }
 
@@ -45,12 +45,21 @@ export class ApiService {
     return this.http.delete(`${this.API}/crew/${id}`);
   }
 
-  bulkImportCrew(members: Array<{ national_id: string; first_name: string; last_name: string; role: string }>): Observable<unknown> {
+  bulkImportCrew(members: Array<{ national_id: string; phone?: string; first_name: string; last_name: string; role: string }>): Observable<unknown> {
     return this.http.post(`${this.API}/crew/bulk-import`, { members });
   }
 
   searchByNationalID(nationalId: string): Observable<ApiResponse<CrewMember>> {
     return this.http.get<ApiResponse<CrewMember>>(`${this.API}/crew/search`, { params: { national_id: nationalId } });
+  }
+
+  /** Lookup employee by national ID before adding — checks if already registered */
+  lookupByNationalID(nationalId: string): Observable<ApiResponse<{ found: boolean; linked: boolean; crew_member?: CrewMember }>> {
+    return this.http.get<ApiResponse<{ found: boolean; linked: boolean; crew_member?: CrewMember }>>(`${this.API}/crew/lookup`, { params: { national_id: nationalId } });
+  }
+
+  resendCredentials(id: string): Observable<ApiResponse<{ message: string }>> {
+    return this.http.post<ApiResponse<{ message: string }>>(`${this.API}/crew/${id}/resend-credentials`, {});
   }
 
   // --- Assignments ---
@@ -118,6 +127,14 @@ export class ApiService {
     description?: string;
   }): Observable<unknown> {
     return this.http.post(`${this.API}/transactions/employee-payout`, data);
+  }
+
+  /** Process multiple employee payouts sequentially, returning per-item success/failure */
+  bulkEmployeePayout(data: {
+    payouts: Array<{ crew_member_id: string; gross_cents: number; net_cents: number; description?: string; }>;
+    idempotency_prefix: string;
+  }): Observable<unknown> {
+    return this.http.post(`${this.API}/transactions/bulk-employee-payout`, data);
   }
 
   /** Atomically debit sender and credit recipient wallet */

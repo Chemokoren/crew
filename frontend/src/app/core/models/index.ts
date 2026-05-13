@@ -220,6 +220,12 @@ export interface TenantConfig {
   topup_verification_mode?: 'API' | 'MANUAL' | 'HYBRID';
   allowed_topup_methods?: ('mobile_money' | 'bank' | 'card')[];
   allowed_topup_channels?: string[];
+  /** When true, statutory deductions (NSSF, SHA, Housing Levy) are applied during employee payout. Default: false (informal worker mode). */
+  handle_statutory_deductions?: boolean;
+  /** List of enabled non-statutory deduction codes. Standard: 'LOAN', 'INSURANCE', 'OTHER'. Empty = no deductions (default). */
+  enabled_deductions?: string[];
+  /** Maps custom deduction codes to display labels. e.g. { 'MOTOR_VEHICLE_LOAN': 'Motor Vehicle Loan' } */
+  custom_deduction_labels?: Record<string, string>;
 }
 
 // AD-13: Bootstrap result from industry template seeding

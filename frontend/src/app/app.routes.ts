@@ -159,13 +159,13 @@ export const routes: Routes = [
         loadComponent: () => import('./features/wallets/wallet-dashboard/wallet-dashboard.component').then(m => m.WalletDashboardComponent),
       },
       {
-        path: 'saccos',
-        canActivate: [kycGuard, roleGuard('SYSTEM_ADMIN', 'EMPLOYER')],
+        path: 'employers',
+        canActivate: [kycGuard, roleGuard('SYSTEM_ADMIN')],
         loadComponent: () => import('./features/saccos/sacco-list/sacco-list.component').then(m => m.SaccoListComponent),
       },
       {
-        path: 'saccos/:id',
-        canActivate: [kycGuard, roleGuard('SYSTEM_ADMIN', 'EMPLOYER')],
+        path: 'employers/:id',
+        canActivate: [kycGuard, roleGuard('SYSTEM_ADMIN')],
         loadComponent: () => import('./features/saccos/sacco-detail/sacco-detail.component').then(m => m.SaccoDetailComponent),
       },
       {

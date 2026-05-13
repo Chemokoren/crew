@@ -314,13 +314,15 @@ import { getIndustryTemplate, getIndustryLabel, INDUSTRY_ICONS } from '../../cor
               <span class="action-label">Run Payroll</span>
               <span class="action-desc">Process deductions</span>
             </a>
-            <a routerLink="/saccos" class="action-card glass-card" id="quick-saccos">
+            @if (auth.isAdmin()) {
+            <a routerLink="/employers" class="action-card glass-card" id="quick-employers">
               <div class="action-icon-wrapper" style="background:var(--color-info-light);color:var(--color-info);">
                 <span class="material-icons-round">business</span>
               </div>
-              <span class="action-label">Organizations</span>
-              <span class="action-desc">Manage organizations</span>
+              <span class="action-label">Employers</span>
+              <span class="action-desc">Manage employers</span>
             </a>
+            }
           }
           <a routerLink="/wallets" class="action-card glass-card" id="quick-wallet">
             <div class="action-icon-wrapper" style="background:var(--color-success-light);color:var(--color-success);">

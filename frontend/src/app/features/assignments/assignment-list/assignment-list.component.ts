@@ -46,10 +46,12 @@ import { Assignment, PaginationMeta, CrewMember, Vehicle, Organization, Industry
           <app-autocomplete [(ngModel)]="crewMemberFilter" (ngModelChange)="load()" [options]="crewMemberOptions()" placeholder="— All Crew Members —" id="assignment-crew-filter"></app-autocomplete>
         </div>
 
-        <!-- Filter by Organization -->
-        <div style="position: relative; z-index: 53; flex: 1; min-width: 200px; max-width: 260px;">
-          <app-autocomplete [(ngModel)]="saccoFilter" (ngModelChange)="load()" [options]="saccoOptions()" placeholder="— All Organizations —" id="assignment-sacco-filter"></app-autocomplete>
-        </div>
+        <!-- Filter by Organization (system admins only) -->
+        @if (auth.userRole() === 'SYSTEM_ADMIN') {
+          <div style="position: relative; z-index: 53; flex: 1; min-width: 200px; max-width: 260px;">
+            <app-autocomplete [(ngModel)]="saccoFilter" (ngModelChange)="load()" [options]="saccoOptions()" placeholder="— All Organizations —" id="assignment-sacco-filter"></app-autocomplete>
+          </div>
+        }
 
         @if (hasActiveFilters()) {
           <button class="btn btn-ghost btn-sm" (click)="clearFilters()" id="btn-clear-filters" style="white-space:nowrap;"
@@ -139,7 +141,19 @@ import { Assignment, PaginationMeta, CrewMember, Vehicle, Organization, Industry
       @if (showCreateModal()) {
         <div class="modal-backdrop" (click)="showCreateModal.set(false)">
           <div class="modal-content modal-content-lg" (click)="$event.stopPropagation()">
-            <div class="modal-header"><h3>Create Assignment</h3><button class="btn btn-ghost btn-icon" (click)="showCreateModal.set(false)"><span class="material-icons-round">close</span></button></div>
+            <div class="modal-header">
+              <div>
+                <h3>Create Assignment</h3>
+                @if (currentOrgName()) {
+                  <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
+                    <span class="material-icons-round" style="font-size:14px;color:var(--color-accent);">business</span>
+                    <span style="font-size:0.8rem;color:var(--color-text-muted);">{{ currentOrgName() }}</span>
+                    <span style="font-size:0.7rem;background:rgba(0,210,255,0.1);color:var(--color-accent);border:1px solid rgba(0,210,255,0.2);border-radius:4px;padding:1px 6px;">Your Organization</span>
+                  </div>
+                }
+              </div>
+              <button class="btn btn-ghost btn-icon" (click)="showCreateModal.set(false)"><span class="material-icons-round">close</span></button>
+            </div>
             <div class="modal-body">
               <!-- Crew Member Autocomplete -->
               <div class="form-group">
@@ -152,19 +166,6 @@ import { Assignment, PaginationMeta, CrewMember, Vehicle, Organization, Industry
                 ></app-autocomplete>
               </div>
 
-              <!-- Organization Autocomplete -->
-              <div class="form-group">
-                <label class="form-label">Organization</label>
-                <app-autocomplete
-                  [options]="saccoOptions()"
-                  placeholder="Search by Organization name..."
-                  inputId="create-sacco-select"
-                  [(ngModel)]="newAssignment.organization_id"
-                ></app-autocomplete>
-                @if (userOrgId && newAssignment.organization_id === userOrgId) {
-                  <small style="color:var(--color-text-muted);font-size:0.75rem;">Auto-selected from your profile</small>
-                }
-              </div>
 
               <!-- Shift Date -->
               <div class="form-group">
@@ -392,7 +393,7 @@ import { Assignment, PaginationMeta, CrewMember, Vehicle, Organization, Industry
 })
 export class AssignmentListComponent implements OnInit {
   private api = inject(ApiService);
-  private auth = inject(AuthService);
+  protected auth = inject(AuthService);
   private toast = inject(ToastService);
   private router = inject(Router);
   private dialog = inject(ConfirmDialogService);
@@ -463,6 +464,12 @@ export class AssignmentListComponent implements OnInit {
   editFixedAmount = 0;
   editCommissionRate = 0;
   editHourlyRate = 0;
+
+  // Computed name of the logged-in user's org for display in the modal header
+  currentOrgName = computed<string>(() => {
+    if (!this.userOrgId) return '';
+    return this.saccos().find(s => s.id === this.userOrgId)?.name || '';
+  });
 
   // Industry detection from selected Organization (Phase F4)
   selectedIndustry = computed<IndustryType | ''>(() => {

@@ -309,6 +309,7 @@ func main() {
 	authSvc := service.NewAuthService(userRepo, crewRepo, jwtManager, txMgr, logger,
 		service.WithOrgRepo(orgRepo),
 		service.WithTenantSvc(tenantSvc),
+		service.WithNotifSvc(notifSvc),
 	)
 
 	// --- 12a. Email Provider Strategy ---
@@ -390,6 +391,8 @@ func main() {
 		slog.Warn("no identity providers configured — identity verification disabled")
 	}
 	crewSvc := service.NewCrewService(crewRepo, membershipRepo, crewIdProvider, logger)
+	crewSvc.WithUserRepo(userRepo)
+	crewSvc.WithNotificationSvc(notifSvc)
 
 	walletSvc := service.NewWalletService(walletRepo, crewRepo, auditSvc, logger)
 	assignmentSvc := service.NewAssignmentService(assignmentRepo, earningRepo, walletSvc, notifSvc, txMgr, logger)
@@ -653,6 +656,8 @@ func main() {
 			crew.DELETE("/:id", crewHandler.Deactivate)
 			crew.POST("/bulk-import", crewHandler.BulkImport)
 			crew.GET("/search", crewHandler.SearchByNationalID)
+			crew.GET("/lookup", crewHandler.LookupByNationalID)
+			crew.POST("/:id/resend-credentials", crewHandler.ResendCredentials)
 		}
 
 		// Assignments
@@ -696,6 +701,11 @@ func main() {
 			transactions.POST("/employee-payout",
 				middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin),
 				transactionHandler.EmployeePayout)
+
+			// Bulk employee payout: process multiple payouts sequentially, returns per-item result
+			transactions.POST("/bulk-employee-payout",
+				middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin),
+				transactionHandler.BulkEmployeePayout)
 
 			// Wallet-to-wallet transfer: debit sender + credit recipient in one TX
 			transactions.POST("/transfer", transactionHandler.WalletTransfer)

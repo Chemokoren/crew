@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { ApiService } from '../../../core/services/api.service';
+import { AuthService } from '../../../core/services/auth.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { AutocompleteComponent, AutocompleteOption } from '../../../shared/components/autocomplete/autocomplete.component';
 import { CrewMember, Organization, Vehicle } from '../../../core/models';
@@ -21,6 +22,13 @@ import { CrewMember, Organization, Vehicle } from '../../../core/models';
           </button>
           <h1 class="page-title">Bulk Assignments</h1>
           <p class="page-subtitle">Generate recurring assignments for multiple workers across a date range</p>
+          @if (currentOrgName()) {
+            <div style="display:flex;align-items:center;gap:6px;margin-top:var(--space-xs);">
+              <span class="material-icons-round" style="font-size:14px;color:var(--color-accent);">business</span>
+              <span style="font-size:0.8rem;color:var(--color-text-muted);">{{ currentOrgName() }}</span>
+              <span style="font-size:0.7rem;background:rgba(0,210,255,0.1);color:var(--color-accent);border:1px solid rgba(0,210,255,0.2);border-radius:4px;padding:1px 6px;">Your Organization</span>
+            </div>
+          }
         </div>
       </div>
 
@@ -71,10 +79,13 @@ import { CrewMember, Organization, Vehicle } from '../../../core/models';
           </div>
 
           <div class="form-grid">
-            <div class="form-group">
-              <label class="form-label">Organization</label>
-              <app-autocomplete [options]="saccoOptions()" [ngModel]="organizationId()" (ngModelChange)="organizationId.set($event)" placeholder="Select Organization..." inputId="bulk-sacco"></app-autocomplete>
-            </div>
+            <!-- Organization (system admins only — all others auto-filled from JWT) -->
+            @if (auth.userRole() === 'SYSTEM_ADMIN') {
+              <div class="form-group">
+                <label class="form-label">Organization</label>
+                <app-autocomplete [options]="saccoOptions()" [ngModel]="organizationId()" (ngModelChange)="organizationId.set($event)" placeholder="Select Organization..." inputId="bulk-sacco"></app-autocomplete>
+              </div>
+            }
             <div class="form-group">
               <label class="form-label">Work Type</label>
               <select class="form-select" [(ngModel)]="config.work_type" id="bulk-work-type">
@@ -220,6 +231,7 @@ import { CrewMember, Organization, Vehicle } from '../../../core/models';
 })
 export class BulkAssignmentComponent implements OnInit {
   private api = inject(ApiService);
+  protected auth = inject(AuthService);
   private toast = inject(ToastService);
   private router = inject(Router);
 
@@ -252,6 +264,12 @@ export class BulkAssignmentComponent implements OnInit {
     this.saccos().map(s => ({ value: s.id, label: s.name, sublabel: s.county, searchText: `${s.name} ${s.county}` }))
   );
 
+  currentOrgName = computed<string>(() => {
+    const id = this.organizationId();
+    if (!id) return '';
+    return this.saccos().find(s => s.id === id)?.name || '';
+  });
+
   dateCount = computed(() => {
     const sd = this.startDate();
     const ed = this.endDate();
@@ -270,8 +288,15 @@ export class BulkAssignmentComponent implements OnInit {
   totalAssignments = computed(() => this.selectedWorkers().length * this.dateCount());
 
   ngOnInit(): void {
+    const userOrgId = this.auth.currentUser()?.organization_id || '';
     this.api.getCrewMembers({ per_page: '200' }).subscribe({ next: r => this.crewMembers.set(r.data) });
-    this.api.getOrganizations({ per_page: '200' }).subscribe({ next: r => this.saccos.set(r.data) });
+    this.api.getOrganizations({ per_page: '200' }).subscribe({ next: r => {
+      this.saccos.set(r.data);
+      // Auto-select the logged-in user's org (EMPLOYER), or leave blank for SYSTEM_ADMIN to choose
+      if (userOrgId && !this.organizationId()) {
+        this.organizationId.set(userOrgId);
+      }
+    }});
 
     // Pre-fill from query params if coming from Work Sites page
     const params = new URLSearchParams(window.location.search);

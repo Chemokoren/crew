@@ -122,6 +122,19 @@ func (s *TenantService) UpdateTenantConfig(ctx context.Context, orgID uuid.UUID,
 			existing.AllowedTopUpChannels = incoming.AllowedTopUpChannels
 		}
 
+		// Payroll: statutory deductions — bool, always apply from input
+		existing.HandleStatutoryDeductions = incoming.HandleStatutoryDeductions
+
+		// Payroll: non-statutory deduction types
+		// nil means "no change"; empty slice explicitly disables all non-statutory deductions
+		if incoming.EnabledDeductions != nil {
+			existing.EnabledDeductions = incoming.EnabledDeductions
+		}
+		// nil map means "no change"; non-nil map (even empty) replaces the custom labels
+		if incoming.CustomDeductionLabels != nil {
+			existing.CustomDeductionLabels = incoming.CustomDeductionLabels
+		}
+
 		if err := sacco.SetTenantConfig(existing); err != nil {
 			return nil, fmt.Errorf("%w: invalid tenant config", ErrValidation)
 		}

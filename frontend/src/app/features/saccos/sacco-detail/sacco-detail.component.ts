@@ -294,7 +294,7 @@ export class SaccoDetailComponent implements OnInit {
     }
   }
 
-  goBack(): void { this.router.navigate(['/saccos']); }
+  goBack(): void { this.router.navigate(['/employers']); }
 
   loadSACCO(): void {
     this.loading.set(true);
