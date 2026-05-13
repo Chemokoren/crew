@@ -669,6 +669,7 @@ func main() {
 		// Crew members (SACCO admins & system admins)
 		crew := secured.Group("/crew")
 		crew.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin))
+		crew.Use(middleware.RequirePermission(models.PermWorkersView))
 		{
 			crew.POST("", crewHandler.Create)
 			crew.GET("", crewHandler.List)
@@ -691,6 +692,7 @@ func main() {
 
 			adminAssignments := assignments.Group("")
 			adminAssignments.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin))
+			adminAssignments.Use(middleware.RequirePermission(models.PermAssignmentsCreate))
 			{
 				adminAssignments.POST("", assignmentHandler.Create)
 			adminAssignments.POST("/bulk", assignmentHandler.BulkCreate)
@@ -707,6 +709,7 @@ func main() {
 
 		// Wallets (all authenticated users; handler enforces ownership for CREW users)
 		wallets := secured.Group("/wallets")
+		wallets.Use(middleware.RequirePermission(models.PermWalletView))
 		{
 			wallets.GET("/:crew_member_id", walletHandler.GetBalance)
 			wallets.GET("/:crew_member_id/transactions", walletHandler.ListTransactions)
@@ -730,13 +733,16 @@ func main() {
 				transactionHandler.BulkEmployeePayout)
 
 			// Wallet-to-wallet transfer: debit sender + credit recipient in one TX
-			transactions.POST("/transfer", transactionHandler.WalletTransfer)
+			transactions.POST("/transfer",
+				middleware.RequirePermission(models.PermWalletTransfer),
+				transactionHandler.WalletTransfer)
 		}
 
 		// SACCOs / Organizations (system admin + sacco admin)
 		// Original route kept for backward compat
 		saccos := secured.Group("/saccos")
 		saccos.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin))
+		saccos.Use(middleware.RequirePermission(models.PermOrganizationsView))
 		{
 			saccos.POST("", orgHandler.Create)
 			saccos.GET("", orgHandler.List)
@@ -761,6 +767,7 @@ func main() {
 		// D1: /organizations/* aliases — same handlers, industry-agnostic URL
 		orgs := secured.Group("/organizations")
 		orgs.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin))
+		orgs.Use(middleware.RequirePermission(models.PermOrganizationsView))
 		{
 			orgs.POST("", orgHandler.Create)
 			orgs.GET("", orgHandler.List)
@@ -850,6 +857,7 @@ func main() {
 		// Payroll (system admin + sacco admin)
 		payrollRoutes := secured.Group("/payroll")
 		payrollRoutes.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin))
+		payrollRoutes.Use(middleware.RequirePermission(models.PermPayrollView))
 		{
 			payrollRoutes.POST("", payrollHandler.Create)
 			payrollRoutes.GET("", payrollHandler.List)
@@ -943,8 +951,9 @@ func main() {
 			admin.PUT("/notifications/templates", adminHandler.UpdateTemplate)
 		}
 
-		// RBAC — Roles & Permissions management (platform admins)
-		rbacHandler.RegisterRoutes(secured)
+		// RBAC APIs (uses rate limiting for mutations)
+		rbacLimiter := middleware.RateLimit(redisClient, 20, time.Minute)
+		rbacHandler.RegisterRoutes(secured, rbacLimiter)
 	}
 
 	// --- 15. Start HTTP server ---

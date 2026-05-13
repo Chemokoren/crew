@@ -26,20 +26,26 @@ func NewRBACHandler(svc *service.RBACService) *RBACHandler {
 }
 
 // RegisterRoutes registers all RBAC routes under the given router group.
-func (h *RBACHandler) RegisterRoutes(rg *gin.RouterGroup) {
+func (h *RBACHandler) RegisterRoutes(rg *gin.RouterGroup, rl gin.HandlerFunc) {
 	rbac := rg.Group("/rbac")
 	{
+		// Rates limit mutations
+		mutations := rbac.Group("")
+		if rl != nil {
+			mutations.Use(rl)
+		}
+
 		// Roles
 		rbac.GET("/roles", h.ListRoles)
-		rbac.POST("/roles", h.CreateRole)
+		mutations.POST("/roles", h.CreateRole)
 		rbac.GET("/roles/:id", h.GetRole)
-		rbac.PUT("/roles/:id", h.UpdateRole)
-		rbac.DELETE("/roles/:id", h.DeleteRole)
-		rbac.POST("/roles/:id/clone", h.CloneRole)
-		rbac.POST("/roles/:id/activate", h.ToggleRoleActive)
+		mutations.PUT("/roles/:id", h.UpdateRole)
+		mutations.DELETE("/roles/:id", h.DeleteRole)
+		mutations.POST("/roles/:id/clone", h.CloneRole)
+		mutations.POST("/roles/:id/activate", h.ToggleRoleActive)
 		rbac.GET("/roles/:id/permissions", h.GetRolePermissions)
-		rbac.PUT("/roles/:id/permissions", h.SetRolePermissions)
-		rbac.POST("/roles/compare", h.CompareRoles)
+		mutations.PUT("/roles/:id/permissions", h.SetRolePermissions)
+		rbac.POST("/roles/compare", h.CompareRoles) // Read-only but intensive
 
 		// Permissions
 		rbac.GET("/permissions", h.ListPermissions)
@@ -47,17 +53,17 @@ func (h *RBACHandler) RegisterRoutes(rg *gin.RouterGroup) {
 
 		// User roles
 		rbac.GET("/users/:id/roles", h.GetUserRoles)
-		rbac.POST("/users/:id/roles", h.AssignRoleToUser)
-		rbac.DELETE("/users/:id/roles/:roleId", h.RevokeRoleFromUser)
+		mutations.POST("/users/:id/roles", h.AssignRoleToUser)
+		mutations.DELETE("/users/:id/roles/:roleId", h.RevokeRoleFromUser)
 		rbac.GET("/users/:id/permissions", h.GetUserPermissions)
 
 		// Templates
 		rbac.GET("/templates", h.ListTemplates)
-		rbac.POST("/templates/:id/apply", h.ApplyTemplate)
+		mutations.POST("/templates/:id/apply", h.ApplyTemplate)
 
 		// Policies
 		rbac.GET("/policies", h.ListPolicies)
-		rbac.POST("/policies", h.CreatePolicy)
+		mutations.POST("/policies", h.CreatePolicy)
 
 		// Matrix
 		rbac.GET("/matrix", h.GetPermissionMatrix)
@@ -68,6 +74,8 @@ func (h *RBACHandler) RegisterRoutes(rg *gin.RouterGroup) {
 // Roles
 // ═══════════════════════════════════════════════════════════════════════════
 
+// @Summary List all roles
+// @Tags RBAC
 func (h *RBACHandler) ListRoles(c *gin.Context) {
 	page, perPage := parsePagination(c)
 	filter := repository.RoleFilter{
@@ -79,6 +87,8 @@ func (h *RBACHandler) ListRoles(c *gin.Context) {
 			filter.TenantID = &id
 		}
 	}
+	filter.TenantID = enforceTenant(c, filter.TenantID)
+
 	if v := c.Query("is_system"); v != "" {
 		b := v == "true"
 		filter.IsSystem = &b
@@ -118,6 +128,8 @@ func (h *RBACHandler) ListRoles(c *gin.Context) {
 	})
 }
 
+// @Summary Create a new role
+// @Tags RBAC
 func (h *RBACHandler) CreateRole(c *gin.Context) {
 	var req dto.CreateRoleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -135,6 +147,8 @@ func (h *RBACHandler) CreateRole(c *gin.Context) {
 		IsTemplate:   req.IsTemplate,
 		IsActive:     true,
 	}
+	role.TenantID = enforceTenant(c, role.TenantID)
+
 	if claims != nil {
 		role.CreatedBy = &claims.UserID
 		role.UpdatedBy = &claims.UserID
@@ -148,6 +162,8 @@ func (h *RBACHandler) CreateRole(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"success": true, "data": role})
 }
 
+// @Summary Get role by ID
+// @Tags RBAC
 func (h *RBACHandler) GetRole(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -164,6 +180,8 @@ func (h *RBACHandler) GetRole(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": role})
 }
 
+// @Summary Update role
+// @Tags RBAC
 func (h *RBACHandler) UpdateRole(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -201,6 +219,8 @@ func (h *RBACHandler) UpdateRole(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": role})
 }
 
+// @Summary Delete role
+// @Tags RBAC
 func (h *RBACHandler) DeleteRole(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -222,6 +242,8 @@ func (h *RBACHandler) DeleteRole(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Role archived"})
 }
 
+// @Summary Clone role
+// @Tags RBAC
 func (h *RBACHandler) CloneRole(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -241,7 +263,8 @@ func (h *RBACHandler) CloneRole(c *gin.Context) {
 		createdBy = &claims.UserID
 	}
 
-	cloned, err := h.svc.CloneRole(c.Request.Context(), id, req.Name, req.TenantID, createdBy)
+	targetTenant := enforceTenant(c, req.TenantID)
+	cloned, err := h.svc.CloneRole(c.Request.Context(), id, req.Name, targetTenant, createdBy)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, errorResponse("Failed to clone role", err))
 		return
@@ -250,6 +273,8 @@ func (h *RBACHandler) CloneRole(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"success": true, "data": cloned})
 }
 
+// @Summary Toggle role active status
+// @Tags RBAC
 func (h *RBACHandler) ToggleRoleActive(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -277,6 +302,8 @@ func (h *RBACHandler) ToggleRoleActive(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Role status updated"})
 }
 
+// @Summary Compare two roles
+// @Tags RBAC
 func (h *RBACHandler) CompareRoles(c *gin.Context) {
 	var req dto.CompareRolesRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -302,6 +329,8 @@ func (h *RBACHandler) CompareRoles(c *gin.Context) {
 // Permissions
 // ═══════════════════════════════════════════════════════════════════════════
 
+// @Summary Get permissions assigned to a role
+// @Tags RBAC
 func (h *RBACHandler) GetRolePermissions(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -318,6 +347,8 @@ func (h *RBACHandler) GetRolePermissions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": perms})
 }
 
+// @Summary Set permissions for a role
+// @Tags RBAC
 func (h *RBACHandler) SetRolePermissions(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -345,6 +376,8 @@ func (h *RBACHandler) SetRolePermissions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Permissions updated"})
 }
 
+// @Summary List all available permissions
+// @Tags RBAC
 func (h *RBACHandler) ListPermissions(c *gin.Context) {
 	filter := repository.PermissionFilter{
 		Module:    c.Query("module"),
@@ -368,6 +401,8 @@ func (h *RBACHandler) ListPermissions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": perms, "grouped": grouped})
 }
 
+// @Summary List all permission modules
+// @Tags RBAC
 func (h *RBACHandler) ListPermissionModules(c *gin.Context) {
 	modules := h.svc.GetPermissionModules()
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": modules})
@@ -377,6 +412,8 @@ func (h *RBACHandler) ListPermissionModules(c *gin.Context) {
 // User Roles
 // ═══════════════════════════════════════════════════════════════════════════
 
+// @Summary Get roles assigned to a user
+// @Tags RBAC
 func (h *RBACHandler) GetUserRoles(c *gin.Context) {
 	userID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -391,6 +428,8 @@ func (h *RBACHandler) GetUserRoles(c *gin.Context) {
 		}
 	}
 
+	tenantID = enforceTenant(c, tenantID)
+
 	roles, err := h.svc.GetUserRoles(c.Request.Context(), userID, tenantID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, errorResponse("Failed to get user roles", err))
@@ -400,6 +439,8 @@ func (h *RBACHandler) GetUserRoles(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": roles})
 }
 
+// @Summary Assign a role to a user
+// @Tags RBAC
 func (h *RBACHandler) AssignRoleToUser(c *gin.Context) {
 	userID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -427,7 +468,8 @@ func (h *RBACHandler) AssignRoleToUser(c *gin.Context) {
 		}
 	}
 
-	if err := h.svc.AssignRole(c.Request.Context(), userID, req.RoleID, req.TenantID, assignedBy, expiresAt); err != nil {
+	targetTenant := enforceTenant(c, req.TenantID)
+	if err := h.svc.AssignRole(c.Request.Context(), userID, req.RoleID, targetTenant, assignedBy, expiresAt); err != nil {
 		c.JSON(http.StatusInternalServerError, errorResponse("Failed to assign role", err))
 		return
 	}
@@ -435,6 +477,8 @@ func (h *RBACHandler) AssignRoleToUser(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Role assigned"})
 }
 
+// @Summary Revoke a role from a user
+// @Tags RBAC
 func (h *RBACHandler) RevokeRoleFromUser(c *gin.Context) {
 	userID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -454,6 +498,8 @@ func (h *RBACHandler) RevokeRoleFromUser(c *gin.Context) {
 		}
 	}
 
+	tenantID = enforceTenant(c, tenantID)
+
 	claims := middleware.GetClaims(c)
 	var revokedBy *uuid.UUID
 	if claims != nil {
@@ -468,6 +514,8 @@ func (h *RBACHandler) RevokeRoleFromUser(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Role revoked"})
 }
 
+// @Summary Get effective permissions for a user
+// @Tags RBAC
 func (h *RBACHandler) GetUserPermissions(c *gin.Context) {
 	userID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -482,6 +530,8 @@ func (h *RBACHandler) GetUserPermissions(c *gin.Context) {
 		}
 	}
 
+	tenantID = enforceTenant(c, tenantID)
+
 	keys, err := h.svc.GetUserPermissions(c.Request.Context(), userID, tenantID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, errorResponse("Failed to get permissions", err))
@@ -495,6 +545,8 @@ func (h *RBACHandler) GetUserPermissions(c *gin.Context) {
 // Templates
 // ═══════════════════════════════════════════════════════════════════════════
 
+// @Summary List available role templates
+// @Tags RBAC
 func (h *RBACHandler) ListTemplates(c *gin.Context) {
 	industry := c.Query("industry_type")
 	templates, err := h.svc.ListTemplates(c.Request.Context(), industry)
@@ -505,6 +557,8 @@ func (h *RBACHandler) ListTemplates(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": templates})
 }
 
+// @Summary Apply a template to create a new role
+// @Tags RBAC
 func (h *RBACHandler) ApplyTemplate(c *gin.Context) {
 	tmplID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -524,7 +578,13 @@ func (h *RBACHandler) ApplyTemplate(c *gin.Context) {
 		appliedBy = &claims.UserID
 	}
 
-	role, err := h.svc.ApplyTemplate(c.Request.Context(), tmplID, req.TenantID, appliedBy)
+	targetTenant := enforceTenant(c, &req.TenantID)
+	var finalTenant uuid.UUID
+	if targetTenant != nil {
+		finalTenant = *targetTenant
+	}
+
+	role, err := h.svc.ApplyTemplate(c.Request.Context(), tmplID, finalTenant, appliedBy)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, errorResponse("Failed to apply template", err))
 		return
@@ -537,6 +597,8 @@ func (h *RBACHandler) ApplyTemplate(c *gin.Context) {
 // Policies
 // ═══════════════════════════════════════════════════════════════════════════
 
+// @Summary List PBAC policies
+// @Tags RBAC
 func (h *RBACHandler) ListPolicies(c *gin.Context) {
 	page, perPage := parsePagination(c)
 	var tenantID *uuid.UUID
@@ -545,6 +607,8 @@ func (h *RBACHandler) ListPolicies(c *gin.Context) {
 			tenantID = &id
 		}
 	}
+
+	tenantID = enforceTenant(c, tenantID)
 
 	policies, total, err := h.svc.ListPolicies(c.Request.Context(), tenantID, page, perPage)
 	if err != nil {
@@ -555,6 +619,8 @@ func (h *RBACHandler) ListPolicies(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": policies, "meta": paginationMeta(page, perPage, total)})
 }
 
+// @Summary Create a new PBAC policy
+// @Tags RBAC
 func (h *RBACHandler) CreatePolicy(c *gin.Context) {
 	var req dto.CreatePolicyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -577,7 +643,7 @@ func (h *RBACHandler) CreatePolicy(c *gin.Context) {
 		Effect:        models.PolicyEffect(req.Effect),
 		IsActive:      true,
 		Priority:      req.Priority,
-		TenantID:      req.TenantID,
+		TenantID:      enforceTenant(c, req.TenantID),
 		CreatedBy:     createdBy,
 	}
 
@@ -593,6 +659,8 @@ func (h *RBACHandler) CreatePolicy(c *gin.Context) {
 // Matrix
 // ═══════════════════════════════════════════════════════════════════════════
 
+// @Summary Get a matrix of roles and their permissions
+// @Tags RBAC
 func (h *RBACHandler) GetPermissionMatrix(c *gin.Context) {
 	filter := repository.RoleFilter{
 		IndustryType: c.Query("industry_type"),
@@ -602,6 +670,7 @@ func (h *RBACHandler) GetPermissionMatrix(c *gin.Context) {
 			filter.TenantID = &id
 		}
 	}
+	filter.TenantID = enforceTenant(c, filter.TenantID)
 	active := true
 	filter.IsActive = &active
 
@@ -622,6 +691,17 @@ func (h *RBACHandler) GetPermissionMatrix(c *gin.Context) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Helpers
 // ═══════════════════════════════════════════════════════════════════════════
+
+func enforceTenant(c *gin.Context, requestedTenant *uuid.UUID) *uuid.UUID {
+	claims := middleware.GetClaims(c)
+	if claims == nil {
+		return requestedTenant // Test mode or unauthenticated
+	}
+	if string(claims.SystemRole) == "SYSTEM_ADMIN" {
+		return requestedTenant
+	}
+	return claims.OrganizationID
+}
 
 func (h *RBACHandler) CountUsersWithRole(ctx gin.Context, roleID uuid.UUID) (int64, error) {
 	return h.svc.CountUsersWithRole(ctx.Request.Context(), roleID)

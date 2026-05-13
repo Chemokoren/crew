@@ -11,11 +11,12 @@ import { CurrencyKesPipe } from '../../shared/pipes/currency-kes.pipe';
 import { RelativeTimePipe } from '../../shared/pipes/relative-time.pipe';
 import { SystemStats, Wallet, WalletTransaction, DailySummary, Organization, IndustryType } from '../../core/models';
 import { getIndustryTemplate, getIndustryLabel, INDUSTRY_ICONS } from '../../core/config/industry-templates';
+import { HasPermissionDirective } from '../../shared/directives/has-permission.directive';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, RouterLink, CurrencyKesPipe, RelativeTimePipe],
+  imports: [CommonModule, RouterLink, CurrencyKesPipe, RelativeTimePipe, HasPermissionDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="animate-fade-in">
@@ -293,21 +294,21 @@ import { getIndustryTemplate, getIndustryLabel, INDUSTRY_ICONS } from '../../cor
         </h2>
         <div class="actions-grid">
           @if (auth.hasRole('SYSTEM_ADMIN', 'EMPLOYER')) {
-            <a routerLink="/crew" class="action-card glass-card" id="quick-crew">
+            <a *hasPermission="'workers.view'" routerLink="/crew" class="action-card glass-card" id="quick-crew">
               <div class="action-icon-wrapper" style="background:rgba(0,210,255,0.12);color:var(--color-accent);">
                 <span class="material-icons-round">person_add</span>
               </div>
               <span class="action-label">Manage Crew</span>
               <span class="action-desc">Add & manage members</span>
             </a>
-            <a routerLink="/assignments" class="action-card glass-card" id="quick-assignments">
+            <a *hasPermission="'assignments.view'" routerLink="/assignments" class="action-card glass-card" id="quick-assignments">
               <div class="action-icon-wrapper" style="background:rgba(123,97,255,0.12);color:#7b61ff;">
                 <span class="material-icons-round">assignment_add</span>
               </div>
               <span class="action-label">Assignments</span>
               <span class="action-desc">Create shift assignments</span>
             </a>
-            <a routerLink="/payroll" class="action-card glass-card" id="quick-payroll">
+            <a *hasPermission="'payroll.view'" routerLink="/payroll" class="action-card glass-card" id="quick-payroll">
               <div class="action-icon-wrapper" style="background:var(--color-warning-light);color:var(--color-warning);">
                 <span class="material-icons-round">receipt_long</span>
               </div>
@@ -315,7 +316,7 @@ import { getIndustryTemplate, getIndustryLabel, INDUSTRY_ICONS } from '../../cor
               <span class="action-desc">Process deductions</span>
             </a>
             @if (auth.isAdmin()) {
-            <a routerLink="/employers" class="action-card glass-card" id="quick-employers">
+            <a *hasPermission="'organizations.view'" routerLink="/employers" class="action-card glass-card" id="quick-employers">
               <div class="action-icon-wrapper" style="background:var(--color-info-light);color:var(--color-info);">
                 <span class="material-icons-round">business</span>
               </div>
@@ -324,28 +325,28 @@ import { getIndustryTemplate, getIndustryLabel, INDUSTRY_ICONS } from '../../cor
             </a>
             }
           }
-          <a routerLink="/wallets" class="action-card glass-card" id="quick-wallet">
+          <a *hasPermission="'wallet.view'" routerLink="/wallets" class="action-card glass-card" id="quick-wallet">
             <div class="action-icon-wrapper" style="background:var(--color-success-light);color:var(--color-success);">
               <span class="material-icons-round">account_balance_wallet</span>
             </div>
             <span class="action-label">Wallet</span>
             <span class="action-desc">Balance & transactions</span>
           </a>
-          <a routerLink="/earnings" class="action-card glass-card" id="quick-earnings">
+          <a *hasPermission="'earnings.view'" routerLink="/earnings" class="action-card glass-card" id="quick-earnings">
             <div class="action-icon-wrapper" style="background:rgba(236,72,153,0.12);color:#ec4899;">
               <span class="material-icons-round">trending_up</span>
             </div>
             <span class="action-label">Earnings</span>
             <span class="action-desc">View earnings reports</span>
           </a>
-          <a routerLink="/loans" class="action-card glass-card" id="quick-loans">
+          <a *hasPermission="'loans.view'" routerLink="/loans" class="action-card glass-card" id="quick-loans">
             <div class="action-icon-wrapper" style="background:rgba(251,191,36,0.12);color:#fbbf24;">
               <span class="material-icons-round">savings</span>
             </div>
             <span class="action-label">Loans</span>
             <span class="action-desc">Apply & track loans</span>
           </a>
-          <a routerLink="/insurance" class="action-card glass-card" id="quick-insurance">
+          <a *hasPermission="'insurance.view'" routerLink="/insurance" class="action-card glass-card" id="quick-insurance">
             <div class="action-icon-wrapper" style="background:rgba(34,211,238,0.12);color:#22d3ee;">
               <span class="material-icons-round">health_and_safety</span>
             </div>

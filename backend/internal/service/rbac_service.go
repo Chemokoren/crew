@@ -39,8 +39,10 @@ func NewRBACService(repo repository.RBACRepository, auditSvc *AuditService, cach
 // HasPermission checks if a user has a specific permission (cache → DB fallback).
 func (s *RBACService) HasPermission(ctx context.Context, userID uuid.UUID, tenantID *uuid.UUID, permKey string) bool {
 	// Fast path: check cache
-	if allowed, cached := s.cache.HasPermission(ctx, userID, tenantID, permKey); cached {
-		return allowed
+	if s.cache != nil {
+		if allowed, cached := s.cache.HasPermission(ctx, userID, tenantID, permKey); cached {
+			return allowed
+		}
 	}
 
 	// Slow path: load from DB and cache
@@ -50,7 +52,9 @@ func (s *RBACService) HasPermission(ctx context.Context, userID uuid.UUID, tenan
 		return false
 	}
 
-	s.cache.Set(ctx, userID, tenantID, keys)
+	if s.cache != nil {
+		s.cache.Set(ctx, userID, tenantID, keys)
+	}
 
 	for _, k := range keys {
 		if k == permKey {
@@ -72,14 +76,18 @@ func (s *RBACService) HasAnyPermission(ctx context.Context, userID uuid.UUID, te
 
 // GetUserPermissions returns all effective permission keys for a user.
 func (s *RBACService) GetUserPermissions(ctx context.Context, userID uuid.UUID, tenantID *uuid.UUID) ([]string, error) {
-	if keys, ok := s.cache.Get(ctx, userID, tenantID); ok {
-		return keys, nil
+	if s.cache != nil {
+		if keys, ok := s.cache.Get(ctx, userID, tenantID); ok {
+			return keys, nil
+		}
 	}
 	keys, err := s.repo.GetUserPermissionKeys(ctx, userID, tenantID)
 	if err != nil {
 		return nil, err
 	}
-	s.cache.Set(ctx, userID, tenantID, keys)
+	if s.cache != nil {
+		s.cache.Set(ctx, userID, tenantID, keys)
+	}
 	return keys, nil
 }
 
@@ -190,7 +198,7 @@ func (s *RBACService) ToggleRoleActive(ctx context.Context, id uuid.UUID, active
 	s.logAudit(ctx, updatedBy, action, "role", &id, nil, map[string]bool{"is_active": active})
 
 	// Invalidate cache for all users with this role
-	s.cache.InvalidateAll(ctx)
+	if s.cache != nil { s.cache.InvalidateAll(ctx) }
 	return nil
 }
 
@@ -278,6 +286,23 @@ func (s *RBACService) SetRolePermissions(ctx context.Context, roleID uuid.UUID, 
 		permIDs[i] = p.ID
 	}
 
+	// Prevent privilege escalation: check if granter has these permissions
+	if grantedBy != nil {
+		granterPerms, err := s.GetUserPermissions(ctx, *grantedBy, role.TenantID)
+		if err != nil {
+			return fmt.Errorf("failed to verify granter permissions: %v", err)
+		}
+		granterPermMap := make(map[string]bool)
+		for _, kp := range granterPerms {
+			granterPermMap[kp] = true
+		}
+		for _, reqPerm := range permKeys {
+			if !granterPermMap[reqPerm] {
+				return fmt.Errorf("privilege escalation prevented: cannot grant permission '%s' which you do not possess", reqPerm)
+			}
+		}
+	}
+
 	oldKeys, _ := s.repo.GetRolePermissionKeys(ctx, roleID)
 
 	if err := s.repo.BulkSetPermissions(ctx, roleID, permIDs, grantedBy); err != nil {
@@ -289,7 +314,7 @@ func (s *RBACService) SetRolePermissions(ctx context.Context, roleID uuid.UUID, 
 		map[string]interface{}{"new_permissions": permKeys})
 
 	// Invalidate cache for affected users
-	s.cache.InvalidateAll(ctx)
+	if s.cache != nil { s.cache.InvalidateAll(ctx) }
 	return nil
 }
 
@@ -318,7 +343,7 @@ func (s *RBACService) AssignRole(ctx context.Context, userID, roleID uuid.UUID, 
 		return err
 	}
 
-	s.cache.Invalidate(ctx, userID)
+	if s.cache != nil { s.cache.Invalidate(ctx, userID) }
 	s.logAudit(ctx, assignedBy, "role.assigned", "user_role", nil, nil,
 		map[string]interface{}{"user_id": userID, "role_id": roleID, "tenant_id": tenantID})
 	return nil
@@ -330,7 +355,7 @@ func (s *RBACService) RevokeRole(ctx context.Context, userID, roleID uuid.UUID, 
 		return err
 	}
 
-	s.cache.Invalidate(ctx, userID)
+	if s.cache != nil { s.cache.Invalidate(ctx, userID) }
 	s.logAudit(ctx, revokedBy, "role.revoked", "user_role", nil, nil,
 		map[string]interface{}{"user_id": userID, "role_id": roleID, "tenant_id": tenantID})
 	return nil
