@@ -4,6 +4,7 @@ import { RouterLink, RouterLinkActive, Router } from '@angular/router';
 import { AuthService } from '../../../core/services/auth.service';
 import { OrgContextService } from '../../../core/services/org-context.service';
 import { NotificationStateService } from '../../../core/services/notification-state.service';
+import { PermissionService } from '../../../core/services/permission.service';
 
 interface NavItem {
   label: string;
@@ -13,6 +14,8 @@ interface NavItem {
   section?: string;
   /** Feature key for industry-based visibility filtering. */
   feature?: string;
+  /** RBAC permission key — hides item if user lacks this permission. */
+  permission?: string;
 }
 
 /** Routes exempt from KYC blocking */
@@ -465,6 +468,7 @@ export class SidebarComponent {
   auth = inject(AuthService);
   orgCtx = inject(OrgContextService);
   notifState = inject(NotificationStateService);
+  private permissions = inject(PermissionService);
   private router = inject(Router);
 
   collapsed = signal(false);
@@ -473,23 +477,23 @@ export class SidebarComponent {
 
   private baseNavItems: Omit<NavItem, 'label'>[] = [
     { icon: 'dashboard', route: '/dashboard', section: 'Overview' },
-    { icon: 'groups', route: '/crew', roles: ['SYSTEM_ADMIN', 'EMPLOYER'], section: 'Operations' },
-    { icon: 'assignment', route: '/assignments', roles: ['SYSTEM_ADMIN', 'EMPLOYER'], section: 'Operations' },
-    { icon: 'playlist_add', route: '/assignments-bulk', roles: ['SYSTEM_ADMIN', 'EMPLOYER'], section: 'Operations' },
-    { icon: 'trending_up', route: '/earnings', section: 'Operations' },
-    { icon: 'account_balance_wallet', route: '/wallets', section: 'Finance' },
-    { icon: 'business', route: '/employers', roles: ['SYSTEM_ADMIN'], section: 'Organization' },
+    { icon: 'groups', route: '/crew', roles: ['SYSTEM_ADMIN', 'EMPLOYER'], section: 'Operations', permission: 'workers.view' },
+    { icon: 'assignment', route: '/assignments', roles: ['SYSTEM_ADMIN', 'EMPLOYER'], section: 'Operations', permission: 'assignments.view' },
+    { icon: 'playlist_add', route: '/assignments-bulk', roles: ['SYSTEM_ADMIN', 'EMPLOYER'], section: 'Operations', permission: 'assignments.bulk_assign' },
+    { icon: 'trending_up', route: '/earnings', section: 'Operations', permission: 'earnings.view' },
+    { icon: 'account_balance_wallet', route: '/wallets', section: 'Finance', permission: 'wallet.view' },
+    { icon: 'business', route: '/employers', roles: ['SYSTEM_ADMIN'], section: 'Organization', permission: 'platform.manage_organizations' },
     { icon: 'business', route: '/settings/tenant', roles: ['EMPLOYER'], section: 'Organization' },
     { icon: 'directions_bus', route: '/vehicles', roles: ['SYSTEM_ADMIN', 'EMPLOYER'], section: 'Organization', feature: 'vehicles' },
     { icon: 'route', route: '/routes', roles: ['SYSTEM_ADMIN', 'EMPLOYER'], section: 'Organization', feature: 'routes' },
     { icon: 'location_on', route: '/work-sites', roles: ['SYSTEM_ADMIN', 'EMPLOYER'], section: 'Organization', feature: 'work-sites' },
     { icon: 'support_agent', route: '/facilitators', roles: ['SYSTEM_ADMIN', 'EMPLOYER'], section: 'Operations', feature: 'facilitators' },
-    { icon: 'receipt_long', route: '/payroll', roles: ['SYSTEM_ADMIN', 'EMPLOYER'], section: 'Finance' },
-    { icon: 'event_repeat', route: '/pay-schedules', roles: ['SYSTEM_ADMIN', 'EMPLOYER'], section: 'Finance' },
-    { icon: 'savings', route: '/loans', section: 'Finance' },
+    { icon: 'receipt_long', route: '/payroll', roles: ['SYSTEM_ADMIN', 'EMPLOYER'], section: 'Finance', permission: 'payroll.view' },
+    { icon: 'event_repeat', route: '/pay-schedules', roles: ['SYSTEM_ADMIN', 'EMPLOYER'], section: 'Finance', permission: 'payroll.manage_schedules' },
+    { icon: 'savings', route: '/loans', section: 'Finance', permission: 'loans.view' },
     { icon: 'credit_score', route: '/credit', section: 'Finance' },
-    { icon: 'health_and_safety', route: '/insurance', section: 'Finance' },
-    { icon: 'folder', route: '/documents', roles: ['SYSTEM_ADMIN', 'EMPLOYER'], section: 'System' },
+    { icon: 'health_and_safety', route: '/insurance', section: 'Finance', permission: 'insurance.view' },
+    { icon: 'folder', route: '/documents', roles: ['SYSTEM_ADMIN', 'EMPLOYER'], section: 'System', permission: 'documents.view' },
     { icon: 'notifications', route: '/notifications', section: 'System' },
     { icon: 'admin_panel_settings', route: '/admin', roles: ['SYSTEM_ADMIN'], section: 'System' },
     { icon: 'tune', route: '/settings/tenant', roles: ['SYSTEM_ADMIN', 'EMPLOYER'], section: 'System' },
@@ -534,6 +538,8 @@ export class SidebarComponent {
         if (item.roles && !item.roles.includes(role)) return false;
         // Industry-adaptive visibility
         if (item.feature && !this.orgCtx.isFeatureVisible(item.feature)) return false;
+        // RBAC permission check (graceful — if permissions not loaded yet, show item)
+        if (item.permission && this.permissions.loaded() && !this.permissions.can(item.permission)) return false;
         return true;
       })
       .map(item => ({ ...item, label: this.navLabel(item.route) }));

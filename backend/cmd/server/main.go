@@ -657,6 +657,7 @@ func main() {
 	serviceAPIKey := os.Getenv("SERVICE_API_KEY")
 	secured := v1.Group("")
 	secured.Use(middleware.JWTAuth(jwtManager, serviceAPIKey))
+	secured.Use(middleware.InjectPermissionChecker(rbacSvc)) // RBAC permission checker (additive)
 	{
 		// Current user
 		secured.GET("/auth/me", authHandler.Me)
