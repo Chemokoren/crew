@@ -36,8 +36,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"github.com/kibsoft/amy-mis/internal/config"
+	"github.com/kibsoft/amy-mis/internal/credit"
 	"github.com/kibsoft/amy-mis/internal/database"
 	"github.com/kibsoft/amy-mis/internal/external/email"
 	"github.com/kibsoft/amy-mis/internal/external/identity"
@@ -54,13 +54,13 @@ import (
 	"github.com/kibsoft/amy-mis/internal/middleware"
 	"github.com/kibsoft/amy-mis/internal/models"
 	pgRepo "github.com/kibsoft/amy-mis/internal/repository/postgres"
-	"github.com/kibsoft/amy-mis/internal/credit"
 	"github.com/kibsoft/amy-mis/internal/service"
 	"github.com/kibsoft/amy-mis/internal/ussd"
 	"github.com/kibsoft/amy-mis/internal/worker"
 	"github.com/kibsoft/amy-mis/pkg/jwt"
 	"github.com/kibsoft/amy-mis/pkg/retry"
 	"github.com/kibsoft/amy-mis/pkg/types"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -204,7 +204,6 @@ func main() {
 		ls, _ := storage.NewLocalStorageClient("./storage", "")
 		fileStorage = ls
 	}
-
 
 	// --- 7. Initialize repositories ---
 	userRepo := pgRepo.NewUserRepo(db)
@@ -436,6 +435,7 @@ func main() {
 
 	// --- RBAC (Enterprise Roles & Permissions) ---
 	permCache := service.NewPermissionCache(redisClient, 5*time.Minute)
+	go permCache.SubscribeInvalidations(context.Background())
 	rbacSvc := service.NewRBACService(rbacRepo, auditSvc, permCache)
 	rbacHandler := handler.NewRBACHandler(rbacSvc)
 
@@ -446,6 +446,11 @@ func main() {
 			slog.Error("failed to sync RBAC permissions", slog.String("error", err.Error()))
 		} else {
 			slog.Info("RBAC permissions synced to database")
+		}
+		if err := rbacSvc.SyncSystemRoles(ctx); err != nil {
+			slog.Error("failed to sync RBAC system roles", slog.String("error", err.Error()))
+		} else {
+			slog.Info("RBAC system roles synced")
 		}
 		if err := rbacSvc.SyncTemplates(ctx); err != nil {
 			slog.Error("failed to sync RBAC templates", slog.String("error", err.Error()))
@@ -461,7 +466,6 @@ func main() {
 		logger,
 	)
 	ussdHandler := handler.NewUSSDHandler(ussdSession)
-
 
 	// --- 13a. Payment: JamboPay (config-driven) ---
 	var paymentProviders []payment.Provider
@@ -601,7 +605,7 @@ func main() {
 	router.Use(middleware.CORS(cfg.CORSAllowedOrigins))
 	router.Use(middleware.SecureHeaders())
 	router.Use(middleware.RequestID())
-	router.Use(otelgin.Middleware("amy-mis-api")) // OTEL distributed traces
+	router.Use(otelgin.Middleware("amy-mis-api"))                         // OTEL distributed traces
 	router.Use(middleware.MaxBodySize(int64(cfg.MaxRequestBodyMB) << 20)) // Configurable body size limit
 	router.Use(middleware.RateLimit(redisClient, cfg.RateLimitRPM, time.Minute))
 	router.Use(middleware.Timeout(time.Duration(cfg.RequestTimeoutSec) * time.Second))
@@ -669,54 +673,51 @@ func main() {
 		// Crew members (SACCO admins & system admins)
 		crew := secured.Group("/crew")
 		crew.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin))
-		crew.Use(middleware.RequirePermission(models.PermWorkersView))
 		{
-			crew.POST("", crewHandler.Create)
-			crew.GET("", crewHandler.List)
-			crew.GET("/:id", crewHandler.GetByID)
-			crew.PUT("/:id/kyc", crewHandler.UpdateKYC)
-			crew.POST("/:id/verify", crewHandler.VerifyNationalID)
-			crew.DELETE("/:id", crewHandler.Deactivate)
-			crew.POST("/bulk-import", crewHandler.BulkImport)
-			crew.GET("/search", crewHandler.SearchByNationalID)
-			crew.GET("/lookup", crewHandler.LookupByNationalID)
-			crew.POST("/:id/resend-credentials", crewHandler.ResendCredentials)
+			crew.POST("", middleware.RequirePermission(models.PermWorkersCreate), crewHandler.Create)
+			crew.GET("", middleware.RequirePermission(models.PermWorkersView), crewHandler.List)
+			crew.GET("/:id", middleware.RequirePermission(models.PermWorkersView), crewHandler.GetByID)
+			crew.PUT("/:id/kyc", middleware.RequireAnyPermission(models.PermWorkersVerifyKYC, models.PermWorkersUpdate), crewHandler.UpdateKYC)
+			crew.POST("/:id/verify", middleware.RequirePermission(models.PermWorkersVerifyKYC), crewHandler.VerifyNationalID)
+			crew.DELETE("/:id", middleware.RequireAnyPermission(models.PermWorkersDelete, models.PermWorkersArchive), crewHandler.Deactivate)
+			crew.POST("/bulk-import", middleware.RequirePermission(models.PermWorkersBulkImport), crewHandler.BulkImport)
+			crew.GET("/search", middleware.RequirePermission(models.PermWorkersView), crewHandler.SearchByNationalID)
+			crew.GET("/lookup", middleware.RequirePermission(models.PermWorkersView), crewHandler.LookupByNationalID)
+			crew.POST("/:id/resend-credentials", middleware.RequireAnyPermission(models.PermWorkersUpdate, models.PermUsersUpdate), crewHandler.ResendCredentials)
 		}
 
 		// Assignments
 		assignments := secured.Group("/assignments")
 		{
 			// Read-only access for CREW, full access for SACCO_ADMIN and SYSTEM_ADMIN
-			assignments.GET("", middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin, types.RoleCrewUser), assignmentHandler.List)
-			assignments.GET("/:id", middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin, types.RoleCrewUser), assignmentHandler.GetByID)
+			assignments.GET("", middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin, types.RoleCrewUser), middleware.RequirePermission(models.PermAssignmentsView), assignmentHandler.List)
+			assignments.GET("/:id", middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin, types.RoleCrewUser), middleware.RequirePermission(models.PermAssignmentsView), assignmentHandler.GetByID)
 
 			adminAssignments := assignments.Group("")
 			adminAssignments.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin))
-			adminAssignments.Use(middleware.RequirePermission(models.PermAssignmentsCreate))
 			{
-				adminAssignments.POST("", assignmentHandler.Create)
-			adminAssignments.POST("/bulk", assignmentHandler.BulkCreate)
-				adminAssignments.PUT("/:id", assignmentHandler.Update)
-				adminAssignments.POST("/:id/complete", assignmentHandler.Complete)
-				adminAssignments.POST("/:id/cancel", assignmentHandler.Cancel)
-				adminAssignments.POST("/:id/reassign", assignmentHandler.Reassign)
+				adminAssignments.POST("", middleware.RequirePermission(models.PermAssignmentsCreate), assignmentHandler.Create)
+				adminAssignments.POST("/bulk", middleware.RequireAnyPermission(models.PermAssignmentsBulkAssign, models.PermAssignmentsCreate), assignmentHandler.BulkCreate)
+				adminAssignments.PUT("/:id", middleware.RequirePermission(models.PermAssignmentsUpdate), assignmentHandler.Update)
+				adminAssignments.POST("/:id/complete", middleware.RequireAnyPermission(models.PermAssignmentsApprove, models.PermAssignmentsUpdate), assignmentHandler.Complete)
+				adminAssignments.POST("/:id/cancel", middleware.RequireAnyPermission(models.PermAssignmentsReject, models.PermAssignmentsUpdate), assignmentHandler.Cancel)
+				adminAssignments.POST("/:id/reassign", middleware.RequirePermission(models.PermAssignmentsUpdate), assignmentHandler.Reassign)
 			}
 
 			// Check-in/check-out accessible to crew, sacco admin, and system admin
-			assignments.POST("/:id/check-in", middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin, types.RoleCrewUser), assignmentHandler.CheckIn)
-			assignments.POST("/:id/check-out", middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin, types.RoleCrewUser), assignmentHandler.CheckOut)
+			assignments.POST("/:id/check-in", middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin, types.RoleCrewUser), middleware.RequirePermission(models.PermAssignmentsClockIn), assignmentHandler.CheckIn)
+			assignments.POST("/:id/check-out", middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin, types.RoleCrewUser), middleware.RequirePermission(models.PermAssignmentsClockOut), assignmentHandler.CheckOut)
 		}
 
 		// Wallets (all authenticated users; handler enforces ownership for CREW users)
 		wallets := secured.Group("/wallets")
-		wallets.Use(middleware.RequirePermission(models.PermWalletView))
 		{
-			wallets.GET("/:crew_member_id", walletHandler.GetBalance)
-			wallets.GET("/:crew_member_id/transactions", walletHandler.ListTransactions)
-			wallets.GET("/:crew_member_id/export", walletHandler.ExportCSV)
-			wallets.POST("/credit", walletHandler.Credit)
-			wallets.POST("/debit", walletHandler.Debit)
-			wallets.POST("/:crew_member_id/payout", payoutHandler.Payout)
+			wallets.GET("/:crew_member_id", middleware.RequirePermission(models.PermWalletView), walletHandler.GetBalance)
+			wallets.GET("/:crew_member_id/transactions", middleware.RequireAnyPermission(models.PermWalletViewTransactions, models.PermWalletView), walletHandler.ListTransactions)
+			wallets.GET("/:crew_member_id/export", middleware.RequirePermission(models.PermWalletExport), walletHandler.ExportCSV)
+			wallets.POST("/credit", middleware.RequirePermission(models.PermWalletFundFloat), walletHandler.Credit)
+			wallets.POST("/debit", middleware.RequireAnyPermission(models.PermWalletReverseTransaction, models.PermWalletReconcile), walletHandler.Debit)
+			wallets.POST("/:crew_member_id/payout", middleware.RequireAnyPermission(models.PermWalletApprovePayout, models.PermWalletWithdraw), payoutHandler.Payout)
 		}
 
 		// Atomic financial transactions (idempotent, all-or-nothing)
@@ -725,11 +726,13 @@ func main() {
 			// Employee payout: debit org float (gross) + credit wallet (net) in one TX
 			transactions.POST("/employee-payout",
 				middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin),
+				middleware.RequireAnyPermission(models.PermPayrollProcess, models.PermWalletApprovePayout),
 				transactionHandler.EmployeePayout)
 
 			// Bulk employee payout: process multiple payouts sequentially, returns per-item result
 			transactions.POST("/bulk-employee-payout",
 				middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin),
+				middleware.RequireAnyPermission(models.PermPayrollProcess, models.PermWalletApprovePayout),
 				transactionHandler.BulkEmployeePayout)
 
 			// Wallet-to-wallet transfer: debit sender + credit recipient in one TX
@@ -742,196 +745,193 @@ func main() {
 		// Original route kept for backward compat
 		saccos := secured.Group("/saccos")
 		saccos.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin))
-		saccos.Use(middleware.RequirePermission(models.PermOrganizationsView))
 		{
-			saccos.POST("", orgHandler.Create)
-			saccos.GET("", orgHandler.List)
-			saccos.GET("/:id", orgHandler.GetByID)
-			saccos.PUT("/:id", orgHandler.Update)
-			saccos.DELETE("/:id", orgHandler.Delete)
-			saccos.GET("/:id/members", orgHandler.ListMembers)
-			saccos.POST("/:id/members", orgHandler.AddMember)
-			saccos.PUT("/:id/members/:membership_id", orgHandler.UpdateMember)
-			saccos.DELETE("/:id/members/:membership_id", orgHandler.RemoveMember)
-			saccos.GET("/:id/float", orgHandler.GetFloat)
-			saccos.POST("/:id/float/credit", orgHandler.CreditFloat)
-			saccos.POST("/:id/float/topup", orgHandler.TopUpFloat)
-			saccos.POST("/:id/float/topup/:tx_id/confirm", orgHandler.ConfirmTopUp)
-			saccos.POST("/:id/float/topup/:tx_id/reject", orgHandler.RejectTopUp)
-		saccos.POST("/:id/float/poll-stk", orgHandler.PollPendingSTK)
-		saccos.POST("/:id/float/poll-stk/:tx_id", orgHandler.PollSingleSTK)
-			saccos.POST("/:id/float/debit", orgHandler.DebitFloat)
-			saccos.GET("/:id/float/transactions", orgHandler.ListFloatTransactions)
+			saccos.POST("", middleware.RequirePermission(models.PermOrganizationsCreate), orgHandler.Create)
+			saccos.GET("", middleware.RequirePermission(models.PermOrganizationsView), orgHandler.List)
+			saccos.GET("/:id", middleware.RequirePermission(models.PermOrganizationsView), orgHandler.GetByID)
+			saccos.PUT("/:id", middleware.RequirePermission(models.PermOrganizationsUpdate), orgHandler.Update)
+			saccos.DELETE("/:id", middleware.RequirePermission(models.PermOrganizationsDelete), orgHandler.Delete)
+			saccos.GET("/:id/members", middleware.RequireAnyPermission(models.PermOrganizationsView, models.PermUsersView), orgHandler.ListMembers)
+			saccos.POST("/:id/members", middleware.RequireAnyPermission(models.PermOrganizationsUpdate, models.PermUsersCreate), orgHandler.AddMember)
+			saccos.PUT("/:id/members/:membership_id", middleware.RequireAnyPermission(models.PermOrganizationsUpdate, models.PermUsersUpdate), orgHandler.UpdateMember)
+			saccos.DELETE("/:id/members/:membership_id", middleware.RequireAnyPermission(models.PermOrganizationsUpdate, models.PermUsersDeactivate), orgHandler.RemoveMember)
+			saccos.GET("/:id/float", middleware.RequireAnyPermission(models.PermWalletView, models.PermOrganizationsView), orgHandler.GetFloat)
+			saccos.POST("/:id/float/credit", middleware.RequirePermission(models.PermWalletFundFloat), orgHandler.CreditFloat)
+			saccos.POST("/:id/float/topup", middleware.RequirePermission(models.PermWalletFundFloat), orgHandler.TopUpFloat)
+			saccos.POST("/:id/float/topup/:tx_id/confirm", middleware.RequirePermission(models.PermWalletReconcile), orgHandler.ConfirmTopUp)
+			saccos.POST("/:id/float/topup/:tx_id/reject", middleware.RequirePermission(models.PermWalletReconcile), orgHandler.RejectTopUp)
+			saccos.POST("/:id/float/poll-stk", middleware.RequirePermission(models.PermWalletReconcile), orgHandler.PollPendingSTK)
+			saccos.POST("/:id/float/poll-stk/:tx_id", middleware.RequirePermission(models.PermWalletReconcile), orgHandler.PollSingleSTK)
+			saccos.POST("/:id/float/debit", middleware.RequireAnyPermission(models.PermWalletReverseTransaction, models.PermWalletReconcile), orgHandler.DebitFloat)
+			saccos.GET("/:id/float/transactions", middleware.RequireAnyPermission(models.PermWalletViewTransactions, models.PermWalletView), orgHandler.ListFloatTransactions)
 		}
 
 		// D1: /organizations/* aliases — same handlers, industry-agnostic URL
 		orgs := secured.Group("/organizations")
 		orgs.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin))
-		orgs.Use(middleware.RequirePermission(models.PermOrganizationsView))
 		{
-			orgs.POST("", orgHandler.Create)
-			orgs.GET("", orgHandler.List)
-			orgs.GET("/:id", orgHandler.GetByID)
-			orgs.PUT("/:id", orgHandler.Update)
-			orgs.DELETE("/:id", orgHandler.Delete)
-			orgs.GET("/:id/members", orgHandler.ListMembers)
-			orgs.POST("/:id/members", orgHandler.AddMember)
-			orgs.PUT("/:id/members/:membership_id", orgHandler.UpdateMember)
-			orgs.DELETE("/:id/members/:membership_id", orgHandler.RemoveMember)
-			orgs.GET("/:id/float", orgHandler.GetFloat)
-			orgs.POST("/:id/float/credit", orgHandler.CreditFloat)
-			orgs.POST("/:id/float/topup", orgHandler.TopUpFloat)
-			orgs.POST("/:id/float/topup/:tx_id/confirm", orgHandler.ConfirmTopUp)
-			orgs.POST("/:id/float/topup/:tx_id/reject", orgHandler.RejectTopUp)
-		orgs.POST("/:id/float/poll-stk", orgHandler.PollPendingSTK)
-		orgs.POST("/:id/float/poll-stk/:tx_id", orgHandler.PollSingleSTK)
-			orgs.POST("/:id/float/debit", orgHandler.DebitFloat)
-			orgs.GET("/:id/float/transactions", orgHandler.ListFloatTransactions)
+			orgs.POST("", middleware.RequirePermission(models.PermOrganizationsCreate), orgHandler.Create)
+			orgs.GET("", middleware.RequirePermission(models.PermOrganizationsView), orgHandler.List)
+			orgs.GET("/:id", middleware.RequirePermission(models.PermOrganizationsView), orgHandler.GetByID)
+			orgs.PUT("/:id", middleware.RequirePermission(models.PermOrganizationsUpdate), orgHandler.Update)
+			orgs.DELETE("/:id", middleware.RequirePermission(models.PermOrganizationsDelete), orgHandler.Delete)
+			orgs.GET("/:id/members", middleware.RequireAnyPermission(models.PermOrganizationsView, models.PermUsersView), orgHandler.ListMembers)
+			orgs.POST("/:id/members", middleware.RequireAnyPermission(models.PermOrganizationsUpdate, models.PermUsersCreate), orgHandler.AddMember)
+			orgs.PUT("/:id/members/:membership_id", middleware.RequireAnyPermission(models.PermOrganizationsUpdate, models.PermUsersUpdate), orgHandler.UpdateMember)
+			orgs.DELETE("/:id/members/:membership_id", middleware.RequireAnyPermission(models.PermOrganizationsUpdate, models.PermUsersDeactivate), orgHandler.RemoveMember)
+			orgs.GET("/:id/float", middleware.RequireAnyPermission(models.PermWalletView, models.PermOrganizationsView), orgHandler.GetFloat)
+			orgs.POST("/:id/float/credit", middleware.RequirePermission(models.PermWalletFundFloat), orgHandler.CreditFloat)
+			orgs.POST("/:id/float/topup", middleware.RequirePermission(models.PermWalletFundFloat), orgHandler.TopUpFloat)
+			orgs.POST("/:id/float/topup/:tx_id/confirm", middleware.RequirePermission(models.PermWalletReconcile), orgHandler.ConfirmTopUp)
+			orgs.POST("/:id/float/topup/:tx_id/reject", middleware.RequirePermission(models.PermWalletReconcile), orgHandler.RejectTopUp)
+			orgs.POST("/:id/float/poll-stk", middleware.RequirePermission(models.PermWalletReconcile), orgHandler.PollPendingSTK)
+			orgs.POST("/:id/float/poll-stk/:tx_id", middleware.RequirePermission(models.PermWalletReconcile), orgHandler.PollSingleSTK)
+			orgs.POST("/:id/float/debit", middleware.RequireAnyPermission(models.PermWalletReverseTransaction, models.PermWalletReconcile), orgHandler.DebitFloat)
+			orgs.GET("/:id/float/transactions", middleware.RequireAnyPermission(models.PermWalletViewTransactions, models.PermWalletView), orgHandler.ListFloatTransactions)
 			// Tenant config, job types, pay schedules — also under /organizations/
-			orgs.GET("/:id/config", tenantHandler.GetConfig)
-			orgs.PUT("/:id/config", tenantHandler.UpdateConfig)
-			orgs.GET("/:id/job-types", tenantHandler.ListJobTypes)
-			orgs.POST("/:id/job-types", tenantHandler.CreateJobType)
-			orgs.PUT("/:id/job-types/:job_type_id", tenantHandler.UpdateJobType)
-			orgs.DELETE("/:id/job-types/:job_type_id", tenantHandler.DeleteJobType)
-			orgs.GET("/:id/pay-schedules", tenantHandler.ListPaySchedules)
-			orgs.POST("/:id/pay-schedules", tenantHandler.CreatePaySchedule)
-			orgs.PUT("/:id/pay-schedules/:schedule_id", tenantHandler.UpdatePaySchedule)
-			orgs.DELETE("/:id/pay-schedules/:schedule_id", tenantHandler.DeletePaySchedule)
-			orgs.POST("/:id/bootstrap", tenantHandler.BootstrapIndustry)
+			orgs.GET("/:id/config", middleware.RequireAnyPermission(models.PermSettingsView, models.PermOrganizationsView), tenantHandler.GetConfig)
+			orgs.PUT("/:id/config", middleware.RequireAnyPermission(models.PermSettingsUpdate, models.PermOrganizationsManageConfig), tenantHandler.UpdateConfig)
+			orgs.GET("/:id/job-types", middleware.RequireAnyPermission(models.PermSettingsView, models.PermOrganizationsView), tenantHandler.ListJobTypes)
+			orgs.POST("/:id/job-types", middleware.RequireAnyPermission(models.PermSettingsManageTenant, models.PermOrganizationsManageConfig), tenantHandler.CreateJobType)
+			orgs.PUT("/:id/job-types/:job_type_id", middleware.RequireAnyPermission(models.PermSettingsManageTenant, models.PermOrganizationsManageConfig), tenantHandler.UpdateJobType)
+			orgs.DELETE("/:id/job-types/:job_type_id", middleware.RequireAnyPermission(models.PermSettingsManageTenant, models.PermOrganizationsManageConfig), tenantHandler.DeleteJobType)
+			orgs.GET("/:id/pay-schedules", middleware.RequireAnyPermission(models.PermPayrollView, models.PermPayrollManageSchedules), tenantHandler.ListPaySchedules)
+			orgs.POST("/:id/pay-schedules", middleware.RequirePermission(models.PermPayrollManageSchedules), tenantHandler.CreatePaySchedule)
+			orgs.PUT("/:id/pay-schedules/:schedule_id", middleware.RequirePermission(models.PermPayrollManageSchedules), tenantHandler.UpdatePaySchedule)
+			orgs.DELETE("/:id/pay-schedules/:schedule_id", middleware.RequirePermission(models.PermPayrollManageSchedules), tenantHandler.DeletePaySchedule)
+			orgs.POST("/:id/bootstrap", middleware.RequireAnyPermission(models.PermSettingsManageTenant, models.PermOrganizationsManageConfig), tenantHandler.BootstrapIndustry)
 		}
 
 		// Tenant configuration — legacy /tenants/* routes (backward compat)
 		tenants := secured.Group("/tenants")
 		tenants.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin))
 		{
-			tenants.GET("/:id/config", tenantHandler.GetConfig)
-			tenants.PUT("/:id/config", tenantHandler.UpdateConfig)
-			tenants.GET("/:id/job-types", tenantHandler.ListJobTypes)
-			tenants.POST("/:id/job-types", tenantHandler.CreateJobType)
-			tenants.PUT("/:id/job-types/:job_type_id", tenantHandler.UpdateJobType)
-			tenants.DELETE("/:id/job-types/:job_type_id", tenantHandler.DeleteJobType)
-			tenants.GET("/:id/pay-schedules", tenantHandler.ListPaySchedules)
-			tenants.POST("/:id/pay-schedules", tenantHandler.CreatePaySchedule)
-			tenants.PUT("/:id/pay-schedules/:schedule_id", tenantHandler.UpdatePaySchedule)
-			tenants.DELETE("/:id/pay-schedules/:schedule_id", tenantHandler.DeletePaySchedule)
-			tenants.POST("/:id/bootstrap", tenantHandler.BootstrapIndustry)
+			tenants.GET("/:id/config", middleware.RequireAnyPermission(models.PermSettingsView, models.PermOrganizationsView), tenantHandler.GetConfig)
+			tenants.PUT("/:id/config", middleware.RequireAnyPermission(models.PermSettingsUpdate, models.PermOrganizationsManageConfig), tenantHandler.UpdateConfig)
+			tenants.GET("/:id/job-types", middleware.RequireAnyPermission(models.PermSettingsView, models.PermOrganizationsView), tenantHandler.ListJobTypes)
+			tenants.POST("/:id/job-types", middleware.RequireAnyPermission(models.PermSettingsManageTenant, models.PermOrganizationsManageConfig), tenantHandler.CreateJobType)
+			tenants.PUT("/:id/job-types/:job_type_id", middleware.RequireAnyPermission(models.PermSettingsManageTenant, models.PermOrganizationsManageConfig), tenantHandler.UpdateJobType)
+			tenants.DELETE("/:id/job-types/:job_type_id", middleware.RequireAnyPermission(models.PermSettingsManageTenant, models.PermOrganizationsManageConfig), tenantHandler.DeleteJobType)
+			tenants.GET("/:id/pay-schedules", middleware.RequireAnyPermission(models.PermPayrollView, models.PermPayrollManageSchedules), tenantHandler.ListPaySchedules)
+			tenants.POST("/:id/pay-schedules", middleware.RequirePermission(models.PermPayrollManageSchedules), tenantHandler.CreatePaySchedule)
+			tenants.PUT("/:id/pay-schedules/:schedule_id", middleware.RequirePermission(models.PermPayrollManageSchedules), tenantHandler.UpdatePaySchedule)
+			tenants.DELETE("/:id/pay-schedules/:schedule_id", middleware.RequirePermission(models.PermPayrollManageSchedules), tenantHandler.DeletePaySchedule)
+			tenants.POST("/:id/bootstrap", middleware.RequireAnyPermission(models.PermSettingsManageTenant, models.PermOrganizationsManageConfig), tenantHandler.BootstrapIndustry)
 		}
 
 		// Industry templates (public, read-only)
-		secured.GET("/industry-templates", tenantHandler.GetIndustryTemplate)
+		secured.GET("/industry-templates", middleware.RequireAnyPermission(models.PermSettingsView, models.PermOrganizationsView), tenantHandler.GetIndustryTemplate)
 
 		// Vehicles
 		vehicles := secured.Group("/vehicles")
 		vehicles.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin))
 		{
-			vehicles.POST("", vehicleHandler.Create)
-			vehicles.GET("", vehicleHandler.List)
-			vehicles.GET("/:id", vehicleHandler.GetByID)
-			vehicles.PUT("/:id", vehicleHandler.Update)
-			vehicles.DELETE("/:id", vehicleHandler.Delete)
+			vehicles.POST("", middleware.RequirePermission(models.PermVehiclesCreate), vehicleHandler.Create)
+			vehicles.GET("", middleware.RequirePermission(models.PermVehiclesView), vehicleHandler.List)
+			vehicles.GET("/:id", middleware.RequirePermission(models.PermVehiclesView), vehicleHandler.GetByID)
+			vehicles.PUT("/:id", middleware.RequirePermission(models.PermVehiclesUpdate), vehicleHandler.Update)
+			vehicles.DELETE("/:id", middleware.RequirePermission(models.PermVehiclesDelete), vehicleHandler.Delete)
 		}
 
 		// Routes
 		routes := secured.Group("/routes")
 		routes.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin))
 		{
-			routes.POST("", routeHandler.Create)
-			routes.GET("", routeHandler.List)
-			routes.GET("/:id", routeHandler.GetByID)
-			routes.PUT("/:id", routeHandler.Update)
-			routes.DELETE("/:id", routeHandler.Delete)
+			routes.POST("", middleware.RequirePermission(models.PermRoutesCreate), routeHandler.Create)
+			routes.GET("", middleware.RequirePermission(models.PermRoutesView), routeHandler.List)
+			routes.GET("/:id", middleware.RequirePermission(models.PermRoutesView), routeHandler.GetByID)
+			routes.PUT("/:id", middleware.RequirePermission(models.PermRoutesUpdate), routeHandler.Update)
+			routes.DELETE("/:id", middleware.RequirePermission(models.PermRoutesDelete), routeHandler.Delete)
 		}
 
 		// Work Sites (full CRUD, org-scoped)
 		workSites := secured.Group("/work-sites")
 		workSites.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin))
 		{
-			workSites.POST("", workSiteHandler.Create)
-			workSites.GET("", workSiteHandler.List)
-			workSites.GET("/:id", workSiteHandler.GetByID)
-			workSites.PUT("/:id", workSiteHandler.Update)
-			workSites.DELETE("/:id", workSiteHandler.Delete)
+			workSites.POST("", middleware.RequirePermission(models.PermWorkSitesCreate), workSiteHandler.Create)
+			workSites.GET("", middleware.RequirePermission(models.PermWorkSitesView), workSiteHandler.List)
+			workSites.GET("/:id", middleware.RequirePermission(models.PermWorkSitesView), workSiteHandler.GetByID)
+			workSites.PUT("/:id", middleware.RequirePermission(models.PermWorkSitesUpdate), workSiteHandler.Update)
+			workSites.DELETE("/:id", middleware.RequirePermission(models.PermWorkSitesDelete), workSiteHandler.Delete)
 		}
 
 		// Payroll (system admin + sacco admin)
 		payrollRoutes := secured.Group("/payroll")
 		payrollRoutes.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin))
-		payrollRoutes.Use(middleware.RequirePermission(models.PermPayrollView))
 		{
-			payrollRoutes.POST("", payrollHandler.Create)
-			payrollRoutes.GET("", payrollHandler.List)
+			payrollRoutes.POST("", middleware.RequireAnyPermission(models.PermPayrollCreate, models.PermPayrollRun), payrollHandler.Create)
+			payrollRoutes.GET("", middleware.RequirePermission(models.PermPayrollView), payrollHandler.List)
 			// Static paths MUST be registered before /:id to avoid Gin matching "periods" as a UUID
-			payrollRoutes.GET("/periods", payrollHandler.ListPeriods)
-			payrollRoutes.GET("/:id", payrollHandler.GetByID)
-			payrollRoutes.GET("/:id/entries", payrollHandler.GetEntries)
-			payrollRoutes.POST("/:id/process", payrollHandler.Process)
-			payrollRoutes.POST("/:id/approve", payrollHandler.Approve)
-			payrollRoutes.POST("/:id/submit", payrollHandler.Submit)
+			payrollRoutes.GET("/periods", middleware.RequireAnyPermission(models.PermPayrollView, models.PermPayrollManagePeriods), payrollHandler.ListPeriods)
+			payrollRoutes.GET("/:id", middleware.RequirePermission(models.PermPayrollView), payrollHandler.GetByID)
+			payrollRoutes.GET("/:id/entries", middleware.RequireAnyPermission(models.PermPayrollViewEntries, models.PermPayrollView), payrollHandler.GetEntries)
+			payrollRoutes.POST("/:id/process", middleware.RequirePermission(models.PermPayrollProcess), payrollHandler.Process)
+			payrollRoutes.POST("/:id/approve", middleware.RequirePermission(models.PermPayrollApprove), payrollHandler.Approve)
+			payrollRoutes.POST("/:id/submit", middleware.RequirePermission(models.PermComplianceSubmitStatutory), payrollHandler.Submit)
 		}
 
 		// Documents
 		documents := secured.Group("/documents")
 		documents.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleSaccoAdmin))
 		{
-			documents.POST("/upload", docHandler.Upload)
-			documents.GET("/:id/download", docHandler.Download)
-			documents.GET("", docHandler.List)
-			documents.DELETE("/:id", docHandler.Delete)
+			documents.POST("/upload", middleware.RequirePermission(models.PermDocumentsUpload), docHandler.Upload)
+			documents.GET("/:id/download", middleware.RequirePermission(models.PermDocumentsView), docHandler.Download)
+			documents.GET("", middleware.RequirePermission(models.PermDocumentsView), docHandler.List)
+			documents.DELETE("/:id", middleware.RequirePermission(models.PermDocumentsDelete), docHandler.Delete)
 		}
 
 		// Earnings
 		earnings := secured.Group("/earnings")
 		{
-			earnings.GET("", earningHandler.List)
-			earnings.GET("/summary/:crew_member_id", earningHandler.SummaryDashboard)
+			earnings.GET("", middleware.RequirePermission(models.PermEarningsView), earningHandler.List)
+			earnings.GET("/summary/:crew_member_id", middleware.RequirePermission(models.PermEarningsView), earningHandler.SummaryDashboard)
 		}
 
 		// Notifications (all authenticated users)
 		notifications := secured.Group("/notifications")
 		{
-			notifications.GET("", notifHandler.List)
-			notifications.PUT("/:id/read", notifHandler.MarkRead)
-			notifications.GET("/preferences", notifHandler.GetPreferences)
-			notifications.PUT("/preferences", notifHandler.UpdatePreferences)
+			notifications.GET("", middleware.RequirePermission(models.PermNotificationsView), notifHandler.List)
+			notifications.PUT("/:id/read", middleware.RequirePermission(models.PermNotificationsView), notifHandler.MarkRead)
+			notifications.GET("/preferences", middleware.RequirePermission(models.PermNotificationsView), notifHandler.GetPreferences)
+			notifications.PUT("/preferences", middleware.RequirePermission(models.PermNotificationsView), notifHandler.UpdatePreferences)
 		}
 
 		// Financials: Credit
 		credit := secured.Group("/credit")
 		{
-			credit.GET("/:crew_member_id", creditHandler.GetScore)
-			credit.GET("/:crew_member_id/detailed", creditHandler.GetDetailedScore)
-			credit.GET("/:crew_member_id/history", creditHandler.GetScoreHistory)
-			credit.POST("/:crew_member_id/calculate", creditHandler.CalculateScore)
+			credit.GET("/:crew_member_id", middleware.RequirePermission(models.PermCreditView), creditHandler.GetScore)
+			credit.GET("/:crew_member_id/detailed", middleware.RequirePermission(models.PermCreditView), creditHandler.GetDetailedScore)
+			credit.GET("/:crew_member_id/history", middleware.RequirePermission(models.PermCreditView), creditHandler.GetScoreHistory)
+			credit.POST("/:crew_member_id/calculate", middleware.RequirePermission(models.PermCreditScoreCompute), creditHandler.CalculateScore)
 		}
 
 		// Financials: Loans
 		loans := secured.Group("/loans")
 		{
-			loans.POST("", loanHandler.Apply)
-			loans.GET("", loanHandler.List)
-			loans.GET("/tier/:crew_member_id", loanHandler.GetTier)
-			loans.POST("/:id/repay", loanHandler.Repay)
-			
+			loans.POST("", middleware.RequirePermission(models.PermLoansApply), loanHandler.Apply)
+			loans.GET("", middleware.RequirePermission(models.PermLoansView), loanHandler.List)
+			loans.GET("/tier/:crew_member_id", middleware.RequirePermission(models.PermLoansView), loanHandler.GetTier)
+			loans.POST("/:id/repay", middleware.RequireAnyPermission(models.PermLoansApply, models.PermLoansManage), loanHandler.Repay)
+
 			loanAdmin := loans.Group("")
 			loanAdmin.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleLender))
 			{
-				loanAdmin.POST("/:id/approve", loanHandler.Approve)
-				loanAdmin.POST("/:id/reject", loanHandler.Reject)
-				loanAdmin.POST("/:id/disburse", loanHandler.Disburse)
+				loanAdmin.POST("/:id/approve", middleware.RequirePermission(models.PermLoansApprove), loanHandler.Approve)
+				loanAdmin.POST("/:id/reject", middleware.RequirePermission(models.PermLoansReject), loanHandler.Reject)
+				loanAdmin.POST("/:id/disburse", middleware.RequirePermission(models.PermLoansDisburse), loanHandler.Disburse)
 			}
 		}
 
 		// Financials: Insurance
 		insurance := secured.Group("/insurance")
 		{
-			insurance.GET("", insuranceHandler.List)
-			
+			insurance.GET("", middleware.RequirePermission(models.PermInsuranceView), insuranceHandler.List)
+
 			insuranceAdmin := insurance.Group("")
 			insuranceAdmin.Use(middleware.RequireRole(types.RoleSystemAdmin, types.RoleInsurer))
 			{
-				insuranceAdmin.POST("", insuranceHandler.Create)
-				insuranceAdmin.POST("/:id/lapse", insuranceHandler.Lapse)
+				insuranceAdmin.POST("", middleware.RequireAnyPermission(models.PermInsuranceEnroll, models.PermInsuranceManagePolicies), insuranceHandler.Create)
+				insuranceAdmin.POST("/:id/lapse", middleware.RequireAnyPermission(models.PermInsuranceCancel, models.PermInsuranceManagePolicies), insuranceHandler.Lapse)
 			}
 		}
 
@@ -939,16 +939,16 @@ func main() {
 		admin := secured.Group("/admin")
 		admin.Use(middleware.RequireRole(types.RoleSystemAdmin))
 		{
-			admin.GET("/stats", adminHandler.SystemStats)
-			admin.GET("/users", adminHandler.ListUsers)
-			admin.POST("/users/:id/disable", adminHandler.DisableAccount)
-			admin.POST("/users/:id/enable", adminHandler.EnableAccount)
-			admin.POST("/users/:id/reset-password", adminHandler.ResetPassword)
-			admin.GET("/audit-logs", adminHandler.ListAuditLogs)
-			admin.GET("/statutory-rates", adminHandler.ListStatutoryRates)
-			admin.GET("/notifications/templates", adminHandler.ListTemplates)
-			admin.POST("/notifications/templates", adminHandler.CreateTemplate)
-			admin.PUT("/notifications/templates", adminHandler.UpdateTemplate)
+			admin.GET("/stats", middleware.RequirePermission(models.PermPlatformViewAnalytics), adminHandler.SystemStats)
+			admin.GET("/users", middleware.RequireAnyPermission(models.PermUsersView, models.PermPlatformManageUsers), adminHandler.ListUsers)
+			admin.POST("/users/:id/disable", middleware.RequireAnyPermission(models.PermUsersDeactivate, models.PermPlatformManageUsers), adminHandler.DisableAccount)
+			admin.POST("/users/:id/enable", middleware.RequireAnyPermission(models.PermUsersUpdate, models.PermPlatformManageUsers), adminHandler.EnableAccount)
+			admin.POST("/users/:id/reset-password", middleware.RequireAnyPermission(models.PermUsersUpdate, models.PermPlatformManageUsers), adminHandler.ResetPassword)
+			admin.GET("/audit-logs", middleware.RequireAnyPermission(models.PermAuditView, models.PermPlatformViewAudit), adminHandler.ListAuditLogs)
+			admin.GET("/statutory-rates", middleware.RequireAnyPermission(models.PermComplianceView, models.PermPlatformManageCompliance), adminHandler.ListStatutoryRates)
+			admin.GET("/notifications/templates", middleware.RequirePermission(models.PermNotificationsManageTemplates), adminHandler.ListTemplates)
+			admin.POST("/notifications/templates", middleware.RequirePermission(models.PermNotificationsManageTemplates), adminHandler.CreateTemplate)
+			admin.PUT("/notifications/templates", middleware.RequirePermission(models.PermNotificationsManageTemplates), adminHandler.UpdateTemplate)
 		}
 
 		// RBAC APIs (uses rate limiting for mutations)

@@ -4,6 +4,7 @@ import { guestGuard } from './core/guards/guest.guard';
 import { roleGuard } from './core/guards/role.guard';
 import { kycGuard } from './core/guards/kyc.guard';
 import { platformGuard } from './core/guards/platform.guard';
+import { anyPermissionGuard } from './core/guards/permission.guard';
 
 export const routes: Routes = [
   // --- Auth routes (guest-only) ---
@@ -47,6 +48,7 @@ export const routes: Routes = [
       },
       {
         path: 'roles',
+        canActivate: [anyPermissionGuard('roles.view', 'platform.manage_roles')],
         loadComponent: () => import('./features/platform/roles/platform-roles.component').then(m => m.PlatformRolesComponent),
       },
       {
@@ -260,4 +262,3 @@ export const routes: Routes = [
     loadComponent: () => import('./features/not-found/not-found.component').then(m => m.NotFoundComponent),
   },
 ];
-

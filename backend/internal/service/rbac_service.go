@@ -12,24 +12,37 @@ import (
 	"github.com/kibsoft/amy-mis/internal/models"
 	"github.com/kibsoft/amy-mis/internal/rbac"
 	"github.com/kibsoft/amy-mis/internal/repository"
+	"github.com/kibsoft/amy-mis/pkg/types"
 )
 
 // RBACService provides business logic for roles, permissions, and authorization.
 type RBACService struct {
-	repo     repository.RBACRepository
-	auditSvc *AuditService
-	cache    *PermissionCache
-	registry *rbac.Registry
+	repo         repository.RBACRepository
+	auditSvc     *AuditService
+	cache        *PermissionCache
+	registry     *rbac.Registry
+	policyEngine *rbac.PolicyEngine
 }
 
 // NewRBACService creates a new RBAC service.
 func NewRBACService(repo repository.RBACRepository, auditSvc *AuditService, cache *PermissionCache) *RBACService {
 	return &RBACService{
-		repo:     repo,
-		auditSvc: auditSvc,
-		cache:    cache,
-		registry: rbac.Global(),
+		repo:         repo,
+		auditSvc:     auditSvc,
+		cache:        cache,
+		registry:     rbac.Global(),
+		policyEngine: rbac.NewPolicyEngine(),
 	}
+}
+
+// systemRoleCtxKey is the context key for passing the user's system role
+// from the middleware to the RBAC service without tight coupling.
+type systemRoleCtxKey struct{}
+
+// SetSystemRoleInContext stores the user's system_role in the request context
+// so HasPermissionWithContext can resolve the system role's RBAC permissions.
+func SetSystemRoleInContext(ctx context.Context, role types.SystemRole) context.Context {
+	return context.WithValue(ctx, systemRoleCtxKey{}, role)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -38,30 +51,71 @@ func NewRBACService(repo repository.RBACRepository, auditSvc *AuditService, cach
 
 // HasPermission checks if a user has a specific permission (cache → DB fallback).
 func (s *RBACService) HasPermission(ctx context.Context, userID uuid.UUID, tenantID *uuid.UUID, permKey string) bool {
+	return s.HasPermissionWithContext(ctx, userID, tenantID, permKey, rbac.EvaluationContext{
+		CurrentTime: time.Now(),
+		Timezone:    "Africa/Nairobi",
+	})
+}
+
+// HasPermissionWithContext checks user RBAC grants and then applies active dynamic policies.
+// It also checks permissions from the user's system-role RBAC role (if the middleware
+// provides systemRole via the context), ensuring all authorization flows through the DB.
+func (s *RBACService) HasPermissionWithContext(ctx context.Context, userID uuid.UUID, tenantID *uuid.UUID, permKey string, evalCtx rbac.EvaluationContext) bool {
 	// Fast path: check cache
+	var keys []string
 	if s.cache != nil {
 		if allowed, cached := s.cache.HasPermission(ctx, userID, tenantID, permKey); cached {
-			return allowed
+			if !allowed {
+				return false
+			}
+			keys, _ = s.cache.Get(ctx, userID, tenantID)
 		}
 	}
 
 	// Slow path: load from DB and cache
-	keys, err := s.repo.GetUserPermissionKeys(ctx, userID, tenantID)
-	if err != nil {
-		slog.Warn("rbac: failed to load permissions", slog.Any("error", err), slog.String("user_id", userID.String()))
+	if keys == nil {
+		var err error
+		keys, err = s.repo.GetUserPermissionKeys(ctx, userID, tenantID)
+		if err != nil {
+			slog.Warn("rbac: failed to load permissions", slog.Any("error", err), slog.String("user_id", userID.String()))
+			return false
+		}
+
+		if s.cache != nil {
+			s.cache.Set(ctx, userID, tenantID, keys)
+		}
+	}
+
+	granted := false
+	for _, k := range keys {
+		if k == permKey {
+			granted = true
+			break
+		}
+	}
+
+	// If not directly granted, check the user's system-role RBAC permissions.
+	// The system role is extracted from JWT claims by the middleware and stored
+	// in the context so the RBAC service can resolve it without hardcoded maps.
+	if !granted {
+		sysRole, _ := ctx.Value(systemRoleCtxKey{}).(types.SystemRole)
+		if sysRole != "" {
+			if sysKeys := s.getSystemRolePermissions(ctx, sysRole); sysKeys != nil {
+				for _, k := range sysKeys {
+					if k == permKey {
+						granted = true
+						break
+					}
+				}
+			}
+		}
+	}
+
+	if !granted {
 		return false
 	}
 
-	if s.cache != nil {
-		s.cache.Set(ctx, userID, tenantID, keys)
-	}
-
-	for _, k := range keys {
-		if k == permKey {
-			return true
-		}
-	}
-	return false
+	return s.allowedByPolicies(ctx, tenantID, permKey, evalCtx)
 }
 
 // HasAnyPermission checks if a user has at least one of the specified permissions.
@@ -76,6 +130,13 @@ func (s *RBACService) HasAnyPermission(ctx context.Context, userID uuid.UUID, te
 
 // GetUserPermissions returns all effective permission keys for a user.
 func (s *RBACService) GetUserPermissions(ctx context.Context, userID uuid.UUID, tenantID *uuid.UUID) ([]string, error) {
+	return s.GetUserPermissionsWithRole(ctx, userID, tenantID, "")
+}
+
+// GetUserPermissionsWithRole returns effective permission keys for a user,
+// merging permissions from their explicit RBAC role assignments AND from
+// the system role's RBAC role (looked up by slug in the roles table).
+func (s *RBACService) GetUserPermissionsWithRole(ctx context.Context, userID uuid.UUID, tenantID *uuid.UUID, systemRole types.SystemRole) ([]string, error) {
 	if s.cache != nil {
 		if keys, ok := s.cache.Get(ctx, userID, tenantID); ok {
 			return keys, nil
@@ -85,6 +146,25 @@ func (s *RBACService) GetUserPermissions(ctx context.Context, userID uuid.UUID, 
 	if err != nil {
 		return nil, err
 	}
+
+	// Merge permissions from the user's system-role RBAC role.
+	if systemRole != "" {
+		if sysKeys := s.getSystemRolePermissions(ctx, systemRole); sysKeys != nil {
+			set := make(map[string]struct{}, len(keys)+len(sysKeys))
+			for _, k := range keys {
+				set[k] = struct{}{}
+			}
+			for _, k := range sysKeys {
+				set[k] = struct{}{}
+			}
+			merged := make([]string, 0, len(set))
+			for k := range set {
+				merged = append(merged, k)
+			}
+			keys = merged
+		}
+	}
+
 	if s.cache != nil {
 		s.cache.Set(ctx, userID, tenantID, keys)
 	}
@@ -198,7 +278,9 @@ func (s *RBACService) ToggleRoleActive(ctx context.Context, id uuid.UUID, active
 	s.logAudit(ctx, updatedBy, action, "role", &id, nil, map[string]bool{"is_active": active})
 
 	// Invalidate cache for all users with this role
-	if s.cache != nil { s.cache.InvalidateAll(ctx) }
+	if s.cache != nil {
+		s.cache.InvalidateAll(ctx)
+	}
 	return nil
 }
 
@@ -256,6 +338,56 @@ func (s *RBACService) SyncRegistryPermissions(ctx context.Context) error {
 	return s.repo.SyncPermissions(ctx, dbDefs)
 }
 
+// SyncSystemRoles creates global platform system roles and attaches their permissions.
+func (s *RBACService) SyncSystemRoles(ctx context.Context) error {
+	// Sync both PLATFORM and SYSTEM role templates so every system_role
+	// has a matching RBAC role in the database.
+	var templates []rbac.RoleTemplateDefinition
+	templates = append(templates, rbac.GetTemplatesForIndustry("PLATFORM")...)
+	templates = append(templates, rbac.GetTemplatesForIndustry("SYSTEM")...)
+
+	for _, t := range templates {
+		role, _ := s.repo.GetRoleBySlug(ctx, t.RoleSlug, nil)
+		if role == nil {
+			role = &models.Role{
+				Name:         t.RoleName,
+				Slug:         t.RoleSlug,
+				Description:  t.Description,
+				IndustryType: t.IndustryType,
+				IsSystem:     true,
+				IsTemplate:   false,
+				IsActive:     true,
+			}
+			if err := s.repo.CreateRole(ctx, role); err != nil {
+				return fmt.Errorf("create system role %s: %w", t.RoleSlug, err)
+			}
+		} else {
+			role.Name = t.RoleName
+			role.Description = t.Description
+			role.IndustryType = t.IndustryType
+			role.IsSystem = true
+			role.IsTemplate = false
+			role.IsActive = true
+			if err := s.repo.UpdateRole(ctx, role); err != nil {
+				return fmt.Errorf("update system role %s: %w", t.RoleSlug, err)
+			}
+		}
+
+		perms, err := s.resolvePermissions(ctx, t.Permissions)
+		if err != nil {
+			return fmt.Errorf("resolve permissions for %s: %w", t.RoleSlug, err)
+		}
+		permIDs := make([]uuid.UUID, len(perms))
+		for i, p := range perms {
+			permIDs[i] = p.ID
+		}
+		if err := s.repo.BulkSetPermissions(ctx, role.ID, permIDs, nil); err != nil {
+			return fmt.Errorf("set permissions for %s: %w", t.RoleSlug, err)
+		}
+	}
+	return nil
+}
+
 // ListPermissions returns all permissions with optional filtering.
 func (s *RBACService) ListPermissions(ctx context.Context, filter repository.PermissionFilter) ([]models.PermissionDef, error) {
 	return s.repo.ListPermissions(ctx, filter)
@@ -267,18 +399,29 @@ func (s *RBACService) GetPermissionModules() []string {
 }
 
 // SetRolePermissions replaces all permissions for a role (bulk update).
+// System roles CAN be edited — this allows admins to control feature
+// visibility (e.g. hide Loans/Insurance from employees until ready).
+// Changes persist until the next SyncSystemRoles call on restart.
 func (s *RBACService) SetRolePermissions(ctx context.Context, roleID uuid.UUID, permKeys []string, grantedBy *uuid.UUID) error {
 	role, err := s.repo.GetRoleByID(ctx, roleID)
 	if err != nil {
 		return err
 	}
 	if role.IsSystem {
-		return fmt.Errorf("cannot modify permissions of system role '%s'", role.Name)
+		slog.Info("modifying system role permissions",
+			slog.String("role", role.Name),
+			slog.String("slug", role.Slug),
+			slog.Int("new_count", len(permKeys)),
+		)
 	}
 
 	// Resolve keys to IDs
-	perms, err := s.repo.GetPermissionsByKeys(ctx, permKeys)
+	permKeys = uniqueStrings(permKeys)
+	perms, err := s.resolvePermissions(ctx, permKeys)
 	if err != nil {
+		return err
+	}
+	if err := validatePermissionDependencies(perms, permKeys); err != nil {
 		return err
 	}
 	permIDs := make([]uuid.UUID, len(perms))
@@ -314,7 +457,9 @@ func (s *RBACService) SetRolePermissions(ctx context.Context, roleID uuid.UUID, 
 		map[string]interface{}{"new_permissions": permKeys})
 
 	// Invalidate cache for affected users
-	if s.cache != nil { s.cache.InvalidateAll(ctx) }
+	if s.cache != nil {
+		s.cache.InvalidateAll(ctx)
+	}
 	return nil
 }
 
@@ -329,6 +474,36 @@ func (s *RBACService) GetRolePermissions(ctx context.Context, roleID uuid.UUID) 
 
 // AssignRole assigns a role to a user within a tenant.
 func (s *RBACService) AssignRole(ctx context.Context, userID, roleID uuid.UUID, tenantID *uuid.UUID, assignedBy *uuid.UUID, expiresAt *time.Time) error {
+	role, err := s.repo.GetRoleByID(ctx, roleID)
+	if err != nil {
+		return err
+	}
+	if !role.IsActive {
+		return fmt.Errorf("cannot assign inactive role '%s'", role.Name)
+	}
+	if role.TenantID != nil {
+		if tenantID == nil || *tenantID != *role.TenantID {
+			return fmt.Errorf("role '%s' belongs to a different tenant", role.Name)
+		}
+	}
+
+	if assignedBy != nil {
+		rolePerms, err := s.repo.GetRolePermissionKeys(ctx, roleID)
+		if err != nil {
+			return fmt.Errorf("failed to verify role permissions: %w", err)
+		}
+		assignerPerms, err := s.GetUserPermissions(ctx, *assignedBy, tenantID)
+		if err != nil {
+			return fmt.Errorf("failed to verify assigner permissions: %w", err)
+		}
+		assignerPermMap := toSet(assignerPerms)
+		for _, rolePerm := range rolePerms {
+			if !assignerPermMap[rolePerm] {
+				return fmt.Errorf("privilege escalation prevented: cannot assign role with permission '%s' which you do not possess", rolePerm)
+			}
+		}
+	}
+
 	ur := &models.UserRole{
 		UserID:     userID,
 		RoleID:     roleID,
@@ -343,7 +518,9 @@ func (s *RBACService) AssignRole(ctx context.Context, userID, roleID uuid.UUID, 
 		return err
 	}
 
-	if s.cache != nil { s.cache.Invalidate(ctx, userID) }
+	if s.cache != nil {
+		s.cache.Invalidate(ctx, userID)
+	}
 	s.logAudit(ctx, assignedBy, "role.assigned", "user_role", nil, nil,
 		map[string]interface{}{"user_id": userID, "role_id": roleID, "tenant_id": tenantID})
 	return nil
@@ -355,7 +532,9 @@ func (s *RBACService) RevokeRole(ctx context.Context, userID, roleID uuid.UUID, 
 		return err
 	}
 
-	if s.cache != nil { s.cache.Invalidate(ctx, userID) }
+	if s.cache != nil {
+		s.cache.Invalidate(ctx, userID)
+	}
 	s.logAudit(ctx, revokedBy, "role.revoked", "user_role", nil, nil,
 		map[string]interface{}{"user_id": userID, "role_id": roleID, "tenant_id": tenantID})
 	return nil
@@ -435,7 +614,8 @@ func (s *RBACService) ApplyTemplate(ctx context.Context, templateID uuid.UUID, t
 	// Assign permissions
 	if len(permKeys) > 0 {
 		if err := s.SetRolePermissions(ctx, role.ID, permKeys, appliedBy); err != nil {
-			slog.Warn("rbac: failed to assign template permissions", slog.Any("error", err))
+			_ = s.DeleteRole(ctx, role.ID, appliedBy)
+			return nil, fmt.Errorf("assign template permissions: %w", err)
 		}
 	}
 
@@ -473,7 +653,14 @@ func (s *RBACService) CountUsersWithRole(ctx context.Context, roleID uuid.UUID) 
 
 // CreatePolicy creates a new access control policy.
 func (s *RBACService) CreatePolicy(ctx context.Context, policy *models.Policy) error {
-	return s.repo.CreatePolicy(ctx, policy)
+	if _, err := s.repo.GetPermissionByKey(ctx, policy.PermissionKey); err != nil {
+		return fmt.Errorf("unknown permission key '%s': %w", policy.PermissionKey, err)
+	}
+	if err := s.repo.CreatePolicy(ctx, policy); err != nil {
+		return err
+	}
+	s.logAudit(ctx, policy.CreatedBy, "policy.created", "policy", &policy.ID, nil, policy)
+	return nil
 }
 
 // ListPolicies returns paginated policies for a tenant.
@@ -490,6 +677,89 @@ func (s *RBACService) logAudit(ctx context.Context, actorID *uuid.UUID, action, 
 		return
 	}
 	s.auditSvc.Log(ctx, actorID, action, resource, resourceID, oldVal, newVal, "", "")
+}
+
+// AuditPermissionDenied records denied permission checks from middleware.
+func (s *RBACService) AuditPermissionDenied(ctx context.Context, userID uuid.UUID, tenantID *uuid.UUID, permKeys []string, method, path, reason, ipAddress, userAgent string) {
+	s.logAudit(ctx, &userID, "permission.denied", "permission", nil, nil, map[string]interface{}{
+		"tenant_id":   tenantID,
+		"permissions": permKeys,
+		"method":      method,
+		"path":        path,
+		"reason":      reason,
+		"ip_address":  ipAddress,
+		"user_agent":  userAgent,
+	})
+}
+
+func (s *RBACService) allowedByPolicies(ctx context.Context, tenantID *uuid.UUID, permKey string, evalCtx rbac.EvaluationContext) bool {
+	if s.policyEngine == nil {
+		return true
+	}
+
+	policies, err := s.repo.GetActivePolicies(ctx, permKey, tenantID)
+	if err != nil {
+		slog.Warn("rbac: failed to load active policies", slog.Any("error", err), slog.String("permission", permKey))
+		return false
+	}
+	if len(policies) == 0 {
+		return true
+	}
+
+	if evalCtx.CurrentTime.IsZero() {
+		evalCtx.CurrentTime = time.Now()
+	}
+	if evalCtx.Timezone == "" {
+		evalCtx.Timezone = "Africa/Nairobi"
+	}
+	if evalCtx.RiskLevel == "" {
+		if def, ok := s.registry.GetByKey(permKey); ok {
+			evalCtx.RiskLevel = def.RiskLevel
+		}
+	}
+
+	result := s.policyEngine.Evaluate(ctx, policies, evalCtx)
+	if !result.Allowed {
+		slog.Warn("rbac: policy denied permission",
+			slog.String("permission", permKey),
+			slog.String("policy", result.DeniedBy),
+			slog.String("reason", result.Reason),
+		)
+	}
+	return result.Allowed
+}
+
+func (s *RBACService) resolvePermissions(ctx context.Context, permKeys []string) ([]models.PermissionDef, error) {
+	perms, err := s.repo.GetPermissionsByKeys(ctx, permKeys)
+	if err != nil {
+		return nil, err
+	}
+	if len(perms) != len(permKeys) {
+		found := make(map[string]bool, len(perms))
+		for _, p := range perms {
+			found[p.Key] = true
+		}
+		var missing []string
+		for _, key := range permKeys {
+			if !found[key] {
+				missing = append(missing, key)
+			}
+		}
+		return nil, fmt.Errorf("unknown permission keys: %s", strings.Join(missing, ", "))
+	}
+	return perms, nil
+}
+
+func validatePermissionDependencies(perms []models.PermissionDef, permKeys []string) error {
+	selected := toSet(permKeys)
+	for _, p := range perms {
+		for _, dep := range p.DependsOn {
+			if !selected[dep] {
+				return fmt.Errorf("permission '%s' depends on missing permission '%s'", p.Key, dep)
+			}
+		}
+	}
+	return nil
 }
 
 func slugify(name string) string {
@@ -512,4 +782,39 @@ func toSet(ss []string) map[string]bool {
 		m[s] = true
 	}
 	return m
+}
+
+func uniqueStrings(values []string) []string {
+	seen := make(map[string]bool, len(values))
+	result := make([]string, 0, len(values))
+	for _, v := range values {
+		v = strings.TrimSpace(v)
+		if v == "" || seen[v] {
+			continue
+		}
+		seen[v] = true
+		result = append(result, v)
+	}
+	return result
+}
+
+// getSystemRolePermissions looks up the RBAC system role that matches
+// the given system_role (via SystemRoleSlug) and returns its permission
+// keys from the database. Returns nil if the role doesn't exist.
+func (s *RBACService) getSystemRolePermissions(ctx context.Context, sysRole types.SystemRole) []string {
+	slug := sysRole.SystemRoleSlug()
+	if slug == "" {
+		return nil
+	}
+	role, err := s.repo.GetRoleBySlug(ctx, slug, nil)
+	if err != nil || role == nil {
+		return nil
+	}
+	keys, err := s.repo.GetRolePermissionKeys(ctx, role.ID)
+	if err != nil {
+		slog.Warn("rbac: failed to load system role permissions",
+			slog.String("slug", slug), slog.Any("error", err))
+		return nil
+	}
+	return keys
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/kibsoft/amy-mis/internal/models"
 	"github.com/kibsoft/amy-mis/internal/repository"
 	"github.com/kibsoft/amy-mis/internal/service"
+	"github.com/kibsoft/amy-mis/pkg/types"
 )
 
 // RBACHandler handles all RBAC REST API endpoints.
@@ -29,6 +30,15 @@ func NewRBACHandler(svc *service.RBACService) *RBACHandler {
 func (h *RBACHandler) RegisterRoutes(rg *gin.RouterGroup, rl gin.HandlerFunc) {
 	rbac := rg.Group("/rbac")
 	{
+		viewRoles := middleware.RequireAnyPermission(models.PermRolesView, models.PermPlatformManageRoles)
+		createRoles := middleware.RequireAnyPermission(models.PermRolesCreate, models.PermPlatformManageRoles)
+		updateRoles := middleware.RequireAnyPermission(models.PermRolesUpdate, models.PermPlatformManageRoles)
+		deleteRoles := middleware.RequireAnyPermission(models.PermRolesDelete, models.PermPlatformManageRoles)
+		assignRoles := middleware.RequireAnyPermission(models.PermRolesAssign, models.PermUsersManageRoles, models.PermPlatformManageRoles)
+		managePerms := middleware.RequireAnyPermission(models.PermRolesManagePermissions, models.PermPlatformManageRoles)
+		viewTemplates := middleware.RequireAnyPermission(models.PermRolesViewTemplates, models.PermRolesView, models.PermPlatformManageRoles)
+		applyTemplates := middleware.RequireAnyPermission(models.PermRolesApplyTemplates, models.PermPlatformManageRoles)
+
 		// Rates limit mutations
 		mutations := rbac.Group("")
 		if rl != nil {
@@ -36,37 +46,37 @@ func (h *RBACHandler) RegisterRoutes(rg *gin.RouterGroup, rl gin.HandlerFunc) {
 		}
 
 		// Roles
-		rbac.GET("/roles", h.ListRoles)
-		mutations.POST("/roles", h.CreateRole)
-		rbac.GET("/roles/:id", h.GetRole)
-		mutations.PUT("/roles/:id", h.UpdateRole)
-		mutations.DELETE("/roles/:id", h.DeleteRole)
-		mutations.POST("/roles/:id/clone", h.CloneRole)
-		mutations.POST("/roles/:id/activate", h.ToggleRoleActive)
-		rbac.GET("/roles/:id/permissions", h.GetRolePermissions)
-		mutations.PUT("/roles/:id/permissions", h.SetRolePermissions)
-		rbac.POST("/roles/compare", h.CompareRoles) // Read-only but intensive
+		rbac.GET("/roles", viewRoles, h.ListRoles)
+		mutations.POST("/roles", createRoles, h.CreateRole)
+		rbac.GET("/roles/:id", viewRoles, h.GetRole)
+		mutations.PUT("/roles/:id", updateRoles, h.UpdateRole)
+		mutations.DELETE("/roles/:id", deleteRoles, h.DeleteRole)
+		mutations.POST("/roles/:id/clone", createRoles, h.CloneRole)
+		mutations.POST("/roles/:id/activate", updateRoles, h.ToggleRoleActive)
+		rbac.GET("/roles/:id/permissions", viewRoles, h.GetRolePermissions)
+		mutations.PUT("/roles/:id/permissions", managePerms, h.SetRolePermissions)
+		rbac.POST("/roles/compare", viewRoles, h.CompareRoles) // Read-only but intensive
 
 		// Permissions
-		rbac.GET("/permissions", h.ListPermissions)
-		rbac.GET("/permissions/modules", h.ListPermissionModules)
+		rbac.GET("/permissions", viewRoles, h.ListPermissions)
+		rbac.GET("/permissions/modules", viewRoles, h.ListPermissionModules)
 
 		// User roles
-		rbac.GET("/users/:id/roles", h.GetUserRoles)
-		mutations.POST("/users/:id/roles", h.AssignRoleToUser)
-		mutations.DELETE("/users/:id/roles/:roleId", h.RevokeRoleFromUser)
-		rbac.GET("/users/:id/permissions", h.GetUserPermissions)
+		rbac.GET("/users/:id/roles", assignRoles, h.GetUserRoles)
+		mutations.POST("/users/:id/roles", assignRoles, h.AssignRoleToUser)
+		mutations.DELETE("/users/:id/roles/:roleId", assignRoles, h.RevokeRoleFromUser)
+		rbac.GET("/users/:id/permissions", h.GetUserPermissions) // No guard: users can fetch their own permissions
 
 		// Templates
-		rbac.GET("/templates", h.ListTemplates)
-		mutations.POST("/templates/:id/apply", h.ApplyTemplate)
+		rbac.GET("/templates", viewTemplates, h.ListTemplates)
+		mutations.POST("/templates/:id/apply", applyTemplates, h.ApplyTemplate)
 
 		// Policies
-		rbac.GET("/policies", h.ListPolicies)
-		mutations.POST("/policies", h.CreatePolicy)
+		rbac.GET("/policies", managePerms, h.ListPolicies)
+		mutations.POST("/policies", managePerms, h.CreatePolicy)
 
 		// Matrix
-		rbac.GET("/matrix", h.GetPermissionMatrix)
+		rbac.GET("/matrix", viewRoles, h.GetPermissionMatrix)
 	}
 }
 
@@ -88,6 +98,9 @@ func (h *RBACHandler) ListRoles(c *gin.Context) {
 		}
 	}
 	filter.TenantID = enforceTenant(c, filter.TenantID)
+	if !tenantScopeAllowed(c, filter.TenantID) {
+		return
+	}
 
 	if v := c.Query("is_system"); v != "" {
 		b := v == "true"
@@ -148,6 +161,9 @@ func (h *RBACHandler) CreateRole(c *gin.Context) {
 		IsActive:     true,
 	}
 	role.TenantID = enforceTenant(c, role.TenantID)
+	if !tenantScopeAllowed(c, role.TenantID) {
+		return
+	}
 
 	if claims != nil {
 		role.CreatedBy = &claims.UserID
@@ -176,6 +192,9 @@ func (h *RBACHandler) GetRole(c *gin.Context) {
 		c.JSON(http.StatusNotFound, errorResponse("Role not found", err))
 		return
 	}
+	if !canAccessRole(c, role, false) {
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": role})
 }
@@ -198,6 +217,9 @@ func (h *RBACHandler) UpdateRole(c *gin.Context) {
 	role, err := h.svc.GetRole(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, errorResponse("Role not found", err))
+		return
+	}
+	if !canAccessRole(c, role, true) {
 		return
 	}
 
@@ -234,6 +256,15 @@ func (h *RBACHandler) DeleteRole(c *gin.Context) {
 		deletedBy = &claims.UserID
 	}
 
+	role, err := h.svc.GetRole(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, errorResponse("Role not found", err))
+		return
+	}
+	if !canAccessRole(c, role, true) {
+		return
+	}
+
 	if err := h.svc.DeleteRole(c.Request.Context(), id, deletedBy); err != nil {
 		c.JSON(http.StatusConflict, errorResponse("Failed to delete role", err))
 		return
@@ -256,6 +287,14 @@ func (h *RBACHandler) CloneRole(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, errorResponse("Invalid request", err))
 		return
 	}
+	sourceRole, err := h.svc.GetRole(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, errorResponse("Role not found", err))
+		return
+	}
+	if !canAccessRole(c, sourceRole, false) {
+		return
+	}
 
 	claims := middleware.GetClaims(c)
 	var createdBy *uuid.UUID
@@ -264,6 +303,9 @@ func (h *RBACHandler) CloneRole(c *gin.Context) {
 	}
 
 	targetTenant := enforceTenant(c, req.TenantID)
+	if !tenantScopeAllowed(c, targetTenant) {
+		return
+	}
 	cloned, err := h.svc.CloneRole(c.Request.Context(), id, req.Name, targetTenant, createdBy)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, errorResponse("Failed to clone role", err))
@@ -293,6 +335,14 @@ func (h *RBACHandler) ToggleRoleActive(c *gin.Context) {
 	if claims != nil {
 		updatedBy = &claims.UserID
 	}
+	role, err := h.svc.GetRole(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, errorResponse("Role not found", err))
+		return
+	}
+	if !canAccessRole(c, role, true) {
+		return
+	}
 
 	if err := h.svc.ToggleRoleActive(c.Request.Context(), id, req.Active, updatedBy); err != nil {
 		c.JSON(http.StatusInternalServerError, errorResponse("Failed to toggle role", err))
@@ -308,6 +358,19 @@ func (h *RBACHandler) CompareRoles(c *gin.Context) {
 	var req dto.CompareRolesRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, errorResponse("Invalid request", err))
+		return
+	}
+	roleA, err := h.svc.GetRole(c.Request.Context(), req.RoleAID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, errorResponse("First role not found", err))
+		return
+	}
+	roleB, err := h.svc.GetRole(c.Request.Context(), req.RoleBID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, errorResponse("Second role not found", err))
+		return
+	}
+	if !canAccessRole(c, roleA, false) || !canAccessRole(c, roleB, false) {
 		return
 	}
 
@@ -343,6 +406,14 @@ func (h *RBACHandler) GetRolePermissions(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, errorResponse("Failed to get permissions", err))
 		return
 	}
+	role, err := h.svc.GetRole(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, errorResponse("Role not found", err))
+		return
+	}
+	if !canAccessRole(c, role, false) {
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": perms})
 }
@@ -359,6 +430,14 @@ func (h *RBACHandler) SetRolePermissions(c *gin.Context) {
 	var req dto.SetPermissionsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, errorResponse("Invalid request", err))
+		return
+	}
+	role, err := h.svc.GetRole(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, errorResponse("Role not found", err))
+		return
+	}
+	if !canAccessRole(c, role, true) {
 		return
 	}
 
@@ -429,6 +508,9 @@ func (h *RBACHandler) GetUserRoles(c *gin.Context) {
 	}
 
 	tenantID = enforceTenant(c, tenantID)
+	if !tenantScopeAllowed(c, tenantID) {
+		return
+	}
 
 	roles, err := h.svc.GetUserRoles(c.Request.Context(), userID, tenantID)
 	if err != nil {
@@ -469,6 +551,9 @@ func (h *RBACHandler) AssignRoleToUser(c *gin.Context) {
 	}
 
 	targetTenant := enforceTenant(c, req.TenantID)
+	if !tenantScopeAllowed(c, targetTenant) {
+		return
+	}
 	if err := h.svc.AssignRole(c.Request.Context(), userID, req.RoleID, targetTenant, assignedBy, expiresAt); err != nil {
 		c.JSON(http.StatusInternalServerError, errorResponse("Failed to assign role", err))
 		return
@@ -499,6 +584,9 @@ func (h *RBACHandler) RevokeRoleFromUser(c *gin.Context) {
 	}
 
 	tenantID = enforceTenant(c, tenantID)
+	if !tenantScopeAllowed(c, tenantID) {
+		return
+	}
 
 	claims := middleware.GetClaims(c)
 	var revokedBy *uuid.UUID
@@ -523,6 +611,19 @@ func (h *RBACHandler) GetUserPermissions(c *gin.Context) {
 		return
 	}
 
+	claims := middleware.GetClaims(c)
+	if claims == nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"error":   gin.H{"code": "FORBIDDEN", "message": "Authentication required"},
+		})
+		return
+	}
+
+	// Self-service: users can always fetch their own permissions without
+	// tenant scope checks (they might not have an org yet).
+	isSelf := claims.UserID == userID
+
 	var tenantID *uuid.UUID
 	if tid := c.Query("tenant_id"); tid != "" {
 		if id, e := uuid.Parse(tid); e == nil {
@@ -530,9 +631,27 @@ func (h *RBACHandler) GetUserPermissions(c *gin.Context) {
 		}
 	}
 
-	tenantID = enforceTenant(c, tenantID)
+	// For cross-user lookups, enforce tenant isolation.
+	if !isSelf {
+		tenantID = enforceTenant(c, tenantID)
+		if !tenantScopeAllowed(c, tenantID) {
+			return
+		}
+	} else {
+		// Self: use org context if available, nil otherwise.
+		if tenantID == nil {
+			tenantID = claims.OrganizationID
+		}
+	}
 
-	keys, err := h.svc.GetUserPermissions(c.Request.Context(), userID, tenantID)
+	// Resolve the target user's system role so the service can merge
+	// permissions from their matching RBAC system role.
+	var systemRole types.SystemRole
+	if isSelf {
+		systemRole = claims.SystemRole
+	}
+
+	keys, err := h.svc.GetUserPermissionsWithRole(c.Request.Context(), userID, tenantID, systemRole)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, errorResponse("Failed to get permissions", err))
 		return
@@ -579,10 +698,15 @@ func (h *RBACHandler) ApplyTemplate(c *gin.Context) {
 	}
 
 	targetTenant := enforceTenant(c, &req.TenantID)
-	var finalTenant uuid.UUID
-	if targetTenant != nil {
-		finalTenant = *targetTenant
+	if targetTenant == nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"error":   gin.H{"code": "FORBIDDEN", "message": "Tenant context required"},
+		})
+		return
 	}
+	var finalTenant uuid.UUID
+	finalTenant = *targetTenant
 
 	role, err := h.svc.ApplyTemplate(c.Request.Context(), tmplID, finalTenant, appliedBy)
 	if err != nil {
@@ -609,6 +733,9 @@ func (h *RBACHandler) ListPolicies(c *gin.Context) {
 	}
 
 	tenantID = enforceTenant(c, tenantID)
+	if !tenantScopeAllowed(c, tenantID) {
+		return
+	}
 
 	policies, total, err := h.svc.ListPolicies(c.Request.Context(), tenantID, page, perPage)
 	if err != nil {
@@ -646,6 +773,9 @@ func (h *RBACHandler) CreatePolicy(c *gin.Context) {
 		TenantID:      enforceTenant(c, req.TenantID),
 		CreatedBy:     createdBy,
 	}
+	if !tenantScopeAllowed(c, policy.TenantID) {
+		return
+	}
 
 	if err := h.svc.CreatePolicy(c.Request.Context(), policy); err != nil {
 		c.JSON(http.StatusInternalServerError, errorResponse("Failed to create policy", err))
@@ -671,6 +801,9 @@ func (h *RBACHandler) GetPermissionMatrix(c *gin.Context) {
 		}
 	}
 	filter.TenantID = enforceTenant(c, filter.TenantID)
+	if !tenantScopeAllowed(c, filter.TenantID) {
+		return
+	}
 	active := true
 	filter.IsActive = &active
 
@@ -697,10 +830,61 @@ func enforceTenant(c *gin.Context, requestedTenant *uuid.UUID) *uuid.UUID {
 	if claims == nil {
 		return requestedTenant // Test mode or unauthenticated
 	}
-	if string(claims.SystemRole) == "SYSTEM_ADMIN" {
+	if claims.SystemRole.IsPlatformRole() {
 		return requestedTenant
 	}
 	return claims.OrganizationID
+}
+
+func canAccessRole(c *gin.Context, role *models.Role, write bool) bool {
+	claims := middleware.GetClaims(c)
+	if claims == nil || claims.SystemRole.IsPlatformRole() {
+		return true
+	}
+	if claims.OrganizationID == nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"error":   gin.H{"code": "FORBIDDEN", "message": "Tenant context required"},
+		})
+		return false
+	}
+	if role.TenantID == nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"error":   gin.H{"code": "FORBIDDEN", "message": "Cannot access global role from tenant context"},
+		})
+		return false
+	}
+	if *role.TenantID != *claims.OrganizationID {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"error":   gin.H{"code": "FORBIDDEN", "message": "Role belongs to a different tenant"},
+		})
+		return false
+	}
+	if write && role.IsSystem {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"error":   gin.H{"code": "FORBIDDEN", "message": "Cannot modify system role"},
+		})
+		return false
+	}
+	return true
+}
+
+func tenantScopeAllowed(c *gin.Context, tenantID *uuid.UUID) bool {
+	claims := middleware.GetClaims(c)
+	if claims == nil || claims.SystemRole.IsPlatformRole() {
+		return true
+	}
+	if tenantID != nil {
+		return true
+	}
+	c.JSON(http.StatusForbidden, gin.H{
+		"success": false,
+		"error":   gin.H{"code": "FORBIDDEN", "message": "Tenant context required"},
+	})
+	return false
 }
 
 func (h *RBACHandler) CountUsersWithRole(ctx gin.Context, roleID uuid.UUID) (int64, error) {

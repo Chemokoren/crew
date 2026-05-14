@@ -3,6 +3,7 @@ package rbac
 import (
 	"context"
 	"encoding/json"
+	"sort"
 	"time"
 
 	"github.com/kibsoft/amy-mis/internal/models"
@@ -24,14 +25,15 @@ type EvaluationContext struct {
 	Amount      int64  // monetary amount in cents (for financial policies)
 	DeviceType  string // "web", "mobile", "ussd"
 	Timezone    string // e.g. "Africa/Nairobi"
+	RiskLevel   string // low, medium, high, critical
 }
 
 // EvaluationResult holds the outcome of a policy evaluation.
 type EvaluationResult struct {
-	Allowed    bool
-	DeniedBy   string // policy name that denied access (empty if allowed)
-	Reason     string
-	PolicyID   string
+	Allowed  bool
+	DeniedBy string // policy name that denied access (empty if allowed)
+	Reason   string
+	PolicyID string
 }
 
 // Evaluate checks a list of policies against the given evaluation context.
@@ -41,18 +43,24 @@ func (pe *PolicyEngine) Evaluate(_ context.Context, policies []models.Policy, ev
 	if len(policies) == 0 {
 		return EvaluationResult{Allowed: true}
 	}
+	if evalCtx.CurrentTime.IsZero() {
+		evalCtx.CurrentTime = time.Now()
+	}
 
-	for _, policy := range policies {
+	ordered := append([]models.Policy(nil), policies...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return ordered[i].Priority > ordered[j].Priority
+	})
+
+	for _, policy := range ordered {
 		if !policy.IsActive {
 			continue
 		}
 
-		var conditions models.PolicyConditions
-		if err := json.Unmarshal(policy.Conditions, &conditions); err != nil {
+		matches, err := pe.evaluateConditionJSON(policy.Conditions, evalCtx)
+		if err != nil {
 			continue // skip malformed policies
 		}
-
-		matches := pe.evaluateConditions(conditions, evalCtx)
 		if !matches {
 			continue
 		}
@@ -70,27 +78,100 @@ func (pe *PolicyEngine) Evaluate(_ context.Context, policies []models.Policy, ev
 	return EvaluationResult{Allowed: true}
 }
 
-// evaluateConditions checks if ALL conditions in a policy match the context.
-func (pe *PolicyEngine) evaluateConditions(cond models.PolicyConditions, ctx EvaluationContext) bool {
-	// Time range check
-	if cond.TimeRange != nil {
-		if !pe.checkTimeRange(*cond.TimeRange, ctx) {
-			return false
+// evaluateConditionJSON supports both flat condition objects and simple
+// composable trees: {"and": [...]}, {"or": [...]}, {"not": {...}}.
+func (pe *PolicyEngine) evaluateConditionJSON(raw json.RawMessage, ctx EvaluationContext) (bool, error) {
+	if len(raw) == 0 || string(raw) == "{}" {
+		return true, nil
+	}
+
+	var node map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &node); err != nil {
+		return false, err
+	}
+	if len(node) == 0 {
+		return true, nil
+	}
+
+	if childRaw, ok := node["and"]; ok {
+		var children []json.RawMessage
+		if err := json.Unmarshal(childRaw, &children); err != nil {
+			return false, err
 		}
+		for _, child := range children {
+			matches, err := pe.evaluateConditionJSON(child, ctx)
+			if err != nil || !matches {
+				return false, err
+			}
+		}
+		return true, nil
 	}
 
-	// MFA check
-	if cond.MFARequired != nil && *cond.MFARequired && !ctx.MFAVerified {
-		return true // condition matches: MFA is required but not verified → policy triggers
+	if childRaw, ok := node["or"]; ok {
+		var children []json.RawMessage
+		if err := json.Unmarshal(childRaw, &children); err != nil {
+			return false, err
+		}
+		for _, child := range children {
+			matches, err := pe.evaluateConditionJSON(child, ctx)
+			if err != nil {
+				return false, err
+			}
+			if matches {
+				return true, nil
+			}
+		}
+		return false, nil
 	}
 
-	// Amount threshold check
-	if cond.MaxAmount != nil && ctx.Amount > *cond.MaxAmount {
-		return true // condition matches: amount exceeds limit → policy triggers
+	if childRaw, ok := node["not"]; ok {
+		matches, err := pe.evaluateConditionJSON(childRaw, ctx)
+		return !matches, err
 	}
 
-	// IP allowlist check
+	return pe.evaluateFlatConditions(raw, ctx)
+}
+
+// evaluateFlatConditions checks if all provided flat conditions match the context.
+func (pe *PolicyEngine) evaluateFlatConditions(raw json.RawMessage, ctx EvaluationContext) (bool, error) {
+	var cond models.PolicyConditions
+	if err := json.Unmarshal(raw, &cond); err != nil {
+		return false, err
+	}
+
+	provided := 0
+	matches := true
+
+	if cond.TimeRange != nil {
+		provided++
+		matches = matches && pe.checkTimeRange(*cond.TimeRange, ctx)
+	}
+
+	if cond.MFARequired != nil {
+		provided++
+		matches = matches && *cond.MFARequired && !ctx.MFAVerified
+	}
+
+	if cond.MaxAmount != nil {
+		provided++
+		matches = matches && ctx.Amount > *cond.MaxAmount
+	}
+
+	var extra struct {
+		AmountThreshold *int64 `json:"amount_threshold"`
+	}
+	if err := json.Unmarshal(raw, &extra); err == nil && extra.AmountThreshold != nil {
+		provided++
+		matches = matches && ctx.Amount > *extra.AmountThreshold
+	}
+
+	if cond.RequiredRiskLevel != "" {
+		provided++
+		matches = matches && riskAtLeast(ctx.RiskLevel, cond.RequiredRiskLevel)
+	}
+
 	if len(cond.IPAllowList) > 0 {
+		provided++
 		found := false
 		for _, ip := range cond.IPAllowList {
 			if ip == ctx.IPAddress {
@@ -98,12 +179,13 @@ func (pe *PolicyEngine) evaluateConditions(cond models.PolicyConditions, ctx Eva
 				break
 			}
 		}
-		if !found {
-			return true // condition matches: IP not in allowlist → policy triggers
-		}
+		matches = matches && !found
 	}
 
-	return false
+	if provided == 0 {
+		return true, nil
+	}
+	return matches, nil
 }
 
 // checkTimeRange verifies if current time falls outside the allowed window.
@@ -111,6 +193,9 @@ func (pe *PolicyEngine) checkTimeRange(tr models.TimeRangeCondition, ctx Evaluat
 	tz := ctx.Timezone
 	if tr.Timezone != "" {
 		tz = tr.Timezone
+	}
+	if tz == "" {
+		tz = "UTC"
 	}
 	loc, err := time.LoadLocation(tz)
 	if err != nil {
@@ -149,4 +234,22 @@ func (pe *PolicyEngine) checkTimeRange(tr models.TimeRangeCondition, ctx Evaluat
 	}
 
 	return false
+}
+
+func riskAtLeast(actual, required string) bool {
+	ranks := map[string]int{
+		models.RiskLow:      1,
+		models.RiskMedium:   2,
+		models.RiskHigh:     3,
+		models.RiskCritical: 4,
+	}
+	actualRank, ok := ranks[actual]
+	if !ok {
+		return false
+	}
+	requiredRank, ok := ranks[required]
+	if !ok {
+		return false
+	}
+	return actualRank >= requiredRank
 }

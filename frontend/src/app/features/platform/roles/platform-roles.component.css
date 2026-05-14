@@ -105,7 +105,6 @@
   font-size: 0.8125rem; outline: none;
 }
 .filter-group select option { background: #1e293b; }
-
 /* ── Roles Grid ──────────────────────────────────────────────────────────── */
 .roles-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
 .role-card {

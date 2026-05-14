@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"os"
 	"time"
@@ -8,6 +9,8 @@ import (
 	"github.com/kibsoft/amy-mis/internal/config"
 	"github.com/kibsoft/amy-mis/internal/database"
 	"github.com/kibsoft/amy-mis/internal/models"
+	pgRepo "github.com/kibsoft/amy-mis/internal/repository/postgres"
+	"github.com/kibsoft/amy-mis/internal/service"
 	"github.com/kibsoft/amy-mis/pkg/types"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -47,7 +50,7 @@ func main() {
 // IDs are NOT pre-set so GORM doesn't include them in the WHERE clause.
 func SeedDatabase(db *gorm.DB) error {
 
-	hash, _ := bcrypt.GenerateFromPassword([]byte("password123"), 12)
+	hash, _ := bcrypt.GenerateFromPassword([]byte("masai123"), 12)
 	passwordHash := string(hash)
 
 	// ========================================
@@ -63,7 +66,29 @@ func SeedDatabase(db *gorm.DB) error {
 	if err := db.Where(models.User{Phone: adminUser.Phone}).FirstOrCreate(&adminUser).Error; err != nil {
 		return err
 	}
-	slog.Info("✅ SYSTEM_ADMIN", slog.String("phone", adminUser.Phone), slog.String("password", "password123"))
+	slog.Info("✅ SYSTEM_ADMIN", slog.String("phone", adminUser.Phone), slog.String("password", "masai123"))
+
+	// ========================================
+	// RBAC — permissions, templates, system roles, admin assignment
+	// ========================================
+	rbacRepo := pgRepo.NewRBACRepo(db)
+	rbacSvc := service.NewRBACService(rbacRepo, nil, nil)
+	rbacCtx := context.Background()
+	if err := rbacSvc.SyncRegistryPermissions(rbacCtx); err != nil {
+		return err
+	}
+	if err := rbacSvc.SyncSystemRoles(rbacCtx); err != nil {
+		return err
+	}
+	if err := rbacSvc.SyncTemplates(rbacCtx); err != nil {
+		return err
+	}
+	if superRole, err := rbacRepo.GetRoleBySlug(rbacCtx, "platform-super-admin", nil); err == nil && superRole != nil {
+		if err := rbacSvc.AssignRole(rbacCtx, adminUser.ID, superRole.ID, nil, nil, nil); err != nil {
+			return err
+		}
+	}
+	slog.Info("✅ RBAC permissions, templates, and platform system roles")
 
 	// ========================================
 	// 2. SACCOs — Organization entities
@@ -98,17 +123,17 @@ func SeedDatabase(db *gorm.DB) error {
 	// 3. SACCO ADMIN — Manages SACCO operations
 	// ========================================
 	saccoAdminUser := models.User{
-		Phone:        "+254711111111",
-		Email:        "sacco_admin@amy.com",
-		PasswordHash: passwordHash,
-		SystemRole:   types.RoleSaccoAdmin,
-		OrganizationID:      &sacco.ID,
-		IsActive:     true,
+		Phone:          "+254711111111",
+		Email:          "sacco_admin@amy.com",
+		PasswordHash:   passwordHash,
+		SystemRole:     types.RoleSaccoAdmin,
+		OrganizationID: &sacco.ID,
+		IsActive:       true,
 	}
 	if err := db.Where(models.User{Phone: saccoAdminUser.Phone}).FirstOrCreate(&saccoAdminUser).Error; err != nil {
 		return err
 	}
-	slog.Info("✅ SACCO_ADMIN", slog.String("phone", saccoAdminUser.Phone), slog.String("password", "password123"), slog.String("sacco", sacco.Name))
+	slog.Info("✅ SACCO_ADMIN", slog.String("phone", saccoAdminUser.Phone), slog.String("password", "masai123"), slog.String("sacco", sacco.Name))
 
 	// ========================================
 	// 4. ROUTES
@@ -141,7 +166,7 @@ func SeedDatabase(db *gorm.DB) error {
 	// 5. VEHICLES
 	// ========================================
 	vehicle := models.Vehicle{
-		OrganizationID:        sacco.ID,
+		OrganizationID: sacco.ID,
 		RegistrationNo: "KCX 123A",
 		VehicleType:    models.VehicleMatatu,
 		RouteID:        &route.ID,
@@ -153,7 +178,7 @@ func SeedDatabase(db *gorm.DB) error {
 	}
 
 	vehicle2 := models.Vehicle{
-		OrganizationID:        sacco.ID,
+		OrganizationID: sacco.ID,
 		RegistrationNo: "KDG 456B",
 		VehicleType:    models.VehicleMatatu,
 		RouteID:        &route2.ID,
@@ -165,7 +190,7 @@ func SeedDatabase(db *gorm.DB) error {
 	}
 
 	vehicle3 := models.Vehicle{
-		OrganizationID:        sacco2.ID,
+		OrganizationID: sacco2.ID,
 		RegistrationNo: "KBZ 789C",
 		VehicleType:    models.VehicleMatatu,
 		RouteID:        &route.ID,
@@ -236,7 +261,7 @@ func SeedDatabase(db *gorm.DB) error {
 	if err := db.Where(models.User{Phone: crewUser.Phone}).FirstOrCreate(&crewUser).Error; err != nil {
 		return err
 	}
-	slog.Info("✅ CREW (Driver)", slog.String("phone", crewUser.Phone), slog.String("password", "password123"), slog.String("name", "John Doe"))
+	slog.Info("✅ CREW (Driver)", slog.String("phone", crewUser.Phone), slog.String("password", "masai123"), slog.String("name", "John Doe"))
 
 	crewUser2 := models.User{
 		Phone:        "+254722111111",
@@ -249,7 +274,7 @@ func SeedDatabase(db *gorm.DB) error {
 	if err := db.Where(models.User{Phone: crewUser2.Phone}).FirstOrCreate(&crewUser2).Error; err != nil {
 		return err
 	}
-	slog.Info("✅ CREW (Conductor)", slog.String("phone", crewUser2.Phone), slog.String("password", "password123"), slog.String("name", "Jane Muthoni"))
+	slog.Info("✅ CREW (Conductor)", slog.String("phone", crewUser2.Phone), slog.String("password", "masai123"), slog.String("name", "Jane Muthoni"))
 
 	// ========================================
 	// 8. LENDER — Financial services partner
@@ -264,7 +289,7 @@ func SeedDatabase(db *gorm.DB) error {
 	if err := db.Where(models.User{Phone: lenderUser.Phone}).FirstOrCreate(&lenderUser).Error; err != nil {
 		return err
 	}
-	slog.Info("✅ LENDER", slog.String("phone", lenderUser.Phone), slog.String("password", "password123"))
+	slog.Info("✅ LENDER", slog.String("phone", lenderUser.Phone), slog.String("password", "masai123"))
 
 	// ========================================
 	// 9. INSURER — Insurance partner
@@ -279,39 +304,39 @@ func SeedDatabase(db *gorm.DB) error {
 	if err := db.Where(models.User{Phone: insurerUser.Phone}).FirstOrCreate(&insurerUser).Error; err != nil {
 		return err
 	}
-	slog.Info("✅ INSURER", slog.String("phone", insurerUser.Phone), slog.String("password", "password123"))
+	slog.Info("✅ INSURER", slog.String("phone", insurerUser.Phone), slog.String("password", "masai123"))
 
 	// ========================================
 	// 10. SACCO Memberships
 	// ========================================
 	membership1 := models.CrewSACCOMembership{
-		CrewMemberID: crew.ID,
-		OrganizationID:      sacco.ID,
-		RoleInOrg:  models.SACCORoleMember,
-		JoinedAt:     time.Now(),
-		IsActive:     true,
+		CrewMemberID:   crew.ID,
+		OrganizationID: sacco.ID,
+		RoleInOrg:      models.SACCORoleMember,
+		JoinedAt:       time.Now(),
+		IsActive:       true,
 	}
 	if err := db.Where("crew_member_id = ? AND sacco_id = ?", crew.ID, sacco.ID).FirstOrCreate(&membership1).Error; err != nil {
 		return err
 	}
 
 	membership2 := models.CrewSACCOMembership{
-		CrewMemberID: crew2.ID,
-		OrganizationID:      sacco.ID,
-		RoleInOrg:  models.SACCORoleMember,
-		JoinedAt:     time.Now(),
-		IsActive:     true,
+		CrewMemberID:   crew2.ID,
+		OrganizationID: sacco.ID,
+		RoleInOrg:      models.SACCORoleMember,
+		JoinedAt:       time.Now(),
+		IsActive:       true,
 	}
 	if err := db.Where("crew_member_id = ? AND sacco_id = ?", crew2.ID, sacco.ID).FirstOrCreate(&membership2).Error; err != nil {
 		return err
 	}
 
 	membership3 := models.CrewSACCOMembership{
-		CrewMemberID: crew3.ID,
-		OrganizationID:      sacco2.ID,
-		RoleInOrg:  models.SACCORoleMember,
-		JoinedAt:     time.Now(),
-		IsActive:     true,
+		CrewMemberID:   crew3.ID,
+		OrganizationID: sacco2.ID,
+		RoleInOrg:      models.SACCORoleMember,
+		JoinedAt:       time.Now(),
+		IsActive:       true,
 	}
 	if err := db.Where("crew_member_id = ? AND sacco_id = ?", crew3.ID, sacco2.ID).FirstOrCreate(&membership3).Error; err != nil {
 		return err
@@ -362,7 +387,7 @@ func SeedDatabase(db *gorm.DB) error {
 	assignment1 := models.Assignment{
 		CrewMemberID:     crew.ID,
 		VehicleID:        &vehicle.ID,
-		OrganizationID:          sacco.ID,
+		OrganizationID:   sacco.ID,
 		RouteID:          &route.ID,
 		ShiftDate:        today,
 		ShiftStart:       shiftStart,
@@ -381,7 +406,7 @@ func SeedDatabase(db *gorm.DB) error {
 	assignment2 := models.Assignment{
 		CrewMemberID:    crew2.ID,
 		VehicleID:       &vehicle2.ID,
-		OrganizationID:         sacco.ID,
+		OrganizationID:  sacco.ID,
 		RouteID:         &route2.ID,
 		ShiftDate:       today,
 		ShiftStart:      shiftStart.Add(1 * time.Hour),
@@ -399,10 +424,24 @@ func SeedDatabase(db *gorm.DB) error {
 	}
 
 	// ========================================
+	// FORCE UPDATE PASSWORDS — ensures existing users get the new password
+	// ========================================
+	seededPhones := []string{
+		adminUser.Phone, saccoAdminUser.Phone,
+		crewUser.Phone, crewUser2.Phone,
+		lenderUser.Phone, insurerUser.Phone,
+	}
+	if err := db.Model(&models.User{}).Where("phone IN ?", seededPhones).
+		Update("password_hash", passwordHash).Error; err != nil {
+		return err
+	}
+	slog.Info("✅ Passwords updated for all seeded users")
+
+	// ========================================
 	// SUMMARY
 	// ========================================
 	slog.Info("═══════════════════════════════════════════")
-	slog.Info("  TEST ACCOUNTS (password: password123)")
+	slog.Info("  TEST ACCOUNTS (password: masai123)")
 	slog.Info("═══════════════════════════════════════════")
 	slog.Info("  SYSTEM_ADMIN   +254700000000")
 	slog.Info("  SACCO_ADMIN    +254711111111")

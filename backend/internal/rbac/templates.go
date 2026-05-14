@@ -23,6 +23,7 @@ func GetIndustryRoleTemplates() []RoleTemplateDefinition {
 	all = append(all, agricultureTemplates()...)
 	all = append(all, hospitalityTemplates()...)
 	all = append(all, platformTemplates()...)
+	all = append(all, systemTemplates()...)
 	return all
 }
 
@@ -37,6 +38,80 @@ func GetTemplatesForIndustry(industry string) []RoleTemplateDefinition {
 	}
 	return filtered
 }
+
+// systemTemplates defines RBAC system roles for non-platform system_roles
+// (EMPLOYER, EMPLOYEE, LENDER, INSURER). These replace the legacy hardcoded
+// permission maps so all permission assignments flow through the database.
+func systemTemplates() []RoleTemplateDefinition {
+	return []RoleTemplateDefinition{
+		{
+			IndustryType: "SYSTEM", RoleName: "Employer", RoleSlug: "system-employer",
+			Description: "Employer / SACCO admin — full org operations",
+			Permissions: append(adminBasePerms,
+				models.PermRoutesView, models.PermRoutesCreate, models.PermRoutesUpdate, models.PermRoutesDelete,
+				models.PermVehiclesView, models.PermVehiclesCreate, models.PermVehiclesUpdate, models.PermVehiclesDelete, models.PermVehiclesExport,
+				models.PermWorkSitesView, models.PermWorkSitesCreate, models.PermWorkSitesUpdate, models.PermWorkSitesDelete,
+				models.PermOrganizationsView, models.PermOrganizationsCreate, models.PermOrganizationsUpdate,
+				models.PermCreditView, models.PermCreditScoreCompute,
+			),
+			IsDefault: true, SortOrder: 1,
+		},
+		{
+			IndustryType: "SYSTEM", RoleName: "Employee", RoleSlug: "system-employee",
+			Description: "Worker — view own assignments, earnings, and wallet",
+			Permissions: []string{
+				models.PermWorkersView,
+				models.PermAssignmentsView,
+				models.PermAssignmentsClockIn, models.PermAssignmentsClockOut,
+				models.PermEarningsView,
+				models.PermWalletView, models.PermWalletViewTransactions,
+				models.PermDocumentsView, models.PermDocumentsUpload,
+				models.PermNotificationsView,
+				models.PermLoansView, models.PermLoansApply,
+				models.PermInsuranceView,
+			},
+			IsDefault: true, SortOrder: 2,
+		},
+		{
+			IndustryType: "SYSTEM", RoleName: "Lender", RoleSlug: "system-lender",
+			Description: "Lending partner — loans, credit, and reporting",
+			Permissions: []string{
+				models.PermLoansView, models.PermLoansApply, models.PermLoansManage,
+				models.PermLoansApprove, models.PermLoansReject, models.PermLoansDisburse,
+				models.PermCreditView, models.PermCreditScoreCompute,
+				models.PermReportsView, models.PermReportsExport,
+				models.PermWorkersView,
+			},
+			IsDefault: true, SortOrder: 3,
+		},
+		{
+			IndustryType: "SYSTEM", RoleName: "Insurer", RoleSlug: "system-insurer",
+			Description: "Insurance partner — policy management and reporting",
+			Permissions: []string{
+				models.PermInsuranceView, models.PermInsuranceEnroll,
+				models.PermInsuranceCancel, models.PermInsuranceManagePolicies,
+				models.PermReportsView, models.PermReportsExport,
+				models.PermWorkersView,
+			},
+			IsDefault: true, SortOrder: 4,
+		},
+		{
+			IndustryType: "SYSTEM", RoleName: "Platform Finance", RoleSlug: "platform-finance",
+			Description: "Platform finance team — financial oversight",
+			Permissions: []string{
+				models.PermWalletView, models.PermWalletViewTransactions, models.PermWalletExport,
+				models.PermWalletFundFloat, models.PermWalletApprovePayout, models.PermWalletReconcile,
+				models.PermPayrollView, models.PermPayrollViewEntries, models.PermPayrollExport,
+				models.PermEarningsView, models.PermEarningsExport,
+				models.PermReportsView, models.PermReportsExport, models.PermReportsCreateCustom,
+				models.PermPlatformManageFinance,
+				models.PermAuditView,
+			},
+			IsDefault: true, SortOrder: 5,
+		},
+	}
+}
+
 
 // --- shared permission sets (DRY) ---
 

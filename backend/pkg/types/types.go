@@ -53,6 +53,32 @@ func (r SystemRole) IsPlatformRole() bool {
 	return false
 }
 
+// SystemRoleSlug returns the RBAC system-role slug that corresponds to this
+// system role. The slug is used to look up the role in the `roles` table so
+// that the user inherits its permissions through the dynamic RBAC system.
+func (r SystemRole) SystemRoleSlug() string {
+	switch r {
+	case RoleSystemAdmin, RolePlatformAdmin:
+		return "platform-super-admin"
+	case RolePlatformAuditor:
+		return "platform-auditor"
+	case RolePlatformFinance:
+		return "platform-finance"
+	case RolePlatformSupport, RolePlatformAssistant:
+		return "platform-support-agent"
+	case RoleEmployer:
+		return "system-employer"
+	case RoleEmployee:
+		return "system-employee"
+	case RoleLender:
+		return "system-lender"
+	case RoleInsurer:
+		return "system-insurer"
+	default:
+		return ""
+	}
+}
+
 // IsValid checks if the role is a recognized system role.
 func (r SystemRole) IsValid() bool {
 	for _, valid := range ValidRoles() {

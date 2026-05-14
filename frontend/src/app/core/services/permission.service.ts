@@ -9,6 +9,10 @@ const STORAGE_KEY = 'amy_user_permissions';
  * - Loads user permissions on login from the backend.
  * - Caches in localStorage for offline awareness.
  * - Exposes synchronous `can()`, `canAny()`, `canAll()` checks.
+ *
+ * All permissions flow through the dynamic RBAC system — the backend
+ * merges system-role permissions into the response so no frontend
+ * role-based overrides are needed.
  */
 @Injectable({ providedIn: 'root' })
 export class PermissionService {

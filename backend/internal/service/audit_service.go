@@ -37,7 +37,9 @@ func (s *AuditService) Log(ctx context.Context, userID *uuid.UUID, action, resou
 	}
 
 	if err := s.auditRepo.Create(ctx, entry); err != nil {
-		s.logger.Error("failed to write audit log", slog.String("error", err.Error()))
+		if s.logger != nil {
+			s.logger.Error("failed to write audit log", slog.String("error", err.Error()))
+		}
 		return
 	}
 }

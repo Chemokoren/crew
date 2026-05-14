@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"gorm.io/gorm"
 )
 
@@ -93,8 +94,8 @@ type UserRole struct {
 	IsActive   bool       `json:"is_active" gorm:"not null;default:true"`
 
 	// Relations
-	User   User         `json:"-" gorm:"foreignKey:UserID"`
-	Role   Role         `json:"role,omitempty" gorm:"foreignKey:RoleID"`
+	User   User          `json:"-" gorm:"foreignKey:UserID"`
+	Role   Role          `json:"role,omitempty" gorm:"foreignKey:RoleID"`
 	Tenant *Organization `json:"-" gorm:"foreignKey:TenantID"`
 }
 
@@ -161,10 +162,10 @@ type PolicyConditions struct {
 
 // TimeRangeCondition restricts access to a time window.
 type TimeRangeCondition struct {
-	StartHour int    `json:"start_hour"` // 0-23
-	EndHour   int    `json:"end_hour"`   // 0-23
-	Timezone  string `json:"timezone"`   // e.g. "Africa/Nairobi"
-	DaysOfWeek []int `json:"days_of_week,omitempty"` // 0=Sun, 6=Sat
+	StartHour  int    `json:"start_hour"`             // 0-23
+	EndHour    int    `json:"end_hour"`               // 0-23
+	Timezone   string `json:"timezone"`               // e.g. "Africa/Nairobi"
+	DaysOfWeek []int  `json:"days_of_week,omitempty"` // 0=Sun, 6=Sat
 }
 
 // ---------------------------------------------------------------------------
@@ -223,16 +224,12 @@ func (a *StringArray) Scan(value interface{}) error {
 		*a = StringArray{}
 		return nil
 	}
-	bytes, ok := value.([]byte)
-	if !ok {
-		str, ok := value.(string)
-		if !ok {
-			*a = StringArray{}
-			return nil
-		}
-		bytes = []byte(str)
+	var arr pq.StringArray
+	if err := arr.Scan(value); err != nil {
+		return err
 	}
-	return json.Unmarshal(bytes, a)
+	*a = StringArray(arr)
+	return nil
 }
 
 // Value implements driver.Valuer for PostgreSQL text[].
@@ -240,7 +237,7 @@ func (a StringArray) Value() (interface{}, error) {
 	if a == nil {
 		return "{}", nil
 	}
-	return json.Marshal(a)
+	return pq.StringArray(a).Value()
 }
 
 // ---------------------------------------------------------------------------

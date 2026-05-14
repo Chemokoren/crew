@@ -127,15 +127,18 @@ curl http://localhost:8080/swagger/index.html  # → Swagger UI
 ## 🏗️ Architecture
 
 ```
-cmd/server/              — Entry point + dependency wiring (15-step startup)
+cmd/
+  server/                — Entry point + dependency wiring (15-step startup)
+  seed/                  — Database seeder (users, orgs, RBAC roles)
 internal/
   config/                — Environment configuration + validation
   database/              — PostgreSQL (GORM) + Redis + TxManager
   handler/               — HTTP handlers + DTOs (request/response)
   handler/dto/           — Data Transfer Objects
-  middleware/            — Auth (JWT), RBAC, CORS, rate limiting,
-                           metrics, security headers, logging, recovery
-  models/                — GORM data models (15 entities)
+  middleware/            — Auth (JWT), RBAC permission checker, CORS,
+                           rate limiting, security headers, logging, recovery
+  models/                — GORM data models + permission key constants
+  rbac/                  — Permission registry + role templates (system & industry)
   repository/            — Data access interfaces
   repository/postgres/   — GORM repository implementations (tx-aware)
   repository/mock/       — In-memory mocks for testing
@@ -155,9 +158,9 @@ pkg/
   jwt/                   — JWT token manager
   money/                 — Cents ↔ KES conversion utilities
   pagination/            — Pagination helpers
-  types/                 — System roles + shared types
+  types/                 — System roles + SystemRoleSlug() mapping
 docs/                    — Swagger/OpenAPI generated docs
-migrations/              — PostgreSQL migration files (7 sets, 22 tables)
+migrations/              — PostgreSQL migration files (26 sets, 30+ tables)
 ```
 
 ### Design Principles
@@ -244,15 +247,103 @@ Endpoint: `POST /api/v1/transactions/employee-payout`
 
 - **JWT** with short-lived access tokens + long-lived refresh tokens
 - **bcrypt** password hashing (cost factor 12)
-- **Role-Based Access Control (RBAC)**:
+- **Dynamic RBAC** — all permissions are database-driven with zero hardcoded role logic
 
-| Role | Permissions |
-|------|-------------|
-| `SYSTEM_ADMIN` | Full access to all resources |
-| `EMPLOYER` | Manage crew, vehicles, assignments within own organization |
-| `EMPLOYEE` | View own profile, wallet, transactions (KYC-gated) |
-| `LENDER` | View loan-related data |
-| `INSURER` | View insurance-related data |
+### System Roles
+
+Every user has a `system_role` stored in the `users` table. Each system role maps to a **database-managed RBAC role** via `SystemRoleSlug()`. Permissions are resolved dynamically at runtime — never hardcoded.
+
+| System Role | RBAC Slug | Default Permissions | Use Case |
+|---|---|---|---|
+| `SYSTEM_ADMIN` | `platform-super-admin` | All 141 permissions | Full platform access |
+| `PLATFORM_ADMIN` | `platform-super-admin` | All 141 permissions | Platform management |
+| `PLATFORM_AUDITOR` | `platform-auditor` | Read-only audit trails | Compliance oversight |
+| `PLATFORM_SUPPORT` | `platform-support-agent` | User/worker/assignment view | Customer support |
+| `PLATFORM_FINANCE` | `platform-finance` | Financial module access | Finance team |
+| `EMPLOYER` | `system-employer` | 80 permissions (org ops) | SACCO/employer admin |
+| `EMPLOYEE` | `system-employee` | 13 permissions (worker view) | Driver/conductor |
+| `LENDER` | `system-lender` | 11 permissions (loans/credit) | Lending partner |
+| `INSURER` | `system-insurer` | 7 permissions (insurance) | Insurance partner |
+
+### How Permission Resolution Works
+
+```
+User logs in → JWT includes system_role
+                    ↓
+Middleware injects system_role into request context
+                    ↓
+RBACService.HasPermissionWithContext() checks:
+  1. User's explicit RBAC role assignments (user_roles → role_permissions)
+  2. System role's RBAC permissions (SystemRoleSlug → roles → role_permissions)
+  3. Active RBAC policies (time/IP/attribute conditions)
+                    ↓
+Merged permission set → Allow or Deny
+```
+
+### Feature Gating (Staged Rollouts)
+
+All system role permissions are editable through the **Roles & Permissions** UI. This enables feature gating without code changes:
+
+1. Navigate to **Platform → Roles & Permissions**
+2. Select a system role (e.g. **Employee**)
+3. **Uncheck** permissions for features not yet ready (e.g. `loans.view`, `loans.apply`, `insurance.view`)
+4. **Save** — affected users instantly lose access to those modules
+5. When the feature is ready, **re-check** the permissions
+
+> **Note:** System role templates are re-synced on server startup from the code templates in `internal/rbac/templates.go`. To make permission changes permanent, update the template. UI changes persist between restarts as long as `SyncSystemRoles()` doesn't overwrite them (it uses `ON CONFLICT ... DO UPDATE`).
+
+### Permission Modules (141 total)
+
+Permissions are organized into modules. Each permission key follows the pattern `module.action`:
+
+| Module | Example Keys | Description |
+|---|---|---|
+| `workers` | `workers.view`, `workers.create`, `workers.delete`, `workers.verify_kyc` | Crew member management |
+| `assignments` | `assignments.view`, `assignments.create`, `assignments.approve` | Shift/task management |
+| `earnings` | `earnings.view`, `earnings.create`, `earnings.approve` | Earnings tracking |
+| `wallet` | `wallet.view`, `wallet.fund_float`, `wallet.approve_payout` | Wallet & float |
+| `payroll` | `payroll.view`, `payroll.run`, `payroll.approve` | Payroll processing |
+| `loans` | `loans.view`, `loans.apply`, `loans.approve`, `loans.disburse` | Loan lifecycle |
+| `insurance` | `insurance.view`, `insurance.enroll`, `insurance.cancel` | Insurance policies |
+| `credit` | `credit.view`, `credit.score_compute` | Credit scoring |
+| `roles` | `roles.view`, `roles.create`, `roles.assign`, `roles.manage_permissions` | RBAC management |
+| `users` | `users.view`, `users.create`, `users.manage_roles` | User management |
+| `documents` | `documents.view`, `documents.upload`, `documents.verify` | Document management |
+| `organizations` | `organizations.view`, `organizations.create` | Org management |
+| `vehicles` | `vehicles.view`, `vehicles.create`, `vehicles.delete` | Vehicle fleet |
+| `routes` | `routes.view`, `routes.create`, `routes.delete` | Route management |
+| `work_sites` | `work_sites.view`, `work_sites.create`, `work_sites.delete` | Work site management |
+| `platform` | `platform.manage_roles`, `platform.manage_finance` | Platform-level ops |
+| `audit` | `audit.view`, `audit.export` | Audit trail |
+| `reports` | `reports.view`, `reports.export`, `reports.create_custom` | Reporting |
+| `settings` | `settings.view`, `settings.update`, `settings.manage_tenant` | Tenant settings |
+| `compliance` | `compliance.view`, `compliance.generate_reports` | Statutory compliance |
+| `notifications` | `notifications.view`, `notifications.send` | Notifications |
+
+### RBAC API Endpoints
+
+| Method | Path | Guard | Description |
+|---|---|---|---|
+| `GET` | `/api/v1/rbac/roles` | `roles.view` | List all roles |
+| `POST` | `/api/v1/rbac/roles` | `roles.create` | Create a custom role |
+| `GET` | `/api/v1/rbac/roles/:id` | `roles.view` | Get role details |
+| `PUT` | `/api/v1/rbac/roles/:id` | `roles.update` | Update role name/desc |
+| `DELETE` | `/api/v1/rbac/roles/:id` | `roles.delete` | Soft-delete a role |
+| `POST` | `/api/v1/rbac/roles/:id/clone` | `roles.create` | Clone a role |
+| `GET` | `/api/v1/rbac/roles/:id/permissions` | `roles.view` | List role's permissions |
+| `PUT` | `/api/v1/rbac/roles/:id/permissions` | `roles.manage_permissions` | Set role permissions (bulk) |
+| `POST` | `/api/v1/rbac/roles/compare` | `roles.view` | Compare two roles |
+| `GET` | `/api/v1/rbac/permissions` | `roles.view` | List all permissions |
+| `GET` | `/api/v1/rbac/permissions/modules` | `roles.view` | List permission modules |
+| `GET` | `/api/v1/rbac/users/:id/roles` | `roles.assign` | Get user's roles |
+| `POST` | `/api/v1/rbac/users/:id/roles` | `roles.assign` | Assign role to user |
+| `DELETE` | `/api/v1/rbac/users/:id/roles/:roleId` | `roles.assign` | Revoke role from user |
+| `GET` | `/api/v1/rbac/users/:id/permissions` | Self-service | Get user's effective permissions |
+| `GET` | `/api/v1/rbac/templates` | `roles.view` | List role templates |
+| `POST` | `/api/v1/rbac/templates/:id/apply` | `roles.apply_templates` | Apply template to tenant |
+| `GET` | `/api/v1/rbac/policies` | `roles.manage_permissions` | List RBAC policies |
+| `POST` | `/api/v1/rbac/policies` | `roles.manage_permissions` | Create RBAC policy |
+| `GET` | `/api/v1/rbac/matrix` | `roles.view` | Full permission matrix |
 
 ### KYC Enforcement
 
@@ -260,10 +351,37 @@ Employees with unverified KYC (`PENDING` or `REJECTED`) are restricted to `/prof
 
 ---
 
+## 🌱 Database Seeding
+
+The seeder creates test users, organizations, vehicles, routes, crew members, wallets, and assignments. It also syncs all RBAC permissions, role templates, and system roles.
+
+```bash
+cd backend && go run cmd/seed/main.go
+```
+
+### Test Accounts
+
+| Role | Phone | Password | Description |
+|---|---|---|---|
+| **SYSTEM_ADMIN** | +254700000000 | `masai123` | Full platform access |
+| **SACCO_ADMIN** (EMPLOYER) | +254711111111 | `masai123` | Operations management |
+| **CREW** (Driver) | +254722000000 | `masai123` | Worker view |
+| **CREW** (Conductor) | +254722111111 | `masai123` | Worker view |
+| **LENDER** | +254733333333 | `masai123` | Financial services partner |
+| **INSURER** | +254744444444 | `masai123` | Insurance partner |
+
+> The seeder is **idempotent** — safe to run multiple times. It uses `FirstOrCreate` for entities and force-updates all passwords at the end.
+
+---
+
 ## 🛡️ Security
 
+- **Dynamic RBAC**: All authorization flows through the database — no hardcoded role-to-permission logic
+- **Privilege escalation prevention**: Users cannot grant permissions they don't possess
+- **Tenant isolation**: Non-platform users can only access data within their organization
+- **Self-service permissions**: Users can fetch their own permissions without prior RBAC grants (avoids chicken-and-egg)
+- **Permission caching**: Redis-backed with distributed invalidation
 - Rate limiting: 100 requests/minute per IP (sliding window)
-- SACCO-scoped data isolation for multi-tenant security
 - Wallet ownership enforcement for CREW users
 - Security headers: `X-Content-Type-Options`, `X-Frame-Options`, `X-XSS-Protection`
 - CORS with exposed `Idempotency-Key`, `X-Request-Id`, `X-Response-Time`
@@ -367,10 +485,11 @@ Workers use a goroutine-based scheduler with graceful shutdown integration.
 
 ## 📊 Database
 
-- **15 GORM models** across 7 migration sets (22 tables)
-- Domains: Users, Crew, SACCOs, Vehicles, Routes, Assignments, Earnings, Wallets, Payroll, Documents, Notifications
+- **20+ GORM models** across 26 migration sets (30+ tables)
+- Domains: Users, Crew, SACCOs, Vehicles, Routes, Assignments, Earnings, Wallets, Payroll, Documents, Notifications, RBAC (permissions, roles, role_permissions, user_roles, policies, role_templates)
 - Automatic migration on startup via `golang-migrate`
 - All repositories are transaction-aware via context-injected `TxManager`
+- RBAC tables seeded on startup: permissions registry, system role templates, industry templates
 
 ---
 

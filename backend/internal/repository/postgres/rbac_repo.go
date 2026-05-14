@@ -278,10 +278,27 @@ func (r *RBACRepo) BulkSetPermissions(ctx context.Context, roleID uuid.UUID, per
 // ═══════════════════════════════════════════════════════════════════════════
 
 func (r *RBACRepo) AssignRoleToUser(ctx context.Context, userRole *models.UserRole) error {
-	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "user_id"}, {Name: "role_id"}, {Name: "tenant_id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"is_active", "assigned_by", "assigned_at", "expires_at"}),
-	}).Create(userRole).Error
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		q := tx.Where("user_id = ? AND role_id = ?", userRole.UserID, userRole.RoleID)
+		if userRole.TenantID != nil {
+			q = q.Where("tenant_id = ?", *userRole.TenantID)
+		} else {
+			q = q.Where("tenant_id IS NULL")
+		}
+
+		var existing models.UserRole
+		if err := q.First(&existing).Error; err == nil {
+			existing.IsActive = true
+			existing.AssignedBy = userRole.AssignedBy
+			existing.AssignedAt = userRole.AssignedAt
+			existing.ExpiresAt = userRole.ExpiresAt
+			return tx.Save(&existing).Error
+		} else if err != gorm.ErrRecordNotFound {
+			return err
+		}
+
+		return tx.Create(userRole).Error
+	})
 }
 
 func (r *RBACRepo) RevokeRoleFromUser(ctx context.Context, userID, roleID uuid.UUID, tenantID *uuid.UUID) error {
