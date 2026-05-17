@@ -1,0 +1,80 @@
+<div class="animate-fade-in">
+  <div class="page-header"><div>
+    <h1 class="page-title grad-title">Platform Team</h1>
+    <p class="page-subtitle">Manage platform staff, roles, and access</p>
+  </div>
+  <button class="btn btn-primary btn-sm" (click)="openInvite()"><span class="material-icons-round" style="font-size:16px">person_add</span> Add Team Member</button>
+  </div>
+
+  <div class="filter-bar glass-card">
+    <div class="filter-group">
+      <select [ngModel]="filterRole()" (ngModelChange)="filterRole.set($event); loadMembers()">
+        <option value="">All Roles</option>
+        @for (r of roles; track r.value) { <option [value]="r.value">{{ r.label }}</option> }
+      </select>
+    </div>
+    <span class="team-count">{{ totalMembers() }} members</span>
+  </div>
+
+  @if (loading()) {
+    @for (i of [1,2,3,4]; track i) { <div class="skeleton" style="height:80px;margin-bottom:8px"></div> }
+  } @else if (members().length === 0) {
+    <div class="empty glass-card"><span class="material-icons-round empty-icon">group</span><div class="empty-title">No team members found</div><p class="empty-desc">Add platform team members to manage the system</p></div>
+  } @else {
+    <div class="team-grid">
+      @for (m of members(); track m.id) {
+        <div class="team-card glass-card" [class.inactive]="!m.is_active">
+          <div class="member-avatar" [style.background]="roleInfo(m.system_role).color + '22'" [style.color]="roleInfo(m.system_role).color">{{ getInitials(m) }}</div>
+          <div class="member-info">
+            <strong>{{ m.phone }}</strong>
+            @if (m.email) { <span class="member-email">{{ m.email }}</span> }
+            <span class="member-meta">Joined {{ m.created_at | date:'mediumDate' }}</span>
+          </div>
+          <div class="member-role">
+            <span class="role-badge" [style.background]="roleInfo(m.system_role).color + '18'" [style.color]="roleInfo(m.system_role).color">{{ roleInfo(m.system_role).label }}</span>
+            <span class="badge" [class.badge-success]="m.is_active" [class.badge-danger]="!m.is_active">{{ m.is_active ? 'Active' : 'Disabled' }}</span>
+          </div>
+          <div class="member-actions">
+            <button class="icon-btn" (click)="toggleActive(m)" [title]="m.is_active ? 'Disable' : 'Enable'">
+              <span class="material-icons-round">{{ m.is_active ? 'person_off' : 'person' }}</span>
+            </button>
+            <button class="icon-btn" (click)="resetPwd(m)" title="Reset Password">
+              <span class="material-icons-round">lock_reset</span>
+            </button>
+          </div>
+        </div>
+      }
+    </div>
+    <div class="pagination">
+      <button class="btn btn-secondary btn-sm" (click)="prevPage()" [disabled]="page() <= 1"><span class="material-icons-round" style="font-size:16px">chevron_left</span> Prev</button>
+      <span class="page-info">Page {{ page() }} of {{ totalPages || 1 }}</span>
+      <button class="btn btn-secondary btn-sm" (click)="nextPage()" [disabled]="page() * perPage >= totalMembers()">Next <span class="material-icons-round" style="font-size:16px">chevron_right</span></button>
+    </div>
+  }
+
+  @if (inviteOpen()) {
+    <div class="modal-overlay" (click)="closeInvite()">
+      <div class="modal glass-card" (click)="$event.stopPropagation()">
+        <div class="modal-header"><h3>Add Team Member</h3><button class="icon-btn" (click)="closeInvite()"><span class="material-icons-round">close</span></button></div>
+        <div class="modal-body">
+          <div class="form-row">
+            <div class="form-group"><label>First Name *</label><input type="text" [ngModel]="inviteData().first_name" (ngModelChange)="inviteData.set({...inviteData(), first_name: $event})" /></div>
+            <div class="form-group"><label>Last Name</label><input type="text" [ngModel]="inviteData().last_name" (ngModelChange)="inviteData.set({...inviteData(), last_name: $event})" /></div>
+          </div>
+          <div class="form-group"><label>Phone *</label><input type="tel" [ngModel]="inviteData().phone" (ngModelChange)="inviteData.set({...inviteData(), phone: $event})" placeholder="+254..." /></div>
+          <div class="form-group"><label>Email</label><input type="email" [ngModel]="inviteData().email" (ngModelChange)="inviteData.set({...inviteData(), email: $event})" /></div>
+          <div class="form-group"><label>Role</label>
+            <select [ngModel]="inviteData().role" (ngModelChange)="inviteData.set({...inviteData(), role: $event})">
+              @for (r of roles; track r.value) { <option [value]="r.value">{{ r.label }}</option> }
+            </select>
+          </div>
+          <div class="form-group"><label>Temporary Password *</label><input type="text" [ngModel]="inviteData().password" (ngModelChange)="inviteData.set({...inviteData(), password: $event})" placeholder="Min 8 characters" /></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary btn-sm" (click)="closeInvite()">Cancel</button>
+          <button class="btn btn-primary btn-sm" (click)="sendInvite()" [disabled]="inviteSaving()">{{ inviteSaving() ? 'Adding...' : 'Add Member' }}</button>
+        </div>
+      </div>
+    </div>
+  }
+</div>

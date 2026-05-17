@@ -511,6 +511,9 @@ export interface Document {
   file_size: number;
   mime_type: string;
   uploaded_by_id: string;
+  status?: string;
+  verified_by_id?: string;
+  verified_at?: string;
   created_at: string;
 }
 

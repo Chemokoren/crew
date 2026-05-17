@@ -220,12 +220,14 @@ type DocumentFilter struct {
 	OrganizationID      *uuid.UUID
 	VehicleID    *uuid.UUID
 	DocumentType string
+	Status       string
 }
 
 // DocumentRepository handles document metadata data access.
 type DocumentRepository interface {
 	Create(ctx context.Context, doc *models.Document) error
 	GetByID(ctx context.Context, id uuid.UUID) (*models.Document, error)
+	Update(ctx context.Context, doc *models.Document) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	List(ctx context.Context, filter DocumentFilter, page, perPage int) ([]models.Document, int64, error)
 }

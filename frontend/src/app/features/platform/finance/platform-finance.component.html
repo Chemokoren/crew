@@ -1,0 +1,79 @@
+<div class="animate-fade-in">
+  <div class="page-header"><div>
+    <h1 class="page-title grad-title">Float Oversight</h1>
+    <p class="page-subtitle">Monitor balances, approve top-ups, and track transactions across all organizations</p>
+  </div></div>
+
+  <div class="stabs">
+    @for (tab of tabs; track tab.id) {
+      <button class="stab" [class.active]="activeTab() === tab.id" (click)="switchTab(tab.id)">
+        <span class="material-icons-round">{{ tab.icon }}</span><span>{{ tab.label }}</span>
+      </button>
+    }
+  </div>
+
+  <!-- Summary Cards -->
+  <div class="stats-grid">
+    <div class="stat-card glass-card"><div class="stat-icon" style="background:rgba(16,185,129,0.12);color:#10b981"><span class="material-icons-round">account_balance_wallet</span></div><div class="stat-info"><span class="stat-value">{{ formatKes(totalFloat()) }}</span><span class="stat-label">Total Platform Float</span></div></div>
+    <div class="stat-card glass-card"><div class="stat-icon" style="background:rgba(99,102,241,0.12);color:#6366f1"><span class="material-icons-round">business</span></div><div class="stat-info"><span class="stat-value">{{ orgs().length }}</span><span class="stat-label">Organizations</span></div></div>
+    <div class="stat-card glass-card"><div class="stat-icon" style="background:rgba(245,158,11,0.12);color:#f59e0b"><span class="material-icons-round">pending_actions</span></div><div class="stat-info"><span class="stat-value">{{ pendingTopups().length }}</span><span class="stat-label">Pending Approvals</span></div></div>
+  </div>
+
+  @if (activeTab() === 'overview') {
+    <div class="tab-content" style="margin-top:var(--space-lg)">
+      <h2 class="sec-title"><span class="material-icons-round" style="color:#10b981">account_balance_wallet</span> Organization Float Balances</h2>
+      @if (loading()) {
+        @for (i of [1,2,3]; track i) { <div class="skeleton" style="height:64px;margin-bottom:8px"></div> }
+      } @else {
+        <div class="float-grid">
+          @for (org of orgs(); track org.id) {
+            <div class="float-card glass-card">
+              <div class="float-org"><strong>{{ org.name }}</strong><span class="float-type">{{ org.county }}</span></div>
+              <div class="float-balance">{{ formatKes(getFloat(org.id)?.balance_cents) }}</div>
+            </div>
+          }
+        </div>
+      }
+    </div>
+  }
+
+  @if (activeTab() === 'approvals') {
+    <div class="tab-content" style="margin-top:var(--space-lg)">
+      <h2 class="sec-title"><span class="material-icons-round" style="color:#f59e0b">pending_actions</span> Pending Top-up Approvals</h2>
+      @if (pendingTopups().length === 0) {
+        <div class="empty glass-card"><span class="material-icons-round empty-icon">check_circle</span><div class="empty-title">All clear</div><p class="empty-desc">No pending top-up approvals at this time</p></div>
+      } @else {
+        <div class="glass-card log-table">
+          <table>
+            <thead><tr><th>Organization</th><th>Amount</th><th>Method</th><th>Reference</th><th>Time</th><th>Actions</th></tr></thead>
+            <tbody>
+              @for (tx of pendingTopups(); track tx.id) {
+                <tr>
+                  <td>{{ tx.reference }}</td>
+                  <td><strong>{{ formatKes(tx.amount_cents) }}</strong></td>
+                  <td>{{ tx.transaction_type }}</td>
+                  <td class="mono">{{ tx.reference }}</td>
+                  <td>{{ tx.created_at | date:'short' }}</td>
+                  <td class="actions-cell">
+                    <button class="btn btn-sm btn-success" (click)="approveTopup(tx.id, tx.sacco_float_id || '')">Approve</button>
+                    <button class="btn btn-sm btn-danger" (click)="rejectTopup(tx.id, tx.sacco_float_id || '')">Reject</button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </div>
+  }
+
+  @if (activeTab() === 'transactions') {
+    <div class="tab-content" style="margin-top:var(--space-lg)">
+      <h2 class="sec-title"><span class="material-icons-round" style="color:#6366f1">receipt_long</span> Recent Transactions</h2>
+      <div class="glass-card" style="padding:var(--space-xl);text-align:center">
+        <span class="material-icons-round" style="font-size:48px;color:var(--color-text-muted);opacity:0.4">receipt_long</span>
+        <p class="sec-desc" style="margin-top:var(--space-sm)">Select an organization from the overview to view its float transactions</p>
+      </div>
+    </div>
+  }
+</div>

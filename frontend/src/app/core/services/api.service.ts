@@ -416,6 +416,10 @@ export class ApiService {
     return this.http.post(`${this.API}/admin/users/${userId}/reset-password`, { new_password: newPassword });
   }
 
+  registerTeamMember(data: { first_name: string; last_name: string; phone: string; email: string; role: string; password: string }): Observable<unknown> {
+    return this.http.post(`${this.API}/auth/register`, data);
+  }
+
   getAuditLogs(params?: Record<string, string>): Observable<ApiListResponse<AuditLog>> {
     return this.http.get<ApiListResponse<AuditLog>>(`${this.API}/admin/audit-logs`, { params: this.buildParams(params) });
   }
@@ -453,6 +457,14 @@ export class ApiService {
 
   deleteDocument(id: string): Observable<unknown> {
     return this.http.delete(`${this.API}/documents/${id}`);
+  }
+
+  verifyDocument(id: string): Observable<ApiResponse<Document>> {
+    return this.http.post<ApiResponse<Document>>(`${this.API}/documents/${id}/verify`, {});
+  }
+
+  rejectDocument(id: string): Observable<ApiResponse<Document>> {
+    return this.http.post<ApiResponse<Document>>(`${this.API}/documents/${id}/reject`, {});
   }
 
   // --- Tenant Config (Phase F3) ---

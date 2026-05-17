@@ -1,0 +1,70 @@
+<div class="animate-fade-in">
+  <div class="page-header"><div>
+    <h1 class="page-title grad-title">Compliance & Audit</h1>
+    <p class="page-subtitle">Search, filter, and export audit logs across the platform</p>
+  </div>
+  <button class="btn btn-primary btn-sm" (click)="exportCSV()"><span class="material-icons-round" style="font-size:16px">download</span> Export CSV</button>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-grid">
+    <div class="stat-card glass-card"><div class="stat-icon" style="background:rgba(99,102,241,0.12);color:#6366f1"><span class="material-icons-round">history</span></div><div class="stat-info"><span class="stat-value">{{ totalActions() }}</span><span class="stat-label">Total Audit Events</span></div></div>
+    <div class="stat-card glass-card"><div class="stat-icon" style="background:rgba(16,185,129,0.12);color:#10b981"><span class="material-icons-round">verified_user</span></div><div class="stat-info"><span class="stat-value">--</span><span class="stat-label">KYC Completion Rate</span></div></div>
+    <div class="stat-card glass-card"><div class="stat-icon" style="background:rgba(245,158,11,0.12);color:#f59e0b"><span class="material-icons-round">gavel</span></div><div class="stat-info"><span class="stat-value">Active</span><span class="stat-label">Compliance Status</span></div></div>
+  </div>
+
+  <!-- Filters -->
+  <div class="filter-bar glass-card">
+    <div class="filter-group">
+      <select [ngModel]="filterAction()" (ngModelChange)="filterAction.set($event)">
+        <option value="">All Actions</option>
+        @for (a of actions; track a) { <option [value]="a">{{ a }}</option> }
+      </select>
+      <select [ngModel]="filterEntity()" (ngModelChange)="filterEntity.set($event)">
+        <option value="">All Entities</option>
+        @for (e of entities; track e) { <option [value]="e">{{ e }}</option> }
+      </select>
+      <input type="text" [ngModel]="filterUser()" (ngModelChange)="filterUser.set($event)" placeholder="User ID..." style="max-width:200px" />
+    </div>
+    <div class="filter-actions">
+      <button class="btn btn-primary btn-sm" (click)="applyFilters()">Filter</button>
+      <button class="btn btn-secondary btn-sm" (click)="clearFilters()">Clear</button>
+    </div>
+  </div>
+
+  <!-- Audit Log Table -->
+  @if (loading()) {
+    @for (i of [1,2,3,4,5]; track i) { <div class="skeleton" style="height:48px;margin-bottom:4px"></div> }
+  } @else {
+    <div class="glass-card log-table">
+      <table>
+        <thead><tr><th>Timestamp</th><th>Action</th><th>Entity</th><th>Entity ID</th><th>Details</th></tr></thead>
+        <tbody>
+          @for (log of logs(); track log.id) {
+            <tr>
+              <td class="mono">{{ log.created_at | date:'medium' }}</td>
+              <td><span class="action-badge" [style.background]="actionColor(log.action) + '18'" [style.color]="actionColor(log.action)">{{ log.action }}</span></td>
+              <td>{{ log.resource }}</td>
+              <td class="mono truncate" style="max-width:120px">{{ log.resource_id }}</td>
+              <td class="truncate" style="max-width:300px">{{ log.details }}</td>
+            </tr>
+          }
+          @if (logs().length === 0) {
+            <tr><td colspan="5" style="text-align:center;color:var(--color-text-muted);padding:var(--space-xl)">No audit logs found matching filters</td></tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination -->
+    <div class="pagination">
+      <button class="btn btn-secondary btn-sm" (click)="prevPage()" [disabled]="page() <= 1">
+        <span class="material-icons-round" style="font-size:16px">chevron_left</span> Prev
+      </button>
+      <span class="page-info">Page {{ page() }} of {{ totalPages || 1 }}</span>
+      <button class="btn btn-secondary btn-sm" (click)="nextPage()" [disabled]="page() * perPage >= totalLogs()">
+        Next <span class="material-icons-round" style="font-size:16px">chevron_right</span>
+      </button>
+    </div>
+  }
+</div>

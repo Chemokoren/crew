@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/kibsoft/amy-mis/internal/models"
@@ -61,4 +62,20 @@ func (s *DocumentService) DeleteDocument(ctx context.Context, id uuid.UUID) erro
 
 func (s *DocumentService) ListDocuments(ctx context.Context, filter repository.DocumentFilter, page, perPage int) ([]models.Document, int64, error) {
 	return s.docRepo.List(ctx, filter, page, perPage)
+}
+
+func (s *DocumentService) UpdateDocumentStatus(ctx context.Context, id uuid.UUID, status string, verifiedBy uuid.UUID) (*models.Document, error) {
+	doc, err := s.docRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("get document: %w", err)
+	}
+	doc.Status = status
+	doc.VerifiedByID = &verifiedBy
+	now := time.Now()
+	doc.VerifiedAt = &now
+	if err := s.docRepo.Update(ctx, doc); err != nil {
+		return nil, fmt.Errorf("update document status: %w", err)
+	}
+	s.logger.Info("document status updated", slog.String("id", id.String()), slog.String("status", status))
+	return doc, nil
 }

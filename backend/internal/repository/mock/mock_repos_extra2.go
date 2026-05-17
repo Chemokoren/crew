@@ -41,6 +41,11 @@ func (m *DocumentRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
+func (m *DocumentRepo) Update(ctx context.Context, doc *models.Document) error {
+	m.Docs[doc.ID] = doc
+	return nil
+}
+
 func (m *DocumentRepo) List(ctx context.Context, filter repository.DocumentFilter, page, perPage int) ([]models.Document, int64, error) {
 	var docs []models.Document
 	for _, d := range m.Docs {

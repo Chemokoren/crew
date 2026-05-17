@@ -46,6 +46,13 @@ func (r *DocumentRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
+func (r *DocumentRepo) Update(ctx context.Context, doc *models.Document) error {
+	if err := r.db.WithContext(ctx).Save(doc).Error; err != nil {
+		return fmt.Errorf("update document: %w", err)
+	}
+	return nil
+}
+
 func (r *DocumentRepo) List(ctx context.Context, filter repository.DocumentFilter, page, perPage int) ([]models.Document, int64, error) {
 	var docs []models.Document
 	var total int64
@@ -62,6 +69,9 @@ func (r *DocumentRepo) List(ctx context.Context, filter repository.DocumentFilte
 	}
 	if filter.DocumentType != "" {
 		query = query.Where("document_type = ?", filter.DocumentType)
+	}
+	if filter.Status != "" {
+		query = query.Where("status = ?", filter.Status)
 	}
 	query.Count(&total)
 

@@ -30,6 +30,9 @@ type Document struct {
 	MimeType     string       `json:"mime_type"`
 	StoragePath  string       `json:"-" gorm:"not null"` // MinIO object key — never exposed
 	UploadedByID uuid.UUID    `json:"uploaded_by_id" gorm:"type:uuid;not null"`
+	Status       string       `json:"status" gorm:"default:'PENDING'"`
+	VerifiedByID *uuid.UUID   `json:"verified_by_id,omitempty" gorm:"type:uuid"`
+	VerifiedAt   *time.Time   `json:"verified_at,omitempty"`
 	CreatedAt    time.Time    `json:"created_at"`
 }
 

@@ -145,6 +145,7 @@ func (h *DocumentHandler) List(c *gin.Context) {
 		}
 	}
 	filter.DocumentType = c.Query("document_type")
+	filter.Status = c.Query("status")
 
 	docs, total, err := h.docSvc.ListDocuments(c.Request.Context(), filter, page, perPage)
 	if err != nil {
@@ -168,4 +169,42 @@ func (h *DocumentHandler) Delete(c *gin.Context) {
 		return
 	}
 	SuccessResponse(c, http.StatusOK, gin.H{"message": "Document metadata deleted"})
+}
+
+func (h *DocumentHandler) VerifyDocument(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		BadRequest(c, "Invalid document ID")
+		return
+	}
+	claims := middleware.GetClaims(c)
+	if claims == nil {
+		Unauthorized(c, "Authentication required")
+		return
+	}
+	doc, err := h.docSvc.UpdateDocumentStatus(c.Request.Context(), id, "VERIFIED", claims.UserID)
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, doc)
+}
+
+func (h *DocumentHandler) RejectDocument(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		BadRequest(c, "Invalid document ID")
+		return
+	}
+	claims := middleware.GetClaims(c)
+	if claims == nil {
+		Unauthorized(c, "Authentication required")
+		return
+	}
+	doc, err := h.docSvc.UpdateDocumentStatus(c.Request.Context(), id, "REJECTED", claims.UserID)
+	if err != nil {
+		MapServiceError(c, err)
+		return
+	}
+	SuccessResponse(c, http.StatusOK, doc)
 }

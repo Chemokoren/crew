@@ -1,0 +1,99 @@
+<div class="animate-fade-in">
+  <div class="page-header"><div>
+    <h1 class="page-title grad-title">Documents</h1>
+    <p class="page-subtitle">Review and manage documents across all organizations</p>
+  </div></div>
+
+  <div class="stabs">
+    @for (tab of tabs; track tab.id) {
+      <button class="stab" [class.active]="activeTab() === tab.id" (click)="switchTab(tab.id)">
+        <span class="material-icons-round">{{ tab.icon }}</span><span>{{ tab.label }}</span>
+      </button>
+    }
+  </div>
+
+  @if (activeTab() === 'all') {
+    <div class="tab-content">
+      <div class="filter-bar glass-card">
+        <div class="filter-group">
+          <select [ngModel]="filterType()" (ngModelChange)="filterType.set($event)"><option value="">All Types</option>
+            @for (t of docTypes; track t) { <option [value]="t">{{ t }}</option> }
+          </select>
+          <select [ngModel]="filterStatus()" (ngModelChange)="filterStatus.set($event)"><option value="">All Statuses</option>
+            @for (s of statuses; track s) { <option [value]="s">{{ s }}</option> }
+          </select>
+        </div>
+        <div class="filter-actions">
+          <button class="btn btn-primary btn-sm" (click)="applyFilters()">Filter</button>
+          <button class="btn btn-secondary btn-sm" (click)="clearFilters()">Clear</button>
+        </div>
+      </div>
+
+      @if (loading()) {
+        @for (i of [1,2,3,4]; track i) { <div class="skeleton" style="height:52px;margin-bottom:4px"></div> }
+      } @else {
+        <div class="glass-card log-table">
+          <table>
+            <thead><tr><th>File</th><th>Type</th><th>Status</th><th>Uploaded</th><th>Actions</th></tr></thead>
+            <tbody>
+              @for (doc of documents(); track doc.id) {
+                <tr>
+                  <td><div class="doc-name"><span class="material-icons-round" style="font-size:18px;color:var(--color-text-muted)">{{ typeIcon(doc.document_type) }}</span> {{ doc.file_name }}</div></td>
+                  <td><span class="type-badge">{{ doc.document_type }}</span></td>
+                  <td><span class="status-badge" [style.background]="statusColor(doc.status || 'PENDING') + '18'" [style.color]="statusColor(doc.status || 'PENDING')">{{ doc.status || 'PENDING' }}</span></td>
+                  <td>{{ doc.created_at | date:'short' }}</td>
+                  <td class="actions-cell">
+                    @if (doc.status === 'PENDING' || !doc.status) {
+                      <button class="btn-sm btn-success" (click)="verifyDoc(doc)">Verify</button>
+                      <button class="btn-sm btn-danger" (click)="rejectDoc(doc)">Reject</button>
+                    }
+                  </td>
+                </tr>
+              }
+              @if (documents().length === 0) {
+                <tr><td colspan="5" style="text-align:center;color:var(--color-text-muted);padding:var(--space-xl)">No documents found</td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        <div class="pagination">
+          <button class="btn btn-secondary btn-sm" (click)="prevPage()" [disabled]="page() <= 1"><span class="material-icons-round" style="font-size:16px">chevron_left</span> Prev</button>
+          <span class="page-info">Page {{ page() }} of {{ totalPages || 1 }}</span>
+          <button class="btn btn-secondary btn-sm" (click)="nextPage()" [disabled]="page() * perPage >= totalDocs()">Next <span class="material-icons-round" style="font-size:16px">chevron_right</span></button>
+        </div>
+      }
+    </div>
+  }
+
+  @if (activeTab() === 'kyc_queue') {
+    <div class="tab-content">
+      <h2 class="sec-title"><span class="material-icons-round" style="color:#f59e0b">verified_user</span> KYC Verification Queue</h2>
+      @if (kycPending().length === 0) {
+        <div class="empty glass-card"><span class="material-icons-round empty-icon">verified_user</span><div class="empty-title">Queue clear</div><p class="empty-desc">No pending KYC documents to review</p></div>
+      } @else {
+        <div class="kyc-grid">
+          @for (doc of kycPending(); track doc.id) {
+            <div class="kyc-card glass-card">
+              <div class="kyc-icon"><span class="material-icons-round">badge</span></div>
+              <div class="kyc-info"><strong>{{ doc.file_name }}</strong><span>{{ doc.document_type }}</span><span>{{ doc.created_at | date:'medium' }}</span></div>
+              <div class="kyc-actions">
+                <button class="btn btn-sm btn-success" (click)="verifyDoc(doc)"><span class="material-icons-round" style="font-size:14px">check</span> Verify</button>
+                <button class="btn btn-sm btn-danger" (click)="rejectDoc(doc)"><span class="material-icons-round" style="font-size:14px">close</span> Reject</button>
+              </div>
+            </div>
+          }
+        </div>
+      }
+    </div>
+  }
+
+  @if (activeTab() === 'analytics') {
+    <div class="tab-content">
+      <h2 class="sec-title"><span class="material-icons-round" style="color:#6366f1">pie_chart</span> Document Analytics</h2>
+      <div class="stats-grid">
+        <div class="stat-card glass-card"><div class="stat-icon" style="background:rgba(99,102,241,0.12);color:#6366f1"><span class="material-icons-round">folder</span></div><div class="stat-info"><span class="stat-value">{{ totalDocs() }}</span><span class="stat-label">Total Documents</span></div></div>
+        <div class="stat-card glass-card"><div class="stat-icon" style="background:rgba(245,158,11,0.12);color:#f59e0b"><span class="material-icons-round">pending</span></div><div class="stat-info"><span class="stat-value">{{ kycPending().length }}</span><span class="stat-label">Pending Review</span></div></div>
+      </div>
+    </div>
+  }
+</div>

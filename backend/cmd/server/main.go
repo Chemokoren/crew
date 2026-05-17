@@ -888,6 +888,8 @@ func main() {
 			documents.GET("/:id/download", middleware.RequirePermission(models.PermDocumentsView), docHandler.Download)
 			documents.GET("", middleware.RequirePermission(models.PermDocumentsView), docHandler.List)
 			documents.DELETE("/:id", middleware.RequirePermission(models.PermDocumentsDelete), docHandler.Delete)
+			documents.POST("/:id/verify", middleware.RequirePermission(models.PermDocumentsVerify), docHandler.VerifyDocument)
+			documents.POST("/:id/reject", middleware.RequirePermission(models.PermDocumentsVerify), docHandler.RejectDocument)
 		}
 
 		// Earnings
