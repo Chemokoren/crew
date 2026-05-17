@@ -10,6 +10,7 @@ import { PlatformSidebarComponent } from './shared/components/platform-sidebar/p
 import { PlatformTopbarComponent } from './shared/components/platform-topbar/platform-topbar.component';
 import { ToastComponent } from './shared/components/toast/toast.component';
 import { ConfirmDialogComponent } from './shared/components/confirm-dialog/confirm-dialog.component';
+import { AnnouncementBannerComponent } from './shared/components/announcement-banner.component';
 
 @Component({
   selector: 'app-root',
@@ -18,7 +19,7 @@ import { ConfirmDialogComponent } from './shared/components/confirm-dialog/confi
     CommonModule, RouterOutlet,
     SidebarComponent, TopbarComponent,
     PlatformSidebarComponent, PlatformTopbarComponent,
-    ToastComponent, ConfirmDialogComponent,
+    ToastComponent, ConfirmDialogComponent, AnnouncementBannerComponent,
   ],
   template: `
     @if (isAuthRoute()) {
@@ -27,6 +28,7 @@ import { ConfirmDialogComponent } from './shared/components/confirm-dialog/confi
       <div class="app-layout platform-layout">
         <app-platform-sidebar [(mobileOpen)]="sidebarMobileOpen" />
         <app-platform-topbar (menuToggle)="toggleMobileSidebar()" />
+        <app-announcement-banner />
         <main class="main-content" id="main-content">
           <router-outlet />
         </main>
@@ -35,6 +37,7 @@ import { ConfirmDialogComponent } from './shared/components/confirm-dialog/confi
       <div class="app-layout">
         <app-sidebar [(mobileOpen)]="sidebarMobileOpen" />
         <app-topbar (menuToggle)="toggleMobileSidebar()" />
+        <app-announcement-banner />
         <main class="main-content" id="main-content">
           <router-outlet />
         </main>

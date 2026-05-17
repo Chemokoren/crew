@@ -434,3 +434,23 @@ type RBACRepository interface {
 	ListTemplates(ctx context.Context, industryType string) ([]models.RoleTemplate, error)
 	GetTemplateByID(ctx context.Context, id uuid.UUID) (*models.RoleTemplate, error)
 }
+
+// SystemSettingRepository handles global platform settings (key-value store).
+type SystemSettingRepository interface {
+	Get(ctx context.Context, key string) (*models.SystemSetting, error)
+	Set(ctx context.Context, setting *models.SystemSetting) error
+	GetAll(ctx context.Context) ([]models.SystemSetting, error)
+	GetByPrefix(ctx context.Context, prefix string) ([]models.SystemSetting, error)
+	Delete(ctx context.Context, key string) error
+	BulkSet(ctx context.Context, settings []models.SystemSetting) error
+}
+
+// SystemAnnouncementRepository handles platform-wide announcements.
+type SystemAnnouncementRepository interface {
+	Create(ctx context.Context, a *models.SystemAnnouncement) error
+	GetByID(ctx context.Context, id uuid.UUID) (*models.SystemAnnouncement, error)
+	Update(ctx context.Context, a *models.SystemAnnouncement) error
+	Delete(ctx context.Context, id uuid.UUID) error
+	ListAll(ctx context.Context, page, perPage int) ([]models.SystemAnnouncement, int64, error)
+	ListActive(ctx context.Context) ([]models.SystemAnnouncement, error)
+}

@@ -11,7 +11,7 @@ import {
   AuditLog, AdminUser, NotificationTemplate, Document,
   SystemStats, SACCOFloat, SACCOMembership, SACCOFloatTransaction,
   StatutoryRate, TenantJobType, PaySchedule, PayPeriod, FinancialProfile,
-  BootstrapResult, WorkSite
+  BootstrapResult, WorkSite, SystemSetting, SystemAnnouncement
 } from '../models';
 
 @Injectable({ providedIn: 'root' })
@@ -592,5 +592,57 @@ export class ApiService {
       fd.append('id_back', idBack);
     }
     return this.http.post<ApiResponse<{ kyc_status: string; crew_id: string; message: string }>>(`${this.API}/auth/kyc/upload`, fd);
+  }
+
+  // --- Platform System Settings ---
+
+  createStatutoryRate(data: Partial<StatutoryRate>): Observable<ApiResponse<StatutoryRate>> {
+    return this.http.post<ApiResponse<StatutoryRate>>(`${this.API}/admin/statutory-rates`, data);
+  }
+
+  updateStatutoryRate(id: string, data: Partial<StatutoryRate>): Observable<ApiResponse<StatutoryRate>> {
+    return this.http.put<ApiResponse<StatutoryRate>>(`${this.API}/admin/statutory-rates/${id}`, data);
+  }
+
+  // --- System Settings (key-value) ---
+
+  getSystemSettings(prefix?: string): Observable<ApiResponse<SystemSetting[]>> {
+    const params = this.buildParams(prefix ? { prefix } : undefined);
+    return this.http.get<ApiResponse<SystemSetting[]>>(`${this.API}/admin/system-settings`, { params });
+  }
+
+  upsertSystemSetting(setting: Partial<SystemSetting>): Observable<ApiResponse<SystemSetting>> {
+    return this.http.put<ApiResponse<SystemSetting>>(`${this.API}/admin/system-settings`, setting);
+  }
+
+  bulkUpsertSystemSettings(settings: Partial<SystemSetting>[]): Observable<ApiResponse<{ message: string; count: number }>> {
+    return this.http.put<ApiResponse<{ message: string; count: number }>>(`${this.API}/admin/system-settings/bulk`, { settings });
+  }
+
+  deleteSystemSetting(key: string): Observable<ApiResponse<{ message: string }>> {
+    return this.http.delete<ApiResponse<{ message: string }>>(`${this.API}/admin/system-settings/${key}`);
+  }
+
+  // --- System Announcements ---
+
+  getAnnouncements(params?: Record<string, string>): Observable<ApiListResponse<SystemAnnouncement>> {
+    return this.http.get<ApiListResponse<SystemAnnouncement>>(`${this.API}/admin/announcements`, { params: this.buildParams(params) });
+  }
+
+  createAnnouncement(data: Partial<SystemAnnouncement>): Observable<ApiResponse<SystemAnnouncement>> {
+    return this.http.post<ApiResponse<SystemAnnouncement>>(`${this.API}/admin/announcements`, data);
+  }
+
+  updateAnnouncement(id: string, data: Partial<SystemAnnouncement>): Observable<ApiResponse<SystemAnnouncement>> {
+    return this.http.put<ApiResponse<SystemAnnouncement>>(`${this.API}/admin/announcements/${id}`, data);
+  }
+
+  deleteAnnouncement(id: string): Observable<ApiResponse<{ message: string }>> {
+    return this.http.delete<ApiResponse<{ message: string }>>(`${this.API}/admin/announcements/${id}`);
+  }
+
+  // Active announcements (all authenticated users)
+  getActiveAnnouncements(): Observable<ApiResponse<SystemAnnouncement[]>> {
+    return this.http.get<ApiResponse<SystemAnnouncement[]>>(`${this.API}/announcements/active`);
   }
 }

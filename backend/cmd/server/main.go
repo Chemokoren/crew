@@ -167,6 +167,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Auto-migrate new system settings tables
+	if err := db.AutoMigrate(&models.SystemSetting{}, &models.SystemAnnouncement{}); err != nil {
+		slog.Error("failed to auto-migrate system settings tables", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+
 	// --- 5. Connect to Redis ---
 	redisClient, err := database.ConnectRedis(cfg.RedisURL)
 	if err != nil {
@@ -233,6 +239,8 @@ func main() {
 	payScheduleRepo := pgRepo.NewPayScheduleRepo(db)
 	workSiteRepo := pgRepo.NewWorkSiteRepo(db)
 	rbacRepo := pgRepo.NewRBACRepo(db)
+	systemSettingRepo := pgRepo.NewSystemSettingRepo(db)
+	systemAnnouncementRepo := pgRepo.NewSystemAnnouncementRepo(db)
 
 	// --- 8. Initialize transaction manager ---
 	txMgr := database.NewTxManager(db)
@@ -432,6 +440,7 @@ func main() {
 	tenantHandler := handler.NewTenantHandler(tenantSvc)
 	adminHandler := handler.NewAdminHandler(authSvc, notifSvc, auditRepo, statutoryRateRepo)
 	workSiteHandler := handler.NewWorkSiteHandler(workSiteRepo)
+	systemSettingsHandler := handler.NewSystemSettingsHandler(systemSettingRepo, systemAnnouncementRepo, statutoryRateRepo)
 
 	// --- RBAC (Enterprise Roles & Permissions) ---
 	permCache := service.NewPermissionCache(redisClient, 5*time.Minute)
@@ -669,6 +678,7 @@ func main() {
 		secured.POST("/auth/kyc/initiate", authHandler.InitiateKYC)
 		secured.POST("/auth/kyc/upload", authHandler.UploadKYC)
 		secured.POST("/auth/change-password", adminHandler.ChangePassword) // Password change (requires auth)
+		secured.GET("/announcements/active", systemSettingsHandler.ListActiveAnnouncements) // System banners for all users
 
 		// Crew members (SACCO admins & system admins)
 		crew := secured.Group("/crew")
@@ -946,9 +956,23 @@ func main() {
 			admin.POST("/users/:id/reset-password", middleware.RequireAnyPermission(models.PermUsersUpdate, models.PermPlatformManageUsers), adminHandler.ResetPassword)
 			admin.GET("/audit-logs", middleware.RequireAnyPermission(models.PermAuditView, models.PermPlatformViewAudit), adminHandler.ListAuditLogs)
 			admin.GET("/statutory-rates", middleware.RequireAnyPermission(models.PermComplianceView, models.PermPlatformManageCompliance), adminHandler.ListStatutoryRates)
+			admin.POST("/statutory-rates", middleware.RequireAnyPermission(models.PermComplianceManageRates, models.PermPlatformManageCompliance), systemSettingsHandler.CreateStatutoryRate)
+			admin.PUT("/statutory-rates/:id", middleware.RequireAnyPermission(models.PermComplianceManageRates, models.PermPlatformManageCompliance), systemSettingsHandler.UpdateStatutoryRate)
 			admin.GET("/notifications/templates", middleware.RequirePermission(models.PermNotificationsManageTemplates), adminHandler.ListTemplates)
 			admin.POST("/notifications/templates", middleware.RequirePermission(models.PermNotificationsManageTemplates), adminHandler.CreateTemplate)
 			admin.PUT("/notifications/templates", middleware.RequirePermission(models.PermNotificationsManageTemplates), adminHandler.UpdateTemplate)
+
+			// System Settings (key-value store)
+			admin.GET("/system-settings", middleware.RequireAnyPermission(models.PermSettingsView, models.PermPlatformManageSettings), systemSettingsHandler.ListSettings)
+			admin.PUT("/system-settings", middleware.RequireAnyPermission(models.PermSettingsUpdate, models.PermPlatformManageSettings), systemSettingsHandler.UpsertSetting)
+			admin.PUT("/system-settings/bulk", middleware.RequireAnyPermission(models.PermSettingsUpdate, models.PermPlatformManageSettings), systemSettingsHandler.BulkUpsertSettings)
+			admin.DELETE("/system-settings/:key", middleware.RequireAnyPermission(models.PermSettingsUpdate, models.PermPlatformManageSettings), systemSettingsHandler.DeleteSetting)
+
+			// System Announcements
+			admin.GET("/announcements", middleware.RequireAnyPermission(models.PermNotificationsView, models.PermPlatformManageSettings), systemSettingsHandler.ListAnnouncements)
+			admin.POST("/announcements", middleware.RequireAnyPermission(models.PermNotificationsSend, models.PermPlatformManageSettings), systemSettingsHandler.CreateAnnouncement)
+			admin.PUT("/announcements/:id", middleware.RequireAnyPermission(models.PermNotificationsSend, models.PermPlatformManageSettings), systemSettingsHandler.UpdateAnnouncement)
+			admin.DELETE("/announcements/:id", middleware.RequireAnyPermission(models.PermNotificationsSend, models.PermPlatformManageSettings), systemSettingsHandler.DeleteAnnouncement)
 		}
 
 		// RBAC APIs (uses rate limiting for mutations)

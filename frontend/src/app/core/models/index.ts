@@ -764,3 +764,34 @@ export interface RBACPolicy {
   tenant_id?: string;
   created_at: string;
 }
+
+// --- System Settings (Phase: Platform Settings) ---
+
+export type SettingValueType = 'string' | 'bool' | 'number' | 'json';
+
+export interface SystemSetting {
+  id?: string;
+  key: string;
+  value: string;
+  value_type: SettingValueType;
+  category: string;
+  label: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export type AnnouncementSeverity = 'INFO' | 'WARNING' | 'CRITICAL';
+
+export interface SystemAnnouncement {
+  id: string;
+  title: string;
+  body: string;
+  severity: AnnouncementSeverity;
+  start_at?: string;
+  end_at?: string;
+  is_active: boolean;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+

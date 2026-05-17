@@ -386,10 +386,53 @@ import { Wallet, WalletTransaction, PaginationMeta, CrewMember, SACCOFloat, SACC
                       <label class="form-label">RTGS Reference <span class="field-required">*</span></label>
                       <p class="field-hint">Enter the RTGS transfer reference from your bank.</p>
                       <input type="text" class="form-input" [(ngModel)]="topupBankRef" placeholder="e.g. RTGS2026050700123" id="topup-bank-ref">
+                    } @else if (topupProvider === 'pesalink') {
+                      <label class="form-label">PesaLink Reference <span class="field-required">*</span></label>
+                      <p class="field-hint">Enter the PesaLink confirmation reference from your bank.</p>
+                      <input type="text" class="form-input" [(ngModel)]="topupBankRef" placeholder="e.g. PLK2026050700456" id="topup-bank-ref">
                     } @else {
                       <label class="form-label">Account / Transaction Reference <span class="field-required">*</span></label>
-                      <p class="field-hint">Paybill or bank transfer reference number.</p>
+                      <p class="field-hint">Deposit slip or bank transfer reference number.</p>
                       <input type="text" class="form-input" [(ngModel)]="topupBankRef" placeholder="e.g. TXN-20260507-001" id="topup-bank-ref">
+                    }
+
+                    <!-- Bank-specific deposit instructions -->
+                    @if (getBankInstructions(topupProvider); as instr) {
+                      <div class="bank-instructions" style="margin-top:var(--space-md);padding:14px 16px;border-radius:var(--radius-md);border:1px solid rgba(0,210,255,0.2);background:rgba(0,210,255,0.04);">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                          <span class="material-icons-round" style="font-size:18px;color:var(--color-accent);">info</span>
+                          <span style="font-size:0.82rem;font-weight:600;color:var(--color-text-primary);">{{ instr.title }}</span>
+                        </div>
+                        @if (instr.accountNumber) {
+                          <div style="display:flex;flex-wrap:wrap;gap:6px 16px;margin-bottom:8px;">
+                            <div class="bank-detail-chip">
+                              <span class="bank-detail-label">Account No</span>
+                              <span class="bank-detail-value">{{ instr.accountNumber }}</span>
+                            </div>
+                            <div class="bank-detail-chip">
+                              <span class="bank-detail-label">Account Name</span>
+                              <span class="bank-detail-value">{{ instr.accountName }}</span>
+                            </div>
+                            @if (instr.branch) {
+                              <div class="bank-detail-chip">
+                                <span class="bank-detail-label">Branch</span>
+                                <span class="bank-detail-value">{{ instr.branch }}</span>
+                              </div>
+                            }
+                            @if (instr.swiftCode) {
+                              <div class="bank-detail-chip">
+                                <span class="bank-detail-label">SWIFT Code</span>
+                                <span class="bank-detail-value">{{ instr.swiftCode }}</span>
+                              </div>
+                            }
+                          </div>
+                        }
+                        <ol style="margin:0;padding-left:20px;font-size:0.74rem;color:var(--color-text-secondary);line-height:1.7;">
+                          @for (step of instr.steps; track $index) {
+                            <li>{{ step }}</li>
+                          }
+                        </ol>
+                      </div>
                     }
                   }
                   @if (topupMethod === 'card') {
@@ -859,7 +902,10 @@ import { Wallet, WalletTransaction, PaginationMeta, CrewMember, SACCOFloat, SACC
     .provider-chip:hover { border-color: var(--color-accent); color: var(--color-text-primary); }
     .provider-chip--active { border-color: var(--color-accent); background: rgba(0,210,255,0.1); color: var(--color-accent); font-weight: 600; box-shadow: 0 0 0 2px rgba(0,210,255,0.12); }
     .provider-chip-icon { font-size: 1.1rem; }
-    @media (max-width: 600px) { .tx-time, .tx-balance { display: none; } .pm-grid { grid-template-columns: 1fr; } }
+    .bank-detail-chip { display: flex; flex-direction: column; gap: 1px; padding: 6px 12px; border-radius: 8px; background: var(--color-bg-secondary, rgba(0,0,0,0.03)); border: 1px solid var(--color-border); }
+    .bank-detail-label { font-size: 0.62rem; font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .bank-detail-value { font-size: 0.78rem; font-weight: 600; color: var(--color-text-primary); font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    @media (max-width: 600px) { .tx-time, .tx-balance { display: none; } .pm-grid { grid-template-columns: 1fr; } .provider-chips { gap: 6px; } .provider-chip { padding: 6px 10px; font-size: 0.74rem; } }
     .btn-sync { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 100px; border: 1.5px solid var(--color-accent); background: rgba(0,210,255,0.06); color: var(--color-accent); font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease; white-space: nowrap; }
     .btn-sync:hover:not(:disabled) { background: rgba(0,210,255,0.14); transform: translateY(-1px); box-shadow: 0 3px 12px rgba(0,210,255,0.15); }
     .btn-sync:disabled { opacity: 0.6; cursor: not-allowed; }
@@ -1090,7 +1136,7 @@ export class WalletDashboardComponent implements OnInit {
   /** All payment method definitions */
   readonly paymentMethods = [
     { id: 'mobile_money' as const, icon: 'phone_android', label: 'Mobile Money', hint: 'M-Pesa, Airtel Money, T-Kash' },
-    { id: 'bank' as const, icon: 'account_balance', label: 'Bank Transfer', hint: 'KCB, Equity, Co-op, RTGS' },
+    { id: 'bank' as const, icon: 'account_balance', label: 'Bank Transfer', hint: 'Stanbic, I&M, KCB, Equity, Co-op, PesaLink, RTGS' },
     { id: 'card' as const, icon: 'credit_card', label: 'Card', hint: 'Visa, Mastercard' },
   ];
 
@@ -1127,9 +1173,13 @@ export class WalletDashboardComponent implements OnInit {
       { id: 'tkash', label: 'T-Kash', emoji: '🔵' },
     ],
     bank: [
+      { id: 'stanbic', label: 'Stanbic Bank', emoji: '🏦' },
+      { id: 'im_kes', label: 'I&M Bank (KES)', emoji: '🏦' },
+      { id: 'im_usd', label: 'I&M Bank (USD)', emoji: '💵' },
       { id: 'kcb', label: 'KCB', emoji: '🏦' },
       { id: 'equity', label: 'Equity', emoji: '🏦' },
       { id: 'coop', label: 'Co-op Bank', emoji: '🏦' },
+      { id: 'pesalink', label: 'PesaLink', emoji: '🔗' },
       { id: 'rtgs', label: 'RTGS', emoji: '⚡' },
     ],
     card: [
@@ -1163,10 +1213,113 @@ export class WalletDashboardComponent implements OnInit {
 
   getProviderLabel(providerId: string): string {
     for (const list of Object.values(this.providers)) {
-      const found = list.find(p => p.id === providerId);
+      const found = list.find((p: { id: string; label: string }) => p.id === providerId);
       if (found) return found.label;
     }
     return 'Selected Provider';
+  }
+
+  /** Bank-specific deposit instructions per JamboPay bill payment specifications */
+  private readonly bankInstructions: Record<string, {
+    title: string;
+    accountNumber?: string;
+    accountName?: string;
+    branch?: string;
+    swiftCode?: string;
+    steps: string[];
+  }> = {
+    stanbic: {
+      title: 'Stanbic Bank — Cash & Cheque Deposits / BNA',
+      accountNumber: '3221XXXXXXXXX',
+      accountName: 'JAMBO PAY',
+      branch: 'WESTLANDS',
+      swiftCode: 'SBICKENX',
+      steps: [
+        'Fill in a deposit slip with the account number shown above.',
+        'The account number format is: 3221 + your bill code (e.g. 322123678679).',
+        'Hand in the deposit slip with cash or cheque to the teller.',
+        'For cheques, draw in favour of JAMBO PAY.',
+        'Obtain an acknowledgement slip for successful deposit.',
+        'Enter the deposit slip reference above to record the top-up.',
+      ],
+    },
+    im_kes: {
+      title: 'I&M Bank (KES) — Cash & Cheque Deposits',
+      accountNumber: '51347XXXXXXXXX',
+      accountName: 'JAMBO PAY',
+      branch: 'BIASHARA STREET',
+      swiftCode: 'IMBLKENA',
+      steps: [
+        'Fill in an I&M Business Connect Deposit slip.',
+        'The account number format is: 51347 + your bill code (e.g. 5134723678679).',
+        'Hand in the deposit slip with cash or cheque to the teller.',
+        'For cheques, draw in favour of JAMBO PAY.',
+        'Obtain an acknowledgement slip for successful deposit.',
+        'For I&M Internet Banking: Go to Merchant Payment → select "Trustees of Jambo Pay Trust".',
+      ],
+    },
+    im_usd: {
+      title: 'I&M Bank (USD) — Cash & Cheque Deposits',
+      accountNumber: '51350XXXXXXXXX',
+      accountName: 'JAMBO PAY',
+      branch: 'BIASHARA STREET',
+      swiftCode: 'IMBLKENA',
+      steps: [
+        'Fill in an I&M Business Connect Deposit slip.',
+        'The account number format is: 51350 + your bill code (e.g. 5135023678679).',
+        'Hand in the deposit slip with cash or cheque to the teller.',
+        'For cheques, draw in favour of JAMBO PAY.',
+        'Obtain an acknowledgement slip for successful deposit.',
+        'For I&M Internet Banking: Go to Merchant Payment → select "Trustees of Jambo Pay Trust".',
+      ],
+    },
+    pesalink: {
+      title: 'PesaLink — Transfer From Any Bank',
+      accountNumber: '5134723678679',
+      accountName: 'JAMBO PAY',
+      steps: [
+        'Go to your bank\'s PesaLink menu (mobile app or internet banking).',
+        'Select "Pay to Account".',
+        'Enter the I&M Bank account number: 51347 + your bill code.',
+        'Enter account name: JAMBO PAY.',
+        'Enter the amount to be paid.',
+        'Select I&M Bank as the beneficiary bank.',
+        'Under remarks, indicate your JamboPay Wallet Number.',
+        'Submit payment and wait for the PesaLink confirmation SMS.',
+        'Enter the PesaLink reference above.',
+      ],
+    },
+    rtgs: {
+      title: 'RTGS — Real-Time Gross Settlement',
+      accountNumber: '322123678679',
+      accountName: 'JAMBO PAY',
+      branch: 'WESTLANDS',
+      swiftCode: 'SBICKENX',
+      steps: [
+        'Fill in the RTGS request slip at your bank.',
+        'Beneficiary Name: JAMBO PAY.',
+        'Beneficiary Bank: STANBIC BANK, Branch: WESTLANDS.',
+        'SWIFT Code: SBICKENX.',
+        'Beneficiary Account: 3221 + your bill code.',
+        'Under Remarks, indicate your JamboPay Wallet Number.',
+        'Hand in the filled application form to your bank.',
+        'Obtain an acknowledgement slip.',
+        'Payment status will be updated upon receipt.',
+        'Same information applies for internet banking RTGS.',
+      ],
+    },
+  };
+
+  /** Get deposit instructions for a specific bank provider */
+  getBankInstructions(providerId: string): {
+    title: string;
+    accountNumber?: string;
+    accountName?: string;
+    branch?: string;
+    swiftCode?: string;
+    steps: string[];
+  } | null {
+    return this.bankInstructions[providerId] || null;
   }
 
   isAdmin(): boolean {

@@ -1,0 +1,404 @@
+<div class="animate-fade-in">
+  <div class="page-header">
+    <div>
+      <h1 class="page-title platform-title">System Settings</h1>
+      <p class="page-subtitle">Global platform configuration, feature flags, and defaults</p>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="settings-tabs">
+    @for (tab of tabs; track tab.id) {
+      <button class="settings-tab" [class.active]="activeTab() === tab.id" (click)="switchTab(tab.id)" [attr.id]="'tab-' + tab.id">
+        <span class="material-icons-round">{{ tab.icon }}</span>
+        <span>{{ tab.label }}</span>
+      </button>
+    }
+  </div>
+
+  <!-- ═══ TAB: Statutory Rates ═══ -->
+  @if (activeTab() === 'rates') {
+    <div class="tab-content">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title"><span class="material-icons-round" style="color:#6366f1">account_balance</span> Statutory Rates</h2>
+          <p class="section-desc">Manage NSSF, SHA, Housing Levy and other statutory deduction rates</p>
+        </div>
+        <button class="btn btn-primary btn-sm" (click)="openAddRate()" id="add-rate-btn">
+          <span class="material-icons-round" style="font-size:16px">add</span> Add Rate
+        </button>
+      </div>
+
+      @if (loading()) {
+        @for (i of [1,2,3]; track i) { <div class="skeleton" style="height:64px;margin-bottom:8px"></div> }
+      } @else if (rates().length === 0) {
+        <div class="empty-state glass-card">
+          <span class="material-icons-round empty-icon">account_balance</span>
+          <div class="empty-title">No statutory rates configured</div>
+          <p class="empty-desc">Add NSSF, SHA, and Housing Levy rates to enable payroll deductions</p>
+          <button class="btn btn-primary btn-sm" (click)="openAddRate()">Add First Rate</button>
+        </div>
+      } @else {
+        <div class="data-table glass-card">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Rate</th>
+                <th>Type</th>
+                <th>Effective From</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (rate of rates(); track rate.id) {
+                <tr>
+                  <td><strong>{{ rate.name }}</strong></td>
+                  <td>{{ rate.rate_type === 'PERCENTAGE' ? (rate.rate * 100).toFixed(2) + '%' : 'KES ' + rate.rate.toFixed(2) }}</td>
+                  <td><span class="badge" [ngClass]="{'badge-info': rate.rate_type === 'PERCENTAGE', 'badge-warning': rate.rate_type === 'FIXED', 'badge-neutral': rate.rate_type === 'TIERED'}">{{ rate.rate_type }}</span></td>
+                  <td>{{ rate.effective_from | date:'mediumDate' }}</td>
+                  <td>
+                    <span class="badge" [ngClass]="rate.is_active ? 'badge-success' : 'badge-danger'">{{ rate.is_active ? 'Active' : 'Inactive' }}</span>
+                  </td>
+                  <td class="actions-cell">
+                    <button class="icon-btn" (click)="openEditRate(rate)" title="Edit"><span class="material-icons-round">edit</span></button>
+                    <button class="icon-btn" (click)="toggleRateActive(rate)" [title]="rate.is_active ? 'Deactivate' : 'Activate'">
+                      <span class="material-icons-round">{{ rate.is_active ? 'toggle_on' : 'toggle_off' }}</span>
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </div>
+
+    <!-- Rate Modal -->
+    @if (rateModalOpen()) {
+      <div class="modal-overlay" (click)="closeRateModal()">
+        <div class="modal glass-card" (click)="$event.stopPropagation()">
+          <div class="modal-header">
+            <h3>{{ editingRate().id ? 'Edit' : 'Add' }} Statutory Rate</h3>
+            <button class="icon-btn" (click)="closeRateModal()"><span class="material-icons-round">close</span></button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label>Name</label>
+              <input type="text" [ngModel]="editingRate().name" (ngModelChange)="editingRate.set({...editingRate(), name: $event})" placeholder="e.g. NSSF Tier I" />
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Rate</label>
+                <input type="number" step="0.0001" [ngModel]="editingRate().rate" (ngModelChange)="editingRate.set({...editingRate(), rate: $event})" />
+              </div>
+              <div class="form-group">
+                <label>Type</label>
+                <select [ngModel]="editingRate().rate_type" (ngModelChange)="editingRate.set({...editingRate(), rate_type: $event})">
+                  <option value="PERCENTAGE">Percentage</option>
+                  <option value="FIXED">Fixed Amount</option>
+                  <option value="TIERED">Tiered</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Effective From</label>
+              <input type="date" [ngModel]="editingRate().effective_from" (ngModelChange)="editingRate.set({...editingRate(), effective_from: $event})" />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary btn-sm" (click)="closeRateModal()">Cancel</button>
+            <button class="btn btn-primary btn-sm" (click)="saveRate()" [disabled]="rateSaving()">
+              {{ rateSaving() ? 'Saving...' : 'Save Rate' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    }
+  }
+
+  <!-- ═══ TAB: Feature Flags ═══ -->
+  @if (activeTab() === 'flags') {
+    <div class="tab-content">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title"><span class="material-icons-round" style="color:#10b981">toggle_on</span> Feature Flags</h2>
+          <p class="section-desc">Enable or disable platform features globally</p>
+        </div>
+        <div class="header-actions">
+          @if (flagsDirty()) {
+            <button class="btn btn-secondary btn-sm" (click)="revertFlags()">
+              <span class="material-icons-round" style="font-size:16px">undo</span> Revert
+            </button>
+            <button class="btn btn-primary btn-sm" (click)="saveFlags()" [disabled]="flagsSaving()">
+              <span class="material-icons-round" style="font-size:16px">save</span> {{ flagsSaving() ? 'Saving...' : 'Save Changes' }}
+            </button>
+          }
+        </div>
+      </div>
+
+      @for (cat of getFlagCategories(); track cat) {
+        <div class="flag-category">
+          <h3 class="flag-cat-title">{{ cat }}</h3>
+          <div class="flags-grid">
+            @for (flag of getFlagsByCategory(cat); track flag.key) {
+              <div class="flag-card glass-card" [class.disabled]="!flag.enabled">
+                <div class="flag-info">
+                  <span class="flag-label">{{ flag.label }}</span>
+                  <span class="flag-desc">{{ flag.description }}</span>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" [checked]="flag.enabled" (change)="toggleFlag(flag)" />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            }
+          </div>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- ═══ TAB: Tenant Defaults ═══ -->
+  @if (activeTab() === 'defaults') {
+    <div class="tab-content">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title"><span class="material-icons-round" style="color:#8b5cf6">tune</span> Default Tenant Configuration</h2>
+          <p class="section-desc">Configure default settings applied to newly created organizations</p>
+        </div>
+      </div>
+
+      <div class="defaults-grid">
+        <div class="default-card glass-card">
+          <div class="default-card-header">
+            <span class="material-icons-round" style="color:#6366f1">verified_user</span>
+            <h3>KYC Settings</h3>
+          </div>
+          <div class="default-card-body">
+            <div class="setting-row">
+              <div class="setting-info">
+                <span class="setting-label">Require KYC</span>
+                <span class="setting-desc">Enforce identity verification for new members</span>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" [checked]="defaultKycRequired()" (change)="defaultKycRequired.set(!defaultKycRequired())" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info">
+                <span class="setting-label">Verification Mode</span>
+                <span class="setting-desc">How users prove their identity</span>
+              </div>
+              <select class="setting-select" [ngModel]="defaultKycMode()" (ngModelChange)="defaultKycMode.set($event)">
+                <option value="UPLOAD">Document Upload</option>
+                <option value="MANUAL">Manual Entry (IPRS)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="default-card glass-card">
+          <div class="default-card-header">
+            <span class="material-icons-round" style="color:#f59e0b">receipt_long</span>
+            <h3>Payroll & Deductions</h3>
+          </div>
+          <div class="default-card-body">
+            <div class="setting-row">
+              <div class="setting-info">
+                <span class="setting-label">Statutory Deductions</span>
+                <span class="setting-desc">Auto-deduct NSSF, SHA, Housing Levy on payout</span>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" [checked]="defaultStatutory()" (change)="defaultStatutory.set(!defaultStatutory())" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="default-card glass-card">
+          <div class="default-card-header">
+            <span class="material-icons-round" style="color:#10b981">account_balance_wallet</span>
+            <h3>Wallet Settings</h3>
+          </div>
+          <div class="default-card-body">
+            <div class="setting-row">
+              <div class="setting-info">
+                <span class="setting-label">Top-up Verification</span>
+                <span class="setting-desc">How bank/card top-ups are verified</span>
+              </div>
+              <select class="setting-select" [ngModel]="defaultTopupMode()" (ngModelChange)="defaultTopupMode.set($event)">
+                <option value="API">API (Auto-verify)</option>
+                <option value="MANUAL">Manual Approval</option>
+                <option value="HYBRID">Hybrid (API fallback to Manual)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="defaults-actions">
+        <button class="btn btn-primary" (click)="saveDefaults()" [disabled]="defaultsSaving()">
+          <span class="material-icons-round" style="font-size:16px">save</span>
+          {{ defaultsSaving() ? 'Saving...' : 'Save Defaults' }}
+        </button>
+      </div>
+    </div>
+  }
+
+  <!-- ═══ TAB: Announcements ═══ -->
+  @if (activeTab() === 'announcements') {
+    <div class="tab-content">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title"><span class="material-icons-round" style="color:#ec4899">campaign</span> System Announcements</h2>
+          <p class="section-desc">Broadcast messages to all platform users</p>
+        </div>
+        <button class="btn btn-primary btn-sm" (click)="openAddAnnouncement()" id="add-announcement-btn">
+          <span class="material-icons-round" style="font-size:16px">add</span> New Announcement
+        </button>
+      </div>
+
+      @if (announcements().length === 0) {
+        <div class="empty-state glass-card">
+          <span class="material-icons-round empty-icon">campaign</span>
+          <div class="empty-title">No announcements</div>
+          <p class="empty-desc">Create announcements to notify users about updates, outages, or important information</p>
+        </div>
+      } @else {
+        <div class="announcement-list">
+          @for (a of announcements(); track a.id) {
+            <div class="announcement-card glass-card" [class.inactive]="!a.is_active">
+              <div class="announcement-severity" [style.background]="severityBg(a.severity)" [style.color]="severityColor(a.severity)">
+                <span class="material-icons-round" style="font-size:18px">{{ a.severity === 'CRITICAL' ? 'error' : a.severity === 'WARNING' ? 'warning' : 'info' }}</span>
+                {{ a.severity }}
+              </div>
+              <div class="announcement-body">
+                <h4>{{ a.title }}</h4>
+                <p>{{ a.body }}</p>
+                <div class="announcement-meta">
+                  <span>{{ a.created_at | date:'medium' }}</span>
+                  @if (a.start_at) { <span>Starts: {{ a.start_at | date:'short' }}</span> }
+                  @if (a.end_at) { <span>Ends: {{ a.end_at | date:'short' }}</span> }
+                </div>
+              </div>
+              <div class="announcement-actions">
+                <span class="badge" [ngClass]="a.is_active ? 'badge-success' : 'badge-danger'">{{ a.is_active ? 'Active' : 'Inactive' }}</span>
+                <button class="icon-btn" (click)="openEditAnnouncement(a)" title="Edit"><span class="material-icons-round">edit</span></button>
+                <button class="icon-btn" (click)="toggleAnnouncementActive(a)" [title]="a.is_active ? 'Disable' : 'Enable'">
+                  <span class="material-icons-round">{{ a.is_active ? 'visibility_off' : 'visibility' }}</span>
+                </button>
+                <button class="icon-btn danger" (click)="deleteAnnouncement(a)" title="Delete"><span class="material-icons-round">delete</span></button>
+              </div>
+            </div>
+          }
+        </div>
+      }
+    </div>
+
+    <!-- Announcement Modal -->
+    @if (announcementModalOpen()) {
+      <div class="modal-overlay" (click)="closeAnnouncementModal()">
+        <div class="modal glass-card" (click)="$event.stopPropagation()">
+          <div class="modal-header">
+            <h3>{{ editingAnnouncement().id ? 'Edit' : 'New' }} Announcement</h3>
+            <button class="icon-btn" (click)="closeAnnouncementModal()"><span class="material-icons-round">close</span></button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label>Title</label>
+              <input type="text" [ngModel]="editingAnnouncement().title" (ngModelChange)="editingAnnouncement.set({...editingAnnouncement(), title: $event})" placeholder="Announcement title" />
+            </div>
+            <div class="form-group">
+              <label>Message</label>
+              <textarea rows="3" [ngModel]="editingAnnouncement().body" (ngModelChange)="editingAnnouncement.set({...editingAnnouncement(), body: $event})" placeholder="Announcement body"></textarea>
+            </div>
+            <div class="form-group">
+              <label>Severity</label>
+              <select [ngModel]="editingAnnouncement().severity" (ngModelChange)="editingAnnouncement.set({...editingAnnouncement(), severity: $event})">
+                <option value="INFO">Info</option>
+                <option value="WARNING">Warning</option>
+                <option value="CRITICAL">Critical</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Start (optional)</label>
+                <input type="datetime-local" [ngModel]="editingAnnouncement().start_at" (ngModelChange)="editingAnnouncement.set({...editingAnnouncement(), start_at: $event})" />
+              </div>
+              <div class="form-group">
+                <label>End (optional)</label>
+                <input type="datetime-local" [ngModel]="editingAnnouncement().end_at" (ngModelChange)="editingAnnouncement.set({...editingAnnouncement(), end_at: $event})" />
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary btn-sm" (click)="closeAnnouncementModal()">Cancel</button>
+            <button class="btn btn-primary btn-sm" (click)="saveAnnouncement()" [disabled]="announcementSaving()">
+              {{ announcementSaving() ? 'Saving...' : 'Save' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    }
+  }
+
+  <!-- ═══ TAB: Maintenance ═══ -->
+  @if (activeTab() === 'maintenance') {
+    <div class="tab-content">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title"><span class="material-icons-round" style="color:#f59e0b">engineering</span> Maintenance Mode</h2>
+          <p class="section-desc">Control platform availability during scheduled maintenance</p>
+        </div>
+      </div>
+
+      <div class="maintenance-panel glass-card">
+        <div class="maintenance-status" [class.active]="maintenanceActive()">
+          <div class="maintenance-indicator">
+            <span class="maintenance-dot" [class.live]="maintenanceActive()"></span>
+            <span class="maintenance-label">{{ maintenanceActive() ? 'Maintenance Mode ACTIVE' : 'System Operational' }}</span>
+          </div>
+          <button class="btn btn-sm" [ngClass]="maintenanceActive() ? 'btn-danger' : 'btn-warning'" (click)="toggleMaintenance()">
+            <span class="material-icons-round" style="font-size:16px">{{ maintenanceActive() ? 'stop' : 'engineering' }}</span>
+            {{ maintenanceActive() ? 'Disable Maintenance' : 'Enable Maintenance' }}
+          </button>
+        </div>
+
+        <div class="maintenance-config">
+          <div class="form-group">
+            <label>Maintenance Message</label>
+            <textarea rows="2" [ngModel]="maintenanceMessage()" (ngModelChange)="maintenanceMessage.set($event)" placeholder="Message shown to users"></textarea>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Scheduled Start</label>
+              <input type="datetime-local" [ngModel]="maintenanceStart()" (ngModelChange)="maintenanceStart.set($event)" />
+            </div>
+            <div class="form-group">
+              <label>Scheduled End</label>
+              <input type="datetime-local" [ngModel]="maintenanceEnd()" (ngModelChange)="maintenanceEnd.set($event)" />
+            </div>
+          </div>
+          <button class="btn btn-primary btn-sm" (click)="saveMaintenance()" [disabled]="maintenanceSaving()" style="margin-top:var(--space-md)">
+            <span class="material-icons-round" style="font-size:16px">save</span>
+            {{ maintenanceSaving() ? 'Saving...' : 'Save Settings' }}
+          </button>
+        </div>
+
+        @if (maintenanceActive()) {
+          <div class="maintenance-preview">
+            <div class="preview-label">User-facing banner preview:</div>
+            <div class="preview-banner">
+              <span class="material-icons-round">engineering</span>
+              <span>{{ maintenanceMessage() }}</span>
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+  }
+</div>
