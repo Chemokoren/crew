@@ -209,15 +209,16 @@ var AllTopUpMethods = []string{"mobile_money", "bank", "card"}
 
 // AllTopUpChannels is the complete set of supported individual payment channels.
 var AllTopUpChannels = []string{
-	"mpesa", "airtel", "tkash",          // mobile_money
-	"kcb", "equity", "coop", "rtgs",     // bank
-	"visa", "mastercard",                // card
+	"mpesa", "airtel", "tkash",                                          // mobile_money
+	"stanbic", "im_kes", "im_usd", "kcb", "equity", "coop", "pesalink", "rtgs", // bank
+	"visa", "mastercard",                                                // card
 }
 
 // ChannelToMethod maps each individual channel to its parent method category.
 var ChannelToMethod = map[string]string{
 	"mpesa": "mobile_money", "airtel": "mobile_money", "tkash": "mobile_money",
-	"kcb": "bank", "equity": "bank", "coop": "bank", "rtgs": "bank",
+	"stanbic": "bank", "im_kes": "bank", "im_usd": "bank",
+	"kcb": "bank", "equity": "bank", "coop": "bank", "pesalink": "bank", "rtgs": "bank",
 	"visa": "card", "mastercard": "card",
 }
 
