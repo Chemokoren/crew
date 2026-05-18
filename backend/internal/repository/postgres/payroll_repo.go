@@ -86,6 +86,13 @@ func (r *PayrollRepo) GetEntries(ctx context.Context, runID uuid.UUID) ([]models
 	return entries, nil
 }
 
+func (r *PayrollRepo) DeleteEntries(ctx context.Context, runID uuid.UUID) error {
+	if err := r.db.WithContext(ctx).Where("payroll_run_id = ?", runID).Delete(&models.PayrollEntry{}).Error; err != nil {
+		return fmt.Errorf("delete payroll entries: %w", err)
+	}
+	return nil
+}
+
 // --- Pay Period CRUD ---
 
 func (r *PayrollRepo) CreatePayPeriod(ctx context.Context, period *models.PayPeriod) error {

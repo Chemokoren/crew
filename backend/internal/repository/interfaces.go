@@ -168,6 +168,7 @@ type PayrollRepository interface {
 	List(ctx context.Context, orgID *uuid.UUID, page, perPage int) ([]models.PayrollRun, int64, error)
 	CreateEntries(ctx context.Context, entries []models.PayrollEntry) error
 	GetEntries(ctx context.Context, runID uuid.UUID) ([]models.PayrollEntry, error)
+	DeleteEntries(ctx context.Context, runID uuid.UUID) error
 
 	// Pay period management
 	CreatePayPeriod(ctx context.Context, period *models.PayPeriod) error

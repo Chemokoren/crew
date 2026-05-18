@@ -14,6 +14,7 @@ const (
 	PayrollApproved   PayrollStatus = "APPROVED"
 	PayrollSubmitted  PayrollStatus = "SUBMITTED"
 	PayrollCompleted  PayrollStatus = "COMPLETED"
+	PayrollFailed     PayrollStatus = "FAILED"
 )
 
 // PeriodStatus tracks the lifecycle of a pay period.

@@ -353,6 +353,7 @@
 | 180 | **Autocomplete Search Filters** — Replaced static dropdowns with searchable autocomplete filters in Compliance, Documents, and Team pages | ✅ Done |
 | 181 | **Integration Dashboard** — Provider status toggling, health checks, and recent webhook logs | ✅ Done |
 | 182 | **API Key Management** — Secure generation and revocation of service API keys via `SystemSettings` | ✅ Done |
+| 183 | **Platform Support Center** — Dashboard with User Lookup, Wallet Recovery, Payroll Reprocessing, Quick Actions, and Activity Timelines | ✅ Done |
 
 ---
 
@@ -375,9 +376,9 @@
 | 13 | Notifications | 5 | **5** | **0** |
 | 14 | System Administration | 10 | **10** | **0** |
 | 15 | Documents | 6 | **6** | **0** |
-| 16 | UX Polish | 15 | **15** | **0** |
-| **TOTAL** | | **182** | **182** | **0** |
+| 16 | UX Polish | 16 | **16** | **0** |
+| **TOTAL** | | **183** | **183** | **0** |
 
-> **Current progress: 100% complete** (182 / 182 tasks) 🎉
+> **Current progress: 100% complete** (183 / 183 tasks) 🎉
 >
 > **All backend API endpoints are covered in `ApiService`**. The remaining work is building UI components that consume them.

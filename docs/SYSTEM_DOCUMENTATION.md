@@ -668,6 +668,7 @@ make test-coverage                        # HTML coverage report
 | 29 | ~~Silent failures on delayed JamboPay callbacks~~ | ✅ Active polling mechanism implemented. `SyncMethod` (`CALLBACK`, `POLL`, `MANUAL`) and `SyncedAt` added to transactions. Frontend Wallet Dashboard auto-polls pending STK transactions to provide real-time status updates and manual resolution options. |
 | 30 | ~~Static admin filters lack searchability~~ | ✅ Replaced plain select dropdowns with dynamic Autocomplete components in Compliance, Documents, and Team modules for enhanced searchability and UX. |
 | 31 | ~~No API Key or Integration management~~ | ✅ Added IntegrationHandler with secure API Key generation (masked storage via SystemSettings), provider toggling, and health status reporting. Frontend integrations page is fully operational. |
+| 32 | ~~No Support Center Dashboard~~ | ✅ Added Platform Support Component with User Lookup, Wallet Recovery, Payroll Reprocessing, Quick Actions, and Activity Timeline. Fixed backend struct models for `SystemStats` and `AuditLog` fields, and `OTPService` methods, to ensure robust full-stack support actions. |
 
 ### 11.2 Roadmap & Future Recommendations
 

@@ -1,0 +1,435 @@
+<div class="animate-fade-in">
+  <div class="page-header"><div>
+    <h1 class="page-title grad-title">Support Center</h1>
+    <p class="page-subtitle">Help organizations and users resolve issues quickly</p>
+  </div></div>
+
+  <!-- Summary Cards -->
+  <div class="stats-grid">
+    <div class="stat-card glass-card"><div class="stat-icon" style="background:rgba(99,102,241,0.12);color:#6366f1"><span class="material-icons-round">receipt_long</span></div><div class="stat-info"><span class="stat-value">{{ summary().openTickets }}</span><span class="stat-label">Total Users</span></div></div>
+    <div class="stat-card glass-card"><div class="stat-icon" style="background:rgba(239,68,68,0.12);color:#ef4444"><span class="material-icons-round">payments</span></div><div class="stat-info"><span class="stat-value">{{ summary().failedPayrolls }}</span><span class="stat-label">Failed Payrolls</span></div></div>
+  </div>
+
+  <div class="stabs">
+    @for (tab of tabs; track tab.id) {
+      <button class="stab" [class.active]="activeTab() === tab.id" (click)="switchTab(tab.id)">
+        <span class="material-icons-round">{{ tab.icon }}</span><span>{{ tab.label }}</span>
+      </button>
+    }
+  </div>
+
+  <!-- USER LOOKUP TAB -->
+  @if (activeTab() === 'lookup') {
+    <div class="tab-content">
+      <div class="filter-bar glass-card">
+        <div class="filter-group">
+          <select [(ngModel)]="searchType" class="filter-text-input">
+            <option value="phone">Phone Number</option>
+            <option value="email">Email</option>
+            <option value="name">Name</option>
+            <option value="id">User ID</option>
+          </select>
+          <input type="text" [(ngModel)]="searchQuery" (keydown)="onSearchKeydown($event)" placeholder="Search term..." class="filter-text-input" />
+          <button class="btn btn-primary btn-sm" (click)="searchUsers()" [disabled]="searchLoading()">
+            @if(searchLoading()) {
+              <span class="material-icons-round rotate">sync</span>
+            } @else {
+              <span class="material-icons-round">search</span>
+            }
+            Search
+          </button>
+        </div>
+      </div>
+
+      @if (selectedUser()) {
+        <div class="glass-card" style="padding:var(--space-xl)">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:var(--space-lg)">
+            <div>
+              <h2 class="sec-title">{{ selectedUser()?.phone }}</h2>
+              <span class="action-badge" style="background:var(--color-surface-hover);color:var(--color-text-primary);margin-top:4px">{{ roleLabel(selectedUser()?.system_role || '') }}</span>
+            </div>
+            <button class="btn btn-secondary btn-sm" (click)="closeUserDetail()"><span class="material-icons-round">close</span> Close</button>
+          </div>
+
+          <div class="grid" style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-md)">
+            <div class="glass-card" style="padding:var(--space-md);background:var(--color-surface-secondary)">
+              <h3 style="margin-top:0;font-size:0.875rem;color:var(--color-text-muted)">Wallet Info</h3>
+              @if (selectedUserWallet()) {
+                <div style="font-size:1.5rem;font-weight:700;color:var(--color-text-primary);margin-top:8px">{{ formatKes(selectedUserWallet()?.balance_cents) }}</div>
+                <div style="font-size:0.75rem;color:var(--color-text-muted);margin-top:4px">Last Payout: {{ selectedUserWallet()?.last_payout_at ? (selectedUserWallet()?.last_payout_at | date) : 'Never' }}</div>
+              } @else {
+                <div style="color:var(--color-text-muted);margin-top:8px">No wallet found</div>
+              }
+            </div>
+            <div class="glass-card" style="padding:var(--space-md);background:var(--color-surface-secondary)">
+              <h3 style="margin-top:0;font-size:0.875rem;color:var(--color-text-muted)">Profile Info</h3>
+              @if (selectedUserCrewProfile()) {
+                <div style="font-size:1rem;font-weight:600;color:var(--color-text-primary);margin-top:8px">{{ selectedUserCrewProfile()?.full_name }}</div>
+                <div style="font-size:0.75rem;color:var(--color-text-muted);margin-top:4px">KYC Status: {{ selectedUserCrewProfile()?.kyc_status }}</div>
+              } @else {
+                <div style="color:var(--color-text-muted);margin-top:8px">No linked profile</div>
+              }
+            </div>
+          </div>
+          
+          <h3 style="margin-top:var(--space-xl);font-size:1rem">Recent Audit Logs</h3>
+          <div class="log-table">
+            <table>
+              <thead><tr><th>Time</th><th>Action</th><th>Resource</th><th>Details</th></tr></thead>
+              <tbody>
+                @for (log of selectedUserAuditLogs(); track log.id) {
+                  <tr>
+                    <td class="mono">{{ log.created_at | date:'short' }}</td>
+                    <td><span class="action-badge" [style.background]="actionColor(log.action) + '18'" [style.color]="actionColor(log.action)">{{ log.action }}</span></td>
+                    <td>{{ log.resource }}</td>
+                    <td class="truncate">{{ log.details }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      } @else if (searchResults().length > 0) {
+        <div class="glass-card log-table">
+          <table>
+            <thead><tr><th>Phone</th><th>Role</th><th>Status</th><th>Joined</th><th>Action</th></tr></thead>
+            <tbody>
+              @for (user of searchResults(); track user.id) {
+                <tr>
+                  <td>{{ user.phone }}</td>
+                  <td>{{ roleLabel(user.system_role) }}</td>
+                  <td>
+                    @if (user.is_active) {
+                      <span class="action-badge" style="background:#10b98118;color:#10b981">Active</span>
+                    } @else {
+                      <span class="action-badge" style="background:#ef444418;color:#ef4444">Disabled</span>
+                    }
+                  </td>
+                  <td>{{ user.created_at | date:'shortDate' }}</td>
+                  <td><button class="btn btn-secondary btn-sm" (click)="selectUser(user)">View Detail</button></td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- WALLETS TAB -->
+  @if (activeTab() === 'wallets') {
+    <div class="tab-content">
+      <div class="filter-bar glass-card">
+        <div class="filter-group">
+          <input type="text" [(ngModel)]="walletSearchQuery" (keydown)="onWalletSearchKeydown($event)" placeholder="Phone number..." class="filter-text-input" />
+          <button class="btn btn-primary btn-sm" (click)="searchWallets()" [disabled]="walletLoading()">
+            @if(walletLoading()) {
+              <span class="material-icons-round rotate">sync</span>
+            } @else {
+              <span class="material-icons-round">search</span>
+            }
+            Find Wallet
+          </button>
+        </div>
+      </div>
+
+      @if (selectedWalletUser()) {
+        <div class="glass-card" style="padding:var(--space-xl)">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:var(--space-lg)">
+            <div>
+              <h2 class="sec-title">Wallet Recovery: {{ selectedWalletUser()?.phone }}</h2>
+              <span style="font-size:1.5rem;font-weight:700;color:var(--color-text-primary);display:block;margin-top:8px">{{ formatKes(selectedWalletDetail()?.balance_cents) }}</span>
+            </div>
+            <button class="btn btn-secondary btn-sm" (click)="closeWalletDetail()"><span class="material-icons-round">close</span> Close</button>
+          </div>
+
+          <div style="background:var(--color-surface-secondary);padding:var(--space-lg);border-radius:var(--radius-md);margin-bottom:var(--space-xl)">
+            <h3 style="margin-top:0;font-size:1rem">Issue Credit</h3>
+            <div style="display:flex;gap:var(--space-sm);align-items:flex-start">
+              <div style="flex:1">
+                <input type="number" [(ngModel)]="walletRecoveryAmount" placeholder="Amount in KES..." class="filter-text-input" style="width:100%;margin-bottom:8px" />
+                <input type="text" [(ngModel)]="walletRecoveryReason" placeholder="Reason (e.g. Stuck payout refund)" class="filter-text-input" style="width:100%" />
+              </div>
+              <button class="btn btn-primary" (click)="creditWalletRecovery()"><span class="material-icons-round">add_circle</span> Credit Wallet</button>
+            </div>
+          </div>
+
+          <h3 style="margin-top:var(--space-xl);font-size:1rem">Recent Transactions</h3>
+          <div class="log-table">
+            <table>
+              <thead><tr><th>Time</th><th>Type</th><th>Category</th><th>Amount</th><th>Status</th></tr></thead>
+              <tbody>
+                @for (tx of walletTransactions(); track tx.id) {
+                  <tr>
+                    <td class="mono">{{ tx.created_at | date:'short' }}</td>
+                    <td>
+                      @if (tx.transaction_type === 'CREDIT') {
+                        <span class="action-badge" style="background:#10b98118;color:#10b981">Credit</span>
+                      } @else {
+                        <span class="action-badge" style="background:#ef444418;color:#ef4444">Debit</span>
+                      }
+                    </td>
+                    <td>{{ tx.category }}</td>
+                    <td><strong>{{ formatKes(tx.amount_cents) }}</strong></td>
+                    <td><span class="action-badge" [style.background]="statusColor(tx.status) + '18'" [style.color]="statusColor(tx.status)">{{ tx.status }}</span></td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+          <div class="pagination">
+            <button class="btn btn-secondary btn-sm" (click)="walletTxPrevPage()" [disabled]="walletTxPage() <= 1">Prev</button>
+            <span class="page-info">Page {{ walletTxPage() }} of {{ totalWalletTxPages() }}</span>
+            <button class="btn btn-secondary btn-sm" (click)="walletTxNextPage()" [disabled]="walletTxPage() >= totalWalletTxPages()">Next</button>
+          </div>
+        </div>
+      } @else if (walletSearchResults().length > 0) {
+        <div class="glass-card log-table">
+          <table>
+            <thead><tr><th>Phone</th><th>Wallet Balance</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody>
+              @for (item of walletSearchResults(); track item.user.id) {
+                <tr>
+                  <td>{{ item.user.phone }}</td>
+                  <td><strong>{{ formatKes(item.wallet.balance_cents) }}</strong></td>
+                  <td>
+                    @if (item.wallet.is_active) {
+                      <span class="action-badge" style="background:#10b98118;color:#10b981">Active</span>
+                    } @else {
+                      <span class="action-badge" style="background:#ef444418;color:#ef4444">Inactive</span>
+                    }
+                  </td>
+                  <td><button class="btn btn-secondary btn-sm" (click)="selectWallet(item.user)">Manage Wallet</button></td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- PAYROLL TAB -->
+  @if (activeTab() === 'payroll') {
+    <div class="tab-content">
+      <div class="page-header" style="margin-bottom:var(--space-md)">
+        <h2 class="sec-title">Failed Payroll Runs</h2>
+        <button class="btn btn-secondary btn-sm" (click)="loadFailedPayrolls()"><span class="material-icons-round" [class.rotate]="payrollLoading()">sync</span> Refresh</button>
+      </div>
+      
+      @if (failedPayrolls().length === 0) {
+        <div class="empty glass-card"><span class="material-icons-round empty-icon" style="color:#10b981">check_circle</span><div class="empty-title">All Good</div><p class="empty-desc">No failed payroll runs found</p></div>
+      } @else {
+        <div class="glass-card log-table">
+          <table>
+            <thead><tr><th>Organization</th><th>Period</th><th>Gross Total</th><th>Entries</th><th>Action</th></tr></thead>
+            <tbody>
+              @for (run of failedPayrolls(); track run.id) {
+                <tr>
+                  <td>{{ getOrgName(run.organization_id) }}</td>
+                  <td class="mono">{{ run.period_start | date:'mediumDate' }} - {{ run.period_end | date:'mediumDate' }}</td>
+                  <td><strong>{{ formatKes(run.total_gross_cents) }}</strong></td>
+                  <td>{{ run.entry_count }}</td>
+                  <td class="actions-cell">
+                    <button class="btn btn-success btn-sm" (click)="reprocessPayroll(run.id)" [disabled]="payrollLoading()">Reprocess</button>
+                    <button class="btn btn-primary btn-sm" (click)="resubmitPayroll(run.id)" [disabled]="payrollLoading()">Resubmit</button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        <div class="pagination">
+          <button class="btn btn-secondary btn-sm" (click)="payrollPrevPage()" [disabled]="payrollPage() <= 1">Prev</button>
+          <span class="page-info">Page {{ payrollPage() }} of {{ totalPayrollPages() }}</span>
+          <button class="btn btn-secondary btn-sm" (click)="payrollNextPage()" [disabled]="payrollPage() >= totalPayrollPages()">Next</button>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- ACTIONS TAB -->
+  @if (activeTab() === 'actions') {
+    <div class="tab-content">
+      <div class="filter-bar glass-card">
+        <div class="filter-group">
+          <input type="text" [(ngModel)]="actionPhone" (keydown)="onActionSearchKeydown($event)" placeholder="Phone number..." class="filter-text-input" />
+          <button class="btn btn-primary btn-sm" (click)="searchActionUsers()" [disabled]="actionSearchLoading()">
+            @if(actionSearchLoading()) {
+              <span class="material-icons-round rotate">sync</span>
+            } @else {
+              <span class="material-icons-round">search</span>
+            }
+            Find User
+          </button>
+        </div>
+      </div>
+
+      @if (actionSearchResults().length > 0 && !selectedActionUser()) {
+        <div class="glass-card log-table">
+          <table>
+            <thead><tr><th>Phone</th><th>Role</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody>
+              @for (user of actionSearchResults(); track user.id) {
+                <tr>
+                  <td>{{ user.phone }}</td>
+                  <td>{{ roleLabel(user.system_role) }}</td>
+                  <td>
+                    @if (user.is_active) {
+                      <span class="action-badge" style="background:#10b98118;color:#10b981">Active</span>
+                    } @else {
+                      <span class="action-badge" style="background:#ef444418;color:#ef4444">Disabled</span>
+                    }
+                  </td>
+                  <td><button class="btn btn-secondary btn-sm" (click)="selectActionUser(user)">Select</button></td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+
+      @if (selectedActionUser()) {
+        <div class="glass-card" style="padding:var(--space-xl)">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:var(--space-lg)">
+            <div>
+              <h2 class="sec-title">Actions for {{ selectedActionUser()?.phone }}</h2>
+              <span class="action-badge" style="background:var(--color-surface-hover);color:var(--color-text-primary);margin-top:4px">{{ roleLabel(selectedActionUser()?.system_role || '') }}</span>
+            </div>
+            <button class="btn btn-secondary btn-sm" (click)="selectedActionUser.set(null)"><span class="material-icons-round">close</span> Back</button>
+          </div>
+
+          <div class="grid" style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-md)">
+            <div class="glass-card" style="padding:var(--space-md);background:var(--color-surface-secondary)">
+              <h3 style="margin-top:0;font-size:1rem"><span class="material-icons-round" style="font-size:18px;vertical-align:middle;color:#f59e0b">lock_reset</span> Credentials</h3>
+              <p style="font-size:0.8125rem;color:var(--color-text-muted);margin-bottom:var(--space-sm)">Resend the initial SMS with login PIN</p>
+              <button class="btn btn-primary" (click)="resendVerificationCode()" [disabled]="actionInProgress() === 'resend'">
+                @if(actionInProgress() === 'resend') { <span class="material-icons-round rotate">sync</span> } Resend PIN SMS
+              </button>
+            </div>
+
+            <div class="glass-card" style="padding:var(--space-md);background:var(--color-surface-secondary)">
+              <h3 style="margin-top:0;font-size:1rem"><span class="material-icons-round" style="font-size:18px;vertical-align:middle;color:#ef4444">block</span> Account Status</h3>
+              <p style="font-size:0.8125rem;color:var(--color-text-muted);margin-bottom:var(--space-sm)">Enable or disable user access to the system</p>
+              @if (selectedActionUser()?.is_active) {
+                <button class="btn btn-danger" (click)="disableUserAccount()" [disabled]="actionInProgress() === 'disable'">
+                  @if(actionInProgress() === 'disable') { <span class="material-icons-round rotate">sync</span> } Disable Account
+                </button>
+              } @else {
+                <button class="btn btn-success" (click)="enableUserAccount()" [disabled]="actionInProgress() === 'enable'">
+                  @if(actionInProgress() === 'enable') { <span class="material-icons-round rotate">sync</span> } Enable Account
+                </button>
+              }
+            </div>
+
+            <div class="glass-card" style="padding:var(--space-md);background:var(--color-surface-secondary);grid-column:1 / -1">
+              <h3 style="margin-top:0;font-size:1rem"><span class="material-icons-round" style="font-size:18px;vertical-align:middle;color:#8b5cf6">password</span> Reset Password</h3>
+              <p style="font-size:0.8125rem;color:var(--color-text-muted);margin-bottom:var(--space-sm)">Manually set a new password for this user</p>
+              <div style="display:flex;gap:var(--space-sm)">
+                <input type="text" [(ngModel)]="resetPasswordValue" placeholder="New password..." class="filter-text-input" style="flex:1" />
+                <button class="btn btn-primary" (click)="resetUserPassword()" [disabled]="actionInProgress() === 'reset' || resetPasswordValue().length < 8">
+                  @if(actionInProgress() === 'reset') { <span class="material-icons-round rotate">sync</span> } Reset Password
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- TIMELINE TAB -->
+  @if (activeTab() === 'timeline') {
+    <div class="tab-content">
+      <div class="filter-bar glass-card">
+        <div class="filter-group">
+          <input type="text" [(ngModel)]="timelineSearchQuery" (keydown)="onTimelineSearchKeydown($event)" placeholder="Phone number..." class="filter-text-input" />
+          <button class="btn btn-primary btn-sm" (click)="searchTimelineUsers()" [disabled]="timelineSearchLoading()">
+            @if(timelineSearchLoading()) {
+              <span class="material-icons-round rotate">sync</span>
+            } @else {
+              <span class="material-icons-round">search</span>
+            }
+            Find User
+          </button>
+        </div>
+      </div>
+
+      @if (timelineSearchResults().length > 0 && !timelineSelectedUser()) {
+        <div class="glass-card log-table">
+          <table>
+            <thead><tr><th>Phone</th><th>Role</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody>
+              @for (user of timelineSearchResults(); track user.id) {
+                <tr>
+                  <td>{{ user.phone }}</td>
+                  <td>{{ roleLabel(user.system_role) }}</td>
+                  <td>
+                    @if (user.is_active) {
+                      <span class="action-badge" style="background:#10b98118;color:#10b981">Active</span>
+                    } @else {
+                      <span class="action-badge" style="background:#ef444418;color:#ef4444">Disabled</span>
+                    }
+                  </td>
+                  <td><button class="btn btn-secondary btn-sm" (click)="selectTimelineUser(user)">View Timeline</button></td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+
+      @if (timelineSelectedUser()) {
+        <div class="glass-card" style="padding:var(--space-xl)">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:var(--space-lg)">
+            <div>
+              <h2 class="sec-title">Activity Timeline: {{ timelineSelectedUser()?.phone }}</h2>
+              <span class="action-badge" style="background:var(--color-surface-hover);color:var(--color-text-primary);margin-top:4px">{{ roleLabel(timelineSelectedUser()?.system_role || '') }}</span>
+            </div>
+            <button class="btn btn-secondary btn-sm" (click)="clearTimelineUser()"><span class="material-icons-round">close</span> Back</button>
+          </div>
+
+          <div style="margin-bottom:var(--space-md);display:flex;gap:var(--space-sm)">
+            <select [(ngModel)]="timelineFilterAction" (change)="filterTimeline()" class="filter-text-input">
+              <option value="">All Actions</option>
+              <option value="LOGIN">Login</option>
+              <option value="LOGOUT">Logout</option>
+              <option value="CREATE">Create</option>
+              <option value="UPDATE">Update</option>
+              <option value="DELETE">Delete</option>
+              <option value="APPROVE">Approve</option>
+              <option value="REJECT">Reject</option>
+            </select>
+          </div>
+
+          @if (timelineLoading()) {
+            @for (i of [1,2,3,4,5]; track i) { <div class="skeleton" style="height:48px;margin-bottom:4px"></div> }
+          } @else if (timelineLogs().length === 0) {
+            <div class="empty"><span class="material-icons-round empty-icon">history</span><div class="empty-title">No Activity</div><p class="empty-desc">No logs found for this user.</p></div>
+          } @else {
+            <div class="log-table">
+              <table>
+                <thead><tr><th>Time</th><th>Action</th><th>Resource</th><th>Details</th></tr></thead>
+                <tbody>
+                  @for (log of timelineLogs(); track log.id) {
+                    <tr>
+                      <td class="mono">{{ log.created_at | date:'medium' }}</td>
+                      <td><span class="action-badge" [style.background]="actionColor(log.action) + '18'" [style.color]="actionColor(log.action)">{{ log.action }}</span></td>
+                      <td>{{ log.resource }}</td>
+                      <td class="truncate" style="max-width:300px">{{ log.details }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+            <div class="pagination">
+              <button class="btn btn-secondary btn-sm" (click)="timelinePrevPage()" [disabled]="timelinePage() <= 1">Prev</button>
+              <span class="page-info">Page {{ timelinePage() }} of {{ totalTimelinePages() }}</span>
+              <button class="btn btn-secondary btn-sm" (click)="timelineNextPage()" [disabled]="timelinePage() >= totalTimelinePages()">Next</button>
+            </div>
+          }
+        </div>
+      }
+    </div>
+  }
+</div>

@@ -94,8 +94,12 @@ func (s *PayrollService) ProcessPayrollRun(ctx context.Context, runID uuid.UUID)
 	if err != nil {
 		return nil, err
 	}
-	if run.Status != models.PayrollDraft {
-		return nil, fmt.Errorf("run not in DRAFT status (current: %s)", run.Status)
+	if run.Status != models.PayrollDraft && run.Status != models.PayrollFailed && run.Status != models.PayrollProcessing {
+		return nil, fmt.Errorf("run not in DRAFT/FAILED/PROCESSING status (current: %s)", run.Status)
+	}
+
+	if err := s.payrollRepo.DeleteEntries(ctx, runID); err != nil {
+		return nil, fmt.Errorf("clear old entries: %w", err)
 	}
 
 	rates, err := s.rateRepo.GetActiveRates(ctx)
@@ -180,8 +184,8 @@ func (s *PayrollService) SubmitPayrollRun(ctx context.Context, runID uuid.UUID) 
 	if err != nil {
 		return nil, err
 	}
-	if run.Status != models.PayrollApproved {
-		return nil, fmt.Errorf("run must be APPROVED to submit (current: %s)", run.Status)
+	if run.Status != models.PayrollApproved && run.Status != models.PayrollFailed {
+		return nil, fmt.Errorf("run must be APPROVED or FAILED to submit (current: %s)", run.Status)
 	}
 
 	if s.payrollMgr == nil {
