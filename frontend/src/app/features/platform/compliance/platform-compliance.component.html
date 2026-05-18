@@ -16,19 +16,24 @@
   <!-- Filters -->
   <div class="filter-bar glass-card">
     <div class="filter-group">
-      <select [ngModel]="filterAction()" (ngModelChange)="filterAction.set($event)">
-        <option value="">All Actions</option>
-        @for (a of actions; track a) { <option [value]="a">{{ a }}</option> }
-      </select>
-      <select [ngModel]="filterEntity()" (ngModelChange)="filterEntity.set($event)">
-        <option value="">All Entities</option>
-        @for (e of entities; track e) { <option [value]="e">{{ e }}</option> }
-      </select>
-      <input type="text" [ngModel]="filterUser()" (ngModelChange)="filterUser.set($event)" placeholder="User ID..." style="max-width:200px" />
+      <app-autocomplete
+        [options]="actionOptions"
+        placeholder="Search actions..."
+        inputId="filter-action"
+        [ngModel]="filterAction()"
+        (selectionChange)="filterAction.set($event); applyFilters()"
+      ></app-autocomplete>
+      <app-autocomplete
+        [options]="entityOptions"
+        placeholder="Search entities..."
+        inputId="filter-entity"
+        [ngModel]="filterEntity()"
+        (selectionChange)="filterEntity.set($event); applyFilters()"
+      ></app-autocomplete>
+      <input type="text" [ngModel]="filterUser()" (ngModelChange)="filterUser.set($event)" placeholder="User ID..." class="filter-text-input" />
     </div>
     <div class="filter-actions">
-      <button class="btn btn-primary btn-sm" (click)="applyFilters()">Filter</button>
-      <button class="btn btn-secondary btn-sm" (click)="clearFilters()">Clear</button>
+      <button class="btn btn-secondary btn-sm" (click)="clearFilters()"><span class="material-icons-round" style="font-size:14px">clear_all</span> Clear</button>
     </div>
   </div>
 

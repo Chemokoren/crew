@@ -1,5 +1,11 @@
-@import '../compliance/platform-compliance.component.scss';
+@use '../platform-shared';
 .grad-title { background: linear-gradient(135deg, #f59e0b 0%, #10b981 100%) !important; -webkit-background-clip: text !important; -webkit-text-fill-color: transparent !important; background-clip: text !important; }
+
+.filter-bar { display:flex;align-items:center;justify-content:space-between;gap:var(--space-md);padding:var(--space-md) !important;margin-bottom:var(--space-lg);flex-wrap:wrap;position:relative;z-index:10;overflow:visible !important; }
+.filter-group { display:flex;gap:var(--space-sm);flex-wrap:wrap;flex:1;
+  app-autocomplete { min-width:200px;max-width:280px;flex:1; }
+}
+.filter-actions { display:flex;gap:var(--space-sm); }
 
 .doc-name { display:flex;align-items:center;gap:var(--space-sm); }
 .type-badge { display:inline-flex;padding:2px 8px;border-radius:var(--radius-full);font-size:0.6875rem;font-weight:600;background:var(--color-surface-secondary);color:var(--color-text-muted); }

@@ -4,13 +4,14 @@ import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../../core/services/api.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { Document } from '../../../core/models';
+import { AutocompleteComponent, AutocompleteOption } from '../../../shared/components/autocomplete/autocomplete.component';
 
 type DTab = 'all' | 'kyc_queue' | 'analytics';
 
 @Component({
   selector: 'app-platform-documents',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, AutocompleteComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './platform-documents.component.html',
   styleUrl: './platform-documents.component.scss',
@@ -40,8 +41,22 @@ export class PlatformDocumentsComponent implements OnInit {
     { id: 'analytics', label: 'Analytics', icon: 'pie_chart' },
   ];
 
-  readonly docTypes = ['NATIONAL_ID', 'KRA_PIN', 'PASSPORT', 'DRIVERS_LICENSE', 'COMPANY_REG', 'CONTRACT', 'OTHER'];
-  readonly statuses = ['PENDING', 'VERIFIED', 'REJECTED', 'EXPIRED'];
+  readonly typeOptions: AutocompleteOption[] = [
+    { value: 'NATIONAL_ID', label: 'National ID', sublabel: 'Government-issued ID card', searchText: 'national id card identity', badge: 'KYC' },
+    { value: 'KRA_PIN', label: 'KRA PIN', sublabel: 'Kenya Revenue Authority PIN certificate', searchText: 'kra pin tax revenue', badge: 'TAX' },
+    { value: 'PASSPORT', label: 'Passport', sublabel: 'International travel passport', searchText: 'passport travel international', badge: 'KYC' },
+    { value: 'DRIVERS_LICENSE', label: 'Drivers License', sublabel: 'Motor vehicle driving license', searchText: 'driver license driving permit', badge: 'KYC' },
+    { value: 'COMPANY_REG', label: 'Company Registration', sublabel: 'Business registration certificate', searchText: 'company registration business certificate', badge: 'BIZ' },
+    { value: 'CONTRACT', label: 'Contract', sublabel: 'Employment or service contract', searchText: 'contract agreement employment', badge: 'HR' },
+    { value: 'OTHER', label: 'Other', sublabel: 'Miscellaneous document', searchText: 'other misc document' },
+  ];
+
+  readonly statusOptions: AutocompleteOption[] = [
+    { value: 'PENDING', label: 'Pending', sublabel: 'Awaiting review', searchText: 'pending waiting review' },
+    { value: 'VERIFIED', label: 'Verified', sublabel: 'Approved and verified', searchText: 'verified approved accepted' },
+    { value: 'REJECTED', label: 'Rejected', sublabel: 'Review failed', searchText: 'rejected denied failed' },
+    { value: 'EXPIRED', label: 'Expired', sublabel: 'Document has expired', searchText: 'expired outdated lapsed' },
+  ];
 
   ngOnInit() { this.loadDocuments(); }
 

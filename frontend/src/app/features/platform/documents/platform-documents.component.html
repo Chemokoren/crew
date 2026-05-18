@@ -16,16 +16,23 @@
     <div class="tab-content">
       <div class="filter-bar glass-card">
         <div class="filter-group">
-          <select [ngModel]="filterType()" (ngModelChange)="filterType.set($event)"><option value="">All Types</option>
-            @for (t of docTypes; track t) { <option [value]="t">{{ t }}</option> }
-          </select>
-          <select [ngModel]="filterStatus()" (ngModelChange)="filterStatus.set($event)"><option value="">All Statuses</option>
-            @for (s of statuses; track s) { <option [value]="s">{{ s }}</option> }
-          </select>
+          <app-autocomplete
+            [options]="typeOptions"
+            placeholder="Search document type..."
+            inputId="filter-doc-type"
+            [ngModel]="filterType()"
+            (selectionChange)="filterType.set($event); applyFilters()"
+          ></app-autocomplete>
+          <app-autocomplete
+            [options]="statusOptions"
+            placeholder="Search status..."
+            inputId="filter-doc-status"
+            [ngModel]="filterStatus()"
+            (selectionChange)="filterStatus.set($event); applyFilters()"
+          ></app-autocomplete>
         </div>
         <div class="filter-actions">
-          <button class="btn btn-primary btn-sm" (click)="applyFilters()">Filter</button>
-          <button class="btn btn-secondary btn-sm" (click)="clearFilters()">Clear</button>
+          <button class="btn btn-secondary btn-sm" (click)="clearFilters()"><span class="material-icons-round" style="font-size:14px">clear_all</span> Clear</button>
         </div>
       </div>
 

@@ -606,6 +606,33 @@ export class ApiService {
     return this.http.post<ApiResponse<{ kyc_status: string; crew_id: string; message: string }>>(`${this.API}/auth/kyc/upload`, fd);
   }
 
+  // --- Integration Health & Management ---
+
+  getIntegrations(): Observable<ApiResponse<any[]>> {
+    return this.http.get<ApiResponse<any[]>>(`${this.API}/admin/integrations`);
+  }
+
+  toggleIntegration(slug: string, enabled: boolean): Observable<ApiResponse<{ slug: string; enabled: boolean; message: string }>> {
+    return this.http.put<ApiResponse<{ slug: string; enabled: boolean; message: string }>>(`${this.API}/admin/integrations/${slug}/toggle`, { enabled });
+  }
+
+  getWebhookLogs(limit?: number): Observable<ApiResponse<any[]>> {
+    const params = this.buildParams(limit ? { limit: limit.toString() } : undefined);
+    return this.http.get<ApiResponse<any[]>>(`${this.API}/admin/integrations/webhooks`, { params });
+  }
+
+  getAPIKeys(): Observable<ApiResponse<any[]>> {
+    return this.http.get<ApiResponse<any[]>>(`${this.API}/admin/integrations/api-keys`);
+  }
+
+  generateAPIKey(name: string): Observable<ApiResponse<{ name: string; key: string; masked: string; created: string }>> {
+    return this.http.post<ApiResponse<{ name: string; key: string; masked: string; created: string }>>(`${this.API}/admin/integrations/api-keys`, { name });
+  }
+
+  revokeAPIKey(slug: string): Observable<ApiResponse<{ message: string }>> {
+    return this.http.delete<ApiResponse<{ message: string }>>(`${this.API}/admin/integrations/api-keys/${slug}`);
+  }
+
   // --- Platform System Settings ---
 
   createStatutoryRate(data: Partial<StatutoryRate>): Observable<ApiResponse<StatutoryRate>> {

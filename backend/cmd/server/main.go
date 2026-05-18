@@ -441,6 +441,7 @@ func main() {
 	adminHandler := handler.NewAdminHandler(authSvc, notifSvc, auditRepo, statutoryRateRepo)
 	workSiteHandler := handler.NewWorkSiteHandler(workSiteRepo)
 	systemSettingsHandler := handler.NewSystemSettingsHandler(systemSettingRepo, systemAnnouncementRepo, statutoryRateRepo)
+	integrationHandler := handler.NewIntegrationHandler(cfg, systemSettingRepo, webhookRepo)
 
 	// --- RBAC (Enterprise Roles & Permissions) ---
 	permCache := service.NewPermissionCache(redisClient, 5*time.Minute)
@@ -969,6 +970,14 @@ func main() {
 			admin.PUT("/system-settings", middleware.RequireAnyPermission(models.PermSettingsUpdate, models.PermPlatformManageSettings), systemSettingsHandler.UpsertSetting)
 			admin.PUT("/system-settings/bulk", middleware.RequireAnyPermission(models.PermSettingsUpdate, models.PermPlatformManageSettings), systemSettingsHandler.BulkUpsertSettings)
 			admin.DELETE("/system-settings/:key", middleware.RequireAnyPermission(models.PermSettingsUpdate, models.PermPlatformManageSettings), systemSettingsHandler.DeleteSetting)
+
+			// Integrations (health, toggle, webhook logs)
+			admin.GET("/integrations", middleware.RequireAnyPermission(models.PermSettingsView, models.PermPlatformManageSettings), integrationHandler.ListIntegrations)
+			admin.PUT("/integrations/:slug/toggle", middleware.RequireAnyPermission(models.PermSettingsUpdate, models.PermPlatformManageSettings), integrationHandler.ToggleIntegration)
+			admin.GET("/integrations/webhooks", middleware.RequireAnyPermission(models.PermSettingsView, models.PermPlatformManageSettings), integrationHandler.ListWebhookLogs)
+			admin.GET("/integrations/api-keys", middleware.RequireAnyPermission(models.PermSettingsView, models.PermPlatformManageSettings), integrationHandler.ListAPIKeys)
+			admin.POST("/integrations/api-keys", middleware.RequireAnyPermission(models.PermSettingsUpdate, models.PermPlatformManageSettings), integrationHandler.GenerateAPIKey)
+			admin.DELETE("/integrations/api-keys/:slug", middleware.RequireAnyPermission(models.PermSettingsUpdate, models.PermPlatformManageSettings), integrationHandler.RevokeAPIKey)
 
 			// System Announcements
 			admin.GET("/announcements", middleware.RequireAnyPermission(models.PermNotificationsView, models.PermPlatformManageSettings), systemSettingsHandler.ListAnnouncements)

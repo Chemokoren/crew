@@ -666,6 +666,8 @@ make test-coverage                        # HTML coverage report
 | 27 | ~~Bank/card top-ups credited without verification~~ | ✅ Configurable verification system with 3 modes: **API** (verify via bank integration), **MANUAL** (admin approval), **HYBRID** (try API, fall back to manual). Tenant-level config in `TenantConfig.topup_verification_mode`. Admin confirm/reject endpoints. Frontend Pending Approvals panel in Wallet Dashboard. Finance tab in Tenant Settings. |
 | 28 | ~~No control over available top-up methods~~ | ✅ Tenant-level configuration `AllowedTopUpMethods` implemented. Handlers enforce availability dynamically. Frontend admin panel allows enabling/disabling of mobile money, bank, and card top-ups per tenant. |
 | 29 | ~~Silent failures on delayed JamboPay callbacks~~ | ✅ Active polling mechanism implemented. `SyncMethod` (`CALLBACK`, `POLL`, `MANUAL`) and `SyncedAt` added to transactions. Frontend Wallet Dashboard auto-polls pending STK transactions to provide real-time status updates and manual resolution options. |
+| 30 | ~~Static admin filters lack searchability~~ | ✅ Replaced plain select dropdowns with dynamic Autocomplete components in Compliance, Documents, and Team modules for enhanced searchability and UX. |
+| 31 | ~~No API Key or Integration management~~ | ✅ Added IntegrationHandler with secure API Key generation (masked storage via SystemSettings), provider toggling, and health status reporting. Frontend integrations page is fully operational. |
 
 ### 11.2 Roadmap & Future Recommendations
 

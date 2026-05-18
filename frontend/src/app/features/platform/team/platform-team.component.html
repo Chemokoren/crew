@@ -8,10 +8,13 @@
 
   <div class="filter-bar glass-card">
     <div class="filter-group">
-      <select [ngModel]="filterRole()" (ngModelChange)="filterRole.set($event); loadMembers()">
-        <option value="">All Roles</option>
-        @for (r of roles; track r.value) { <option [value]="r.value">{{ r.label }}</option> }
-      </select>
+      <app-autocomplete
+        [options]="roleOptions"
+        placeholder="Search roles..."
+        inputId="filter-role"
+        [ngModel]="filterRole()"
+        (selectionChange)="filterRole.set($event); loadMembers()"
+      ></app-autocomplete>
     </div>
     <span class="team-count">{{ totalMembers() }} members</span>
   </div>

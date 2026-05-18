@@ -1,4 +1,4 @@
-@import '../settings/platform-settings.component.scss';
+@use '../platform-shared';
 .grad-title { background: linear-gradient(135deg, #6366f1 0%, #ec4899 100%) !important; -webkit-background-clip: text !important; -webkit-text-fill-color: transparent !important; background-clip: text !important; }
 .stabs { display:flex;gap:4px;padding:4px;background:var(--color-surface-secondary);border-radius:var(--radius-lg);margin-bottom:var(--space-xl);overflow-x:auto; }
 .stab { display:flex;align-items:center;gap:6px;padding:10px 16px;border-radius:var(--radius-md);border:none;background:transparent;cursor:pointer;font-size:0.8125rem;font-weight:500;color:var(--color-text-muted);white-space:nowrap;transition:all 0.2s;

@@ -4,11 +4,12 @@ import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../../core/services/api.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { AdminUser } from '../../../core/models';
+import { AutocompleteComponent, AutocompleteOption } from '../../../shared/components/autocomplete/autocomplete.component';
 
 @Component({
   selector: 'app-platform-team',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, AutocompleteComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './platform-team.component.html',
   styleUrl: './platform-team.component.scss',
@@ -37,6 +38,14 @@ export class PlatformTeamComponent implements OnInit {
     { value: 'CREW', label: 'Crew Member', color: '#3b82f6' },
     { value: 'LENDER', label: 'Lender', color: '#10b981' },
     { value: 'INSURER', label: 'Insurer', color: '#8b5cf6' },
+  ];
+
+  readonly roleOptions: AutocompleteOption[] = [
+    { value: 'SYSTEM_ADMIN', label: 'System Admin', sublabel: 'Full platform access', searchText: 'system admin super root platform', badge: 'ADMIN' },
+    { value: 'SACCO_ADMIN', label: 'Organization Admin', sublabel: 'Organization-level management', searchText: 'sacco organization admin employer manager', badge: 'ORG' },
+    { value: 'CREW', label: 'Crew Member', sublabel: 'Worker / employee account', searchText: 'crew member worker employee staff driver', badge: 'CREW' },
+    { value: 'LENDER', label: 'Lender', sublabel: 'Loan provider account', searchText: 'lender loan credit provider finance', badge: 'FIN' },
+    { value: 'INSURER', label: 'Insurer', sublabel: 'Insurance provider account', searchText: 'insurer insurance provider underwriter', badge: 'INS' },
   ];
 
   ngOnInit() { this.loadMembers(); }

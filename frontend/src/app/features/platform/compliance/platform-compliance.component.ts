@@ -4,11 +4,12 @@ import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../../core/services/api.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { AuditLog } from '../../../core/models';
+import { AutocompleteComponent, AutocompleteOption } from '../../../shared/components/autocomplete/autocomplete.component';
 
 @Component({
   selector: 'app-platform-compliance',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, AutocompleteComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './platform-compliance.component.html',
   styleUrl: './platform-compliance.component.scss',
@@ -34,8 +35,28 @@ export class PlatformComplianceComponent implements OnInit {
   totalActions = signal(0);
   uniqueUsers = signal(0);
 
-  readonly actions = ['CREATE', 'UPDATE', 'DELETE', 'LOGIN', 'LOGOUT', 'APPROVE', 'REJECT', 'EXPORT'];
-  readonly entities = ['user', 'crew_member', 'assignment', 'payroll', 'wallet', 'organization', 'document', 'loan', 'insurance'];
+  readonly actionOptions: AutocompleteOption[] = [
+    { value: 'CREATE', label: 'Create', sublabel: 'Resource creation events', searchText: 'create add new' },
+    { value: 'UPDATE', label: 'Update', sublabel: 'Resource modification events', searchText: 'update edit modify change' },
+    { value: 'DELETE', label: 'Delete', sublabel: 'Resource deletion events', searchText: 'delete remove destroy' },
+    { value: 'LOGIN', label: 'Login', sublabel: 'User authentication events', searchText: 'login sign in auth' },
+    { value: 'LOGOUT', label: 'Logout', sublabel: 'User sign-out events', searchText: 'logout sign out' },
+    { value: 'APPROVE', label: 'Approve', sublabel: 'Approval workflow events', searchText: 'approve accept confirm' },
+    { value: 'REJECT', label: 'Reject', sublabel: 'Rejection workflow events', searchText: 'reject deny decline' },
+    { value: 'EXPORT', label: 'Export', sublabel: 'Data export events', searchText: 'export download csv' },
+  ];
+
+  readonly entityOptions: AutocompleteOption[] = [
+    { value: 'user', label: 'User', sublabel: 'Platform user accounts', searchText: 'user account profile', badge: 'AUTH' },
+    { value: 'crew_member', label: 'Crew Member', sublabel: 'Worker profiles', searchText: 'crew member worker employee', badge: 'HR' },
+    { value: 'assignment', label: 'Assignment', sublabel: 'Work assignments & shifts', searchText: 'assignment shift task job work', badge: 'OPS' },
+    { value: 'payroll', label: 'Payroll', sublabel: 'Payroll runs & disbursements', searchText: 'payroll salary payment run', badge: 'FIN' },
+    { value: 'wallet', label: 'Wallet', sublabel: 'Wallet transactions', searchText: 'wallet balance transaction credit debit', badge: 'FIN' },
+    { value: 'organization', label: 'Organization', sublabel: 'Organization settings', searchText: 'organization company tenant sacco', badge: 'ORG' },
+    { value: 'document', label: 'Document', sublabel: 'KYC & uploaded documents', searchText: 'document kyc id file upload', badge: 'DOC' },
+    { value: 'loan', label: 'Loan', sublabel: 'Loan applications & disbursements', searchText: 'loan credit borrow advance', badge: 'FIN' },
+    { value: 'insurance', label: 'Insurance', sublabel: 'Insurance policies', searchText: 'insurance policy cover premium', badge: 'INS' },
+  ];
 
   ngOnInit() { this.loadLogs(); }
 

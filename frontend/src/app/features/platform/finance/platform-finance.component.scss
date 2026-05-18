@@ -1,4 +1,4 @@
-@import '../notifications/platform-notifications.component.scss';
+@use '../platform-shared';
 .grad-title { background: linear-gradient(135deg, #10b981 0%, #6366f1 100%) !important; -webkit-background-clip: text !important; -webkit-text-fill-color: transparent !important; background-clip: text !important; }
 
 .float-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:var(--space-md);margin-top:var(--space-md); }

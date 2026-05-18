@@ -350,6 +350,9 @@
 | 177 | **Dark/light mode toggle** (currently dark-only) | ✅ Done |
 | 178 | Table sorting (click column header to sort) | ✅ Done |
 | 179 | Accessibility audit (ARIA labels, keyboard navigation, focus management) | ✅ Done |
+| 180 | **Autocomplete Search Filters** — Replaced static dropdowns with searchable autocomplete filters in Compliance, Documents, and Team pages | ✅ Done |
+| 181 | **Integration Dashboard** — Provider status toggling, health checks, and recent webhook logs | ✅ Done |
+| 182 | **API Key Management** — Secure generation and revocation of service API keys via `SystemSettings` | ✅ Done |
 
 ---
 
@@ -372,9 +375,9 @@
 | 13 | Notifications | 5 | **5** | **0** |
 | 14 | System Administration | 10 | **10** | **0** |
 | 15 | Documents | 6 | **6** | **0** |
-| 16 | UX Polish | 12 | **12** | **0** |
-| **TOTAL** | | **179** | **179** | **0** |
+| 16 | UX Polish | 15 | **15** | **0** |
+| **TOTAL** | | **182** | **182** | **0** |
 
-> **Current progress: 100% complete** (179 / 179 tasks) 🎉
+> **Current progress: 100% complete** (182 / 182 tasks) 🎉
 >
-> **All backend API endpoints are covered in `ApiService`** (72 methods). The remaining work is building UI components that consume them.
+> **All backend API endpoints are covered in `ApiService`**. The remaining work is building UI components that consume them.

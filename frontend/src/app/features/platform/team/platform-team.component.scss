@@ -1,10 +1,10 @@
-@import '../settings/platform-settings.component.scss';
+@use '../platform-shared';
 .grad-title { background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%) !important; -webkit-background-clip: text !important; -webkit-text-fill-color: transparent !important; background-clip: text !important; }
 
-.filter-bar { display:flex;align-items:center;justify-content:space-between;gap:var(--space-md);padding:var(--space-md) !important;margin-bottom:var(--space-lg);flex-wrap:wrap;
-  select { padding:6px 10px;border-radius:var(--radius-md);border:1px solid var(--color-border);background:var(--color-surface-primary);color:var(--color-text-primary);font-size:0.8125rem;&:focus { outline:none;border-color:#8b5cf6; } }
+.filter-bar { display:flex;align-items:center;justify-content:space-between;gap:var(--space-md);padding:var(--space-md) !important;margin-bottom:var(--space-lg);flex-wrap:wrap;position:relative;z-index:10;overflow:visible !important; }
+.filter-group { display:flex;gap:var(--space-sm);flex-wrap:wrap;flex:1;
+  app-autocomplete { min-width:200px;max-width:320px;flex:1; }
 }
-.filter-group { display:flex;gap:var(--space-sm); }
 .team-count { font-size:0.8125rem;color:var(--color-text-muted); }
 
 .team-grid { display:flex;flex-direction:column;gap:var(--space-sm); }
