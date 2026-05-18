@@ -570,6 +570,7 @@ func main() {
 
 	payrollSvc := service.NewPayrollService(payrollRepo, earningRepo, statutoryRateRepo, crewRepo, payrollMgr, logger)
 	payrollHandler := handler.NewPayrollHandler(payrollSvc)
+	supportHandler := handler.NewSupportHandler(authSvc, walletSvc, payrollSvc, auditRepo, otpSvc)
 
 	webhookSvc := service.NewWebhookService(webhookRepo, payoutSvc, payrollSvc, saccoSvc, walletRepo, payrollRepo, logger)
 
@@ -984,6 +985,15 @@ func main() {
 			admin.POST("/announcements", middleware.RequireAnyPermission(models.PermNotificationsSend, models.PermPlatformManageSettings), systemSettingsHandler.CreateAnnouncement)
 			admin.PUT("/announcements/:id", middleware.RequireAnyPermission(models.PermNotificationsSend, models.PermPlatformManageSettings), systemSettingsHandler.UpdateAnnouncement)
 			admin.DELETE("/announcements/:id", middleware.RequireAnyPermission(models.PermNotificationsSend, models.PermPlatformManageSettings), systemSettingsHandler.DeleteAnnouncement)
+
+			// Support Center
+			support := admin.Group("/support")
+			{
+				support.GET("/stats", supportHandler.SupportStats)
+				support.GET("/search", supportHandler.SearchUsers)
+				support.GET("/users/:id/timeline", supportHandler.UserTimeline)
+				support.POST("/users/:id/resend-otp", supportHandler.ResendOTP)
+			}
 		}
 
 		// RBAC APIs (uses rate limiting for mutations)

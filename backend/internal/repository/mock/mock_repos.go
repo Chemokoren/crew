@@ -4,6 +4,7 @@ package mock
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -82,11 +83,19 @@ func (r *UserRepo) Update(_ context.Context, user *models.User) error {
 	return nil
 }
 
-func (r *UserRepo) List(_ context.Context, page, perPage int) ([]models.User, int64, error) {
+func (r *UserRepo) List(_ context.Context, page, perPage int, search string) ([]models.User, int64, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	var all []models.User
+	searchLower := strings.ToLower(search)
 	for _, u := range r.users {
+		if search != "" {
+			phoneLower := strings.ToLower(u.Phone)
+			emailLower := strings.ToLower(u.Email)
+			if !strings.Contains(phoneLower, searchLower) && !strings.Contains(emailLower, searchLower) {
+				continue
+			}
+		}
 		all = append(all, *u)
 	}
 	total := int64(len(all))
@@ -720,6 +729,33 @@ func (r *AuditRepo) List(_ context.Context, resource string, resourceID *uuid.UU
 		res = append(res, l)
 	}
 	return res, int64(len(res)), nil
+}
+
+func (r *AuditRepo) ListByUserID(_ context.Context, userID uuid.UUID, action string, page, perPage int) ([]models.AuditLog, int64, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var res []models.AuditLog
+	for _, l := range r.Logs {
+		isActor := l.UserID != nil && *l.UserID == userID
+		isResource := l.ResourceID != nil && *l.ResourceID == userID
+		if !isActor && !isResource {
+			continue
+		}
+		if action != "" && l.Action != action {
+			continue
+		}
+		res = append(res, l)
+	}
+	total := int64(len(res))
+	start := (page - 1) * perPage
+	if start >= len(res) {
+		return nil, total, nil
+	}
+	end := start + perPage
+	if end > len(res) {
+		end = len(res)
+	}
+	return res[start:end], total, nil
 }
 
 // --- OrganizationRepo Mock ---

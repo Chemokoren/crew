@@ -265,6 +265,19 @@ func (r *PayrollRepo) ListPayPeriodsByOrg(_ context.Context, orgID uuid.UUID, pa
 	return all, int64(len(all)), nil
 }
 
+func (r *PayrollRepo) DeleteEntries(_ context.Context, runID uuid.UUID) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var kept []models.PayrollEntry
+	for _, e := range r.entries {
+		if e.PayrollRunID != runID {
+			kept = append(kept, e)
+		}
+	}
+	r.entries = kept
+	return nil
+}
+
 // --- StatutoryRateRepo Mock ---
 
 type StatutoryRateRepo struct {

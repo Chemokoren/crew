@@ -77,15 +77,19 @@ func (r *UserRepo) Update(ctx context.Context, user *models.User) error {
 	return nil
 }
 
-func (r *UserRepo) List(ctx context.Context, page, perPage int) ([]models.User, int64, error) {
+func (r *UserRepo) List(ctx context.Context, page, perPage int, search string) ([]models.User, int64, error) {
 	var users []models.User
 	var total int64
 
-	db := r.getDB(ctx)
-	db.Model(&models.User{}).Count(&total)
+	query := r.getDB(ctx).Model(&models.User{})
+	if search != "" {
+		like := "%" + search + "%"
+		query = query.Where("phone ILIKE ? OR email ILIKE ?", like, like)
+	}
+	query.Count(&total)
 
 	offset := (page - 1) * perPage
-	if err := db.Offset(offset).Limit(perPage).Order("created_at DESC").Find(&users).Error; err != nil {
+	if err := query.Offset(offset).Limit(perPage).Order("created_at DESC").Find(&users).Error; err != nil {
 		return nil, 0, fmt.Errorf("list users: %w", err)
 	}
 

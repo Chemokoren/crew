@@ -36,7 +36,7 @@ func (r *mockUserRepo) GetByCrewMemberID(_ context.Context, id uuid.UUID) (*mode
 	return nil, errs.ErrNotFound
 }
 func (r *mockUserRepo) Update(_ context.Context, u *models.User) error { r.users[u.Phone] = u; return nil }
-func (r *mockUserRepo) List(_ context.Context, _, _ int) ([]models.User, int64, error) { return nil, 0, nil }
+func (r *mockUserRepo) List(_ context.Context, _, _ int, _ string) ([]models.User, int64, error) { return nil, 0, nil }
 func (r *mockUserRepo) CountUsers(_ context.Context) (int64, int64, error) { return 0, 0, nil }
 
 type mockCrewRepo struct {

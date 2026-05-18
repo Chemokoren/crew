@@ -593,8 +593,9 @@ func (s *AuthService) GetSystemStats(ctx context.Context) (*SystemStats, error) 
 }
 
 // ListUsers returns a paginated list of users for admin management.
-func (s *AuthService) ListUsers(ctx context.Context, page, perPage int) ([]models.User, int64, error) {
-	return s.userRepo.List(ctx, page, perPage)
+// The search parameter filters by phone or email (ILIKE).
+func (s *AuthService) ListUsers(ctx context.Context, page, perPage int, search string) ([]models.User, int64, error) {
+	return s.userRepo.List(ctx, page, perPage, search)
 }
 
 // SetPIN sets or updates the transaction PIN for a user identified by phone.

@@ -44,3 +44,22 @@ func (r *AuditLogRepo) List(ctx context.Context, resource string, resourceID *uu
 	}
 	return logs, total, nil
 }
+
+func (r *AuditLogRepo) ListByUserID(ctx context.Context, userID uuid.UUID, action string, page, perPage int) ([]models.AuditLog, int64, error) {
+	var logs []models.AuditLog
+	var total int64
+
+	query := r.db.WithContext(ctx).Model(&models.AuditLog{}).
+		Where("user_id = ? OR resource_id = ?", userID, userID)
+	if action != "" {
+		query = query.Where("action = ?", action)
+	}
+	query.Count(&total)
+
+	offset := (page - 1) * perPage
+	if err := query.Offset(offset).Limit(perPage).Order("created_at DESC").Find(&logs).Error; err != nil {
+		return nil, 0, fmt.Errorf("list audit logs by user: %w", err)
+	}
+	return logs, total, nil
+}
+

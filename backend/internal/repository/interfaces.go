@@ -72,7 +72,7 @@ type UserRepository interface {
 	GetByPhone(ctx context.Context, phone string) (*models.User, error)
 	GetByCrewMemberID(ctx context.Context, crewMemberID uuid.UUID) (*models.User, error)
 	Update(ctx context.Context, user *models.User) error
-	List(ctx context.Context, page, perPage int) ([]models.User, int64, error)
+	List(ctx context.Context, page, perPage int, search string) ([]models.User, int64, error)
 	CountUsers(ctx context.Context) (total int64, active int64, err error)
 }
 
@@ -262,6 +262,8 @@ type NotificationPreferenceRepository interface {
 type AuditLogRepository interface {
 	Create(ctx context.Context, log *models.AuditLog) error
 	List(ctx context.Context, resource string, resourceID *uuid.UUID, page, perPage int) ([]models.AuditLog, int64, error)
+	// ListByUserID returns audit logs where the user is either the actor or the affected resource.
+	ListByUserID(ctx context.Context, userID uuid.UUID, action string, page, perPage int) ([]models.AuditLog, int64, error)
 }
 
 // WebhookEventRepository handles inbound webhook event storage.

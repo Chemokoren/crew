@@ -310,6 +310,7 @@ export class PlatformSupportComponent implements OnInit {
       return;
     }
     const reason = this.walletRecoveryReason().trim() || 'Support recovery credit';
+    if (!confirm(`You are about to credit KES ${amount.toLocaleString()} to this wallet.\n\nReason: ${reason}\n\nThis action is irreversible. Continue?`)) return;
     const idempotencyKey = `support-recovery-${user.crew_member_id}-${Date.now()}`;
 
     this.api.creditWallet({
@@ -466,6 +467,7 @@ export class PlatformSupportComponent implements OnInit {
   enableUserAccount() {
     const user = this.selectedActionUser();
     if (!user) return;
+    if (!confirm(`Re-enable account for ${user.phone}?`)) return;
     this.actionInProgress.set('enable');
     this.api.enableAccount(user.id).subscribe({
       next: () => {
@@ -485,6 +487,7 @@ export class PlatformSupportComponent implements OnInit {
   disableUserAccount() {
     const user = this.selectedActionUser();
     if (!user) return;
+    if (!confirm(`Are you sure you want to DISABLE the account for ${user.phone}? The user will be unable to log in.`)) return;
     this.actionInProgress.set('disable');
     this.api.disableAccount(user.id).subscribe({
       next: () => {
@@ -604,7 +607,7 @@ export class PlatformSupportComponent implements OnInit {
   // Helpers
   // ══════════════════════════════════════════════════════════════
   formatKes(cents: number | undefined | null): string {
-    if (!cents) return 'KES 0.00';
+    if (cents == null) return 'KES 0.00';
     return `KES ${(cents / 100).toLocaleString('en-KE', { minimumFractionDigits: 2 })}`;
   }
 

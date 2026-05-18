@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -9,17 +10,18 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/kibsoft/amy-mis/internal/middleware"
+	"github.com/kibsoft/amy-mis/internal/models"
 	"github.com/kibsoft/amy-mis/internal/repository"
 	"github.com/kibsoft/amy-mis/internal/service"
 )
 
 // SupportHandler provides platform support center endpoints.
 type SupportHandler struct {
-	authSvc   *service.AuthService
-	walletSvc *service.WalletService
+	authSvc    *service.AuthService
+	walletSvc  *service.WalletService
 	payrollSvc *service.PayrollService
-	auditRepo repository.AuditLogRepository
-	otpSvc    *service.OTPService
+	auditRepo  repository.AuditLogRepository
+	otpSvc     *service.OTPService
 }
 
 // NewSupportHandler creates a new SupportHandler.
@@ -55,13 +57,28 @@ func (h *SupportHandler) SupportStats(c *gin.Context) {
 		return
 	}
 
+	// Get failed payroll count
+	failedPayrolls := int64(0)
+	if h.payrollSvc != nil {
+		runs, _, err := h.payrollSvc.ListPayrollRuns(ctx, nil, 1, 1)
+		if err == nil {
+			// Count runs with FAILED status
+			for _, r := range runs {
+				if r.Status == models.PayrollFailed {
+					failedPayrolls++
+				}
+			}
+		}
+	}
+
 	// Aggregate support-specific stats
 	stats := gin.H{
 		"total_users":               sysStats.TotalUsers,
 		"active_users":              sysStats.ActiveUsers,
+		"total_crew":                sysStats.TotalCrew,
+		"failed_payrolls":           failedPayrolls,
 		"total_wallet_balance_cents": 0,
 		"total_organizations":       0,
-		"total_crew":                sysStats.TotalCrew,
 	}
 
 	SuccessResponse(c, http.StatusOK, stats)
@@ -72,50 +89,48 @@ func (h *SupportHandler) SupportStats(c *gin.Context) {
 // @Tags Support
 // @Produce json
 // @Param id path string true "User ID or Crew Member ID"
+// @Param action query string false "Filter by action type"
 // @Param page query int false "Page number"
 // @Param per_page query int false "Items per page"
 // @Success 200 {object} map[string]interface{}
 // @Router /api/v1/admin/support/users/{id}/timeline [get]
 func (h *SupportHandler) UserTimeline(c *gin.Context) {
 	userID := c.Param("id")
-	if _, err := uuid.Parse(userID); err != nil {
+	parsedID, err := uuid.Parse(userID)
+	if err != nil {
 		BadRequest(c, "Invalid user ID")
 		return
 	}
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "50"))
+	action := c.Query("action")
 
-	// Get audit logs filtered by this user
-	logs, total, err := h.auditRepo.List(c.Request.Context(), "", nil, page, perPage)
+	// Use the efficient ListByUserID that filters at the database level
+	logs, total, err := h.auditRepo.ListByUserID(c.Request.Context(), parsedID, action, page, perPage)
 	if err != nil {
 		MapServiceError(c, err)
 		return
 	}
 
-	// Filter logs related to this user (actor or resource)
+	// Transform to timeline format
 	var timeline []gin.H
 	for _, log := range logs {
-		var actorID string
-		if log.UserID != nil {
-			actorID = log.UserID.String()
+		entry := gin.H{
+			"id":          log.ID,
+			"action":      log.Action,
+			"resource":    log.Resource,
+			"resource_id": log.ResourceID,
+			"actor_id":    log.UserID,
+			"details":     string(log.NewValue),
+			"ip_address":  log.IPAddress,
+			"created_at":  log.CreatedAt,
 		}
-		var resourceID string
-		if log.ResourceID != nil {
-			resourceID = log.ResourceID.String()
-		}
-		
-		if actorID == userID || resourceID == userID {
-			timeline = append(timeline, gin.H{
-				"id":          log.ID,
-				"action":      log.Action,
-				"resource":    log.Resource,
-				"resource_id": log.ResourceID,
-				"actor_id":    log.UserID,
-				"details":     string(log.NewValue),
-				"created_at":  log.CreatedAt,
-			})
-		}
+		timeline = append(timeline, entry)
+	}
+
+	if timeline == nil {
+		timeline = []gin.H{}
 	}
 
 	ListResponse(c, timeline, buildMeta(page, perPage, total))
@@ -171,12 +186,31 @@ func (h *SupportHandler) ResendOTP(c *gin.Context) {
 		return
 	}
 
-	// Log the action
+	// Log the action for audit trail
 	claims := middleware.GetClaims(c)
 	actorID := "system"
 	if claims != nil {
 		actorID = claims.UserID.String()
 	}
+
+	// Create audit log entry
+	details, _ := json.Marshal(gin.H{
+		"channel":  channel,
+		"user_id":  userID.String(),
+		"sent_by":  actorID,
+	})
+	auditLog := &models.AuditLog{
+		Action:   "RESEND_OTP",
+		Resource: "user",
+		NewValue: details,
+	}
+	if claims != nil {
+		auditLog.UserID = &claims.UserID
+	}
+	auditLog.ResourceID = &userID
+	auditLog.IPAddress = c.ClientIP()
+	auditLog.UserAgent = c.GetHeader("User-Agent")
+	_ = h.auditRepo.Create(c.Request.Context(), auditLog)
 
 	// Mask the destination for privacy
 	masked := maskDestination(destination)
@@ -209,41 +243,55 @@ func (h *SupportHandler) SearchUsers(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "20"))
 
-	users, total, err := h.authSvc.ListUsers(c.Request.Context(), page, perPage)
+	// Try exact lookups first for better performance
+
+	// If query looks like a UUID, try direct lookup
+	if _, err := uuid.Parse(query); err == nil {
+		uid, _ := uuid.Parse(query)
+		user, err := h.authSvc.GetUserByID(c.Request.Context(), uid)
+		if err == nil {
+			ListResponse(c, []interface{}{user}, buildMeta(1, 1, 1))
+			return
+		}
+	}
+
+	// If query looks like a phone number, try phone lookup
+	if strings.HasPrefix(query, "+") || strings.HasPrefix(query, "0") || strings.HasPrefix(query, "254") {
+		user, err := h.authSvc.GetUserByPhone(c.Request.Context(), query)
+		if err == nil {
+			ListResponse(c, []interface{}{user}, buildMeta(1, 1, 1))
+			return
+		}
+	}
+
+	// Fallback: server-side filtered search across phone/email
+	users, total, err := h.authSvc.ListUsers(c.Request.Context(), page, perPage, query)
 	if err != nil {
 		MapServiceError(c, err)
 		return
 	}
 
-	// Filter users matching the query
-	queryLower := strings.ToLower(query)
-	var filtered []interface{}
+	var result []interface{}
 	for _, u := range users {
-		phone := strings.ToLower(u.Phone)
-		email := strings.ToLower(u.Email)
-		id := u.ID.String()
-
-		if strings.Contains(phone, queryLower) ||
-			strings.Contains(email, queryLower) ||
-			strings.Contains(id, queryLower) {
-			filtered = append(filtered, u)
-		}
+		result = append(result, u)
+	}
+	if result == nil {
+		result = []interface{}{}
 	}
 
-	if filtered == nil {
-		filtered = []interface{}{}
-	}
-
-	ListResponse(c, filtered, buildMeta(page, perPage, total))
+	ListResponse(c, result, buildMeta(page, perPage, total))
 }
 
 // maskDestination masks a phone number or email for privacy
 func maskDestination(dest string) string {
 	if strings.Contains(dest, "@") {
-		// Email: show first 2 chars + domain
+		// Email: show prefix chars + domain
 		parts := strings.SplitN(dest, "@", 2)
-		if len(parts[0]) > 2 {
+		if len(parts[0]) >= 2 {
 			return parts[0][:2] + "***@" + parts[1]
+		}
+		if len(parts[0]) >= 1 {
+			return parts[0][:1] + "***@" + parts[1]
 		}
 		return "***@" + parts[1]
 	}

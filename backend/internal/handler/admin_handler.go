@@ -54,7 +54,16 @@ func (h *AdminHandler) ListUsers(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "20"))
 
-	users, total, err := h.authSvc.ListUsers(c.Request.Context(), page, perPage)
+	// Support filtering by phone, email, or generic search
+	search := c.Query("search")
+	if search == "" {
+		search = c.Query("phone")
+	}
+	if search == "" {
+		search = c.Query("email")
+	}
+
+	users, total, err := h.authSvc.ListUsers(c.Request.Context(), page, perPage, search)
 	if err != nil {
 		MapServiceError(c, err)
 		return
