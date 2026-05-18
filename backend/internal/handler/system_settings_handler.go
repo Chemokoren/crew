@@ -30,6 +30,27 @@ func NewSystemSettingsHandler(
 	}
 }
 
+// SystemStatus returns the current platform status (maintenance mode, etc.)
+// This endpoint is public and does NOT require authentication.
+func (h *SystemSettingsHandler) SystemStatus(c *gin.Context) {
+	active := false
+	message := ""
+
+	if setting, err := h.settingsRepo.Get(c.Request.Context(), "maintenance.active"); err == nil && setting != nil {
+		active = setting.Value == "true"
+	}
+	if active {
+		if msgSetting, err := h.settingsRepo.Get(c.Request.Context(), "maintenance.message"); err == nil && msgSetting != nil {
+			message = msgSetting.Value
+		}
+	}
+
+	SuccessResponse(c, http.StatusOK, gin.H{
+		"maintenance": active,
+		"message":     message,
+	})
+}
+
 // --- Statutory Rates ---
 
 // CreateStatutoryRate godoc

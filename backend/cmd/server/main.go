@@ -668,11 +668,15 @@ func main() {
 	// USSD callback (Africa's Talking — no JWT, public endpoint)
 	v1.POST("/ussd/callback", ussdHandler.Callback)
 
+	// Public system status endpoint (no auth required)
+	v1.GET("/system/status", systemSettingsHandler.SystemStatus)
+
 	// API v1 — authenticated endpoints
 	serviceAPIKey := os.Getenv("SERVICE_API_KEY")
 	secured := v1.Group("")
 	secured.Use(middleware.JWTAuth(jwtManager, serviceAPIKey))
 	secured.Use(middleware.InjectPermissionChecker(rbacSvc)) // RBAC permission checker (additive)
+	secured.Use(middleware.MaintenanceMode(systemSettingRepo)) // Block non-admin users during maintenance
 	{
 		// Current user
 		secured.GET("/auth/me", authHandler.Me)

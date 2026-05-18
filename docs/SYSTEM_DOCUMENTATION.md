@@ -1,6 +1,6 @@
 # AMY MIS — Backend System Documentation
 
-> **Version:** 1.4 | **Last Updated:** 2026-05-12 | **Go:** 1.25 | **Framework:** Gin 1.12
+> **Version:** 1.5 | **Last Updated:** 2026-05-19 | **Go:** 1.25 | **Framework:** Gin 1.12
 
 ---
 
@@ -46,17 +46,18 @@ AMY MIS (Management Information System) is a **Workforce Financial Operating Sys
 │                  cmd/server/main.go              │  Entry point + DI wiring
 ├─────────────────────────────────────────────────┤
 │                  middleware/                      │  CORS, Auth, RBAC, Rate Limit (Redis),
-│                                                  │  Metrics (Atomic), Logger, Recovery, Security
+│                                                  │  Metrics (Atomic), Logger, Recovery, Security,
+│                                                  │  Maintenance Mode
 ├─────────────────────────────────────────────────┤
-│                  handler/ + dto/                 │  14 HTTP handler files + structured DTOs
+│                  handler/ + dto/                 │  16 HTTP handler files + structured DTOs
 ├─────────────────────────────────────────────────┤
 │                  service/                        │  24 Business logic services
 ├─────────────────────────────────────────────────┤
-│                  repository/ (interfaces)        │  19 Data access contracts
+│                  repository/ (interfaces)        │  21 Data access contracts
 │                  repository/postgres/            │  Postgres implementation (GORM)
 │                  repository/mock/                │  100% Mock parity (19/19)
 ├─────────────────────────────────────────────────┤
-│                  models/                         │  15 GORM entity models
+│                  models/                         │  17 GORM entity models
 ├─────────────────────────────────────────────────┤
 │                  database/                       │  PostgreSQL + Redis connections
 │                  external/                       │  Strategy pattern API clients
@@ -81,12 +82,12 @@ backend/
 │   │   └── tx.go               — TxManager (atomic transactions)
 │   ├── models/                 — GORM models for all entities
 │   ├── repository/
-│   │   ├── interfaces.go       — 19 repository interfaces
+│   │   ├── interfaces.go       — 21 repository interfaces
 │   │   ├── postgres/           — GORM implementations
-│   │   └── mock/               — 19 mocks (100% coverage)
+│   │   └── mock/               — 21 mocks (100% coverage)
 │   ├── service/                — 24 business logic services
-│   ├── handler/                — 14 handler files + DTOs
-│   ├── middleware/             — 8 middleware layers (Auth, Metrics, etc.)
+│   ├── handler/                — 16 handler files + DTOs
+│   ├── middleware/             — 9 middleware layers (Auth, Metrics, Maintenance, etc.)
 │   ├── worker/
 │   │   ├── scheduler.go        — Goroutine-based job scheduler
 │   │   ├── daily_summary.go    — Earnings aggregation
@@ -115,8 +116,8 @@ backend/
 ```
 Client → Gin Router
   → CORS → SecureHeaders → RequestID → RateLimit (Redis) → Timeout (Context) → Metrics (Atomic) → Logger → Recovery
-    → [Public routes: health, auth, swagger]
-    → [Secured routes: JWTAuth → RequireRole]
+    → [Public routes: health, auth, swagger, system/status]
+    → [Secured routes: JWTAuth → RBAC → MaintenanceMode]
       → Handler (parse req, bind DTO, validate)
         → Service (business logic, validation)
           → Repository Interface → Postgres Implementation (GORM)
@@ -138,9 +139,9 @@ Client → Gin Router
 8. Initialize transaction manager (`TxManager`)
 9. Initialize JWT Manager
 10. Initialize 18 services with dependency injection
-11. Initialize 16 handlers
+11. Initialize 18 handlers (including SupportHandler, SystemSettingsHandler)
 12. Initialize 4 background workers (Scheduler)
-13. Configure Gin router + register middleware + routes
+13. Configure Gin router + register middleware + routes (including MaintenanceMode on secured group)
 14. Start HTTP server with graceful shutdown (30s drain)
 
 ---
@@ -165,9 +166,13 @@ Users ──────┬──→ CrewMembers ──→ CrewSACCOMemberships 
 WebhookEvents (inbound from JamboPay/Perpay/IPRS)
 NotificationTemplates (event→channel templates)
 StatutoryRates (SHA, NSSF, Housing Levy)
+SystemSettings (key-value platform config: feature flags, maintenance mode)
+SystemAnnouncements (platform-wide user banners)
+Roles / Permissions / RolePermissions (RBAC engine)
+RoleTemplates (industry bootstrap templates)
 ```
 
-### 3.2 Migration Sets (7 total, 22 tables)
+### 3.2 Migration Sets (8 total, 27+ tables)
 
 | # | Domain | Tables |
 |---|--------|--------|
@@ -178,6 +183,7 @@ StatutoryRates (SHA, NSSF, Housing Levy)
 | 5 | Payroll | `payroll_runs`, `payroll_entries`, `statutory_rates` |
 | 6 | Infrastructure | `webhook_events`, `notifications`, `notification_templates`, `documents`, `audit_logs` |
 | 7 | Financial Services | `credit_scores`, `loan_applications`, `insurance_policies` |
+| 8 | Platform Admin | `system_settings`, `system_announcements`, `roles`, `permissions`, `role_permissions`, `role_templates`, `work_sites`, `tenant_job_types`, `pay_schedules`, `pay_periods` |
 
 ### 3.3 Key Design Decisions
 
@@ -207,7 +213,10 @@ StatutoryRates (SHA, NSSF, Housing Levy)
 
 | Role | Code | Permissions |
 |------|------|-------------|
-| System Admin | `SYSTEM_ADMIN` | Full access to all resources |
+| System Admin | `SYSTEM_ADMIN` | Full access to all resources. Only role that bypasses maintenance mode. |
+| Platform Admin | `PLATFORM_ADMIN` | Platform-wide administration (settings, support, finance). Blocked during maintenance. |
+| Platform Support | `PLATFORM_SUPPORT` | Support Center access — user lookup, OTP resend, wallet recovery |
+| Platform Finance | `PLATFORM_FINANCE` | Financial oversight — wallet reconciliation, payroll review, reporting |
 | Employer | `EMPLOYER` | Manage crew, vehicles, assignments within organization |
 | Employee | `EMPLOYEE` | View own profile, wallet, transactions |
 | Lender | `LENDER` | View loan-related data |
@@ -230,19 +239,23 @@ All other frontend routes are blocked by a `kycGuard`, and the sidebar visually 
 
 ### 4.4 Route Protection
 
-| Route Group | Auth Required | Role Required | KYC Required |
-|-------------|--------------|---------------|---------------|
-| `/health`, `/ready`, `/metrics` | ❌ | — | — |
-| `/swagger/*` | ❌ | — | — |
-| `/api/v1/auth/register,login,refresh` | ❌ | — | — |
-| `/api/v1/auth/me` | ✅ JWT | Any | ❌ |
-| `/profile`, `/notifications` | ✅ JWT | Any | ❌ (KYC-exempt) |
-| `/api/v1/crew/*` | ✅ JWT | SYSTEM_ADMIN or EMPLOYER | ❌ (admin routes) |
-| `/api/v1/assignments/*` | ✅ JWT | SYSTEM_ADMIN or EMPLOYER | ❌ (admin routes) |
-| `/dashboard`, `/earnings`, `/wallets`, etc. | ✅ JWT | Any | ✅ (employees) |
-| `/api/v1/wallets/:id` (GET) | ✅ JWT | Any (ownership enforced) | — |
-| `/api/v1/transactions/employee-payout` | ✅ JWT | SYSTEM_ADMIN or EMPLOYER | — |
-| `/api/v1/transactions/transfer` | ✅ JWT | Any (sender derived from JWT) | — |
+| Route Group | Auth Required | Role Required | KYC Required | Maintenance Exempt |
+|-------------|--------------|---------------|---------------|--------------------|
+| `/health`, `/ready`, `/metrics` | ❌ | — | — | ✅ |
+| `/swagger/*` | ❌ | — | — | ✅ |
+| `/api/v1/auth/register,login,refresh` | ❌ | — | — | ✅ |
+| `/api/v1/system/status` | ❌ | — | — | ✅ (public) |
+| `/api/v1/auth/me` | ✅ JWT | Any | ❌ | ❌ (blocked) |
+| `/profile`, `/notifications` | ✅ JWT | Any | ❌ (KYC-exempt) | ❌ (blocked) |
+| `/api/v1/crew/*` | ✅ JWT | SYSTEM_ADMIN or EMPLOYER | ❌ (admin routes) | ❌ |
+| `/api/v1/assignments/*` | ✅ JWT | SYSTEM_ADMIN or EMPLOYER | ❌ (admin routes) | ❌ |
+| `/api/v1/admin/*` | ✅ JWT | SYSTEM_ADMIN or PLATFORM_ADMIN | — | Only SYSTEM_ADMIN bypass |
+| `/api/v1/admin/support/*` | ✅ JWT | PLATFORM_SUPPORT+ | — | Only SYSTEM_ADMIN bypass |
+| `/system-admin` (frontend) | ❌ | — | — | ✅ (always accessible, backdoor admin login) |
+| `/dashboard`, `/earnings`, `/wallets`, etc. | ✅ JWT | Any | ✅ (employees) | ❌ (blocked) |
+| `/api/v1/wallets/:id` (GET) | ✅ JWT | Any (ownership enforced) | — | ❌ |
+| `/api/v1/transactions/employee-payout` | ✅ JWT | SYSTEM_ADMIN or EMPLOYER | — | ❌ |
+| `/api/v1/transactions/transfer` | ✅ JWT | Any (sender derived from JWT) | — | ❌ |
 
 ---
 
@@ -250,16 +263,17 @@ All other frontend routes are blocked by a `kycGuard`, and the sidebar visually 
 
 Applied in order on every request:
 
-| # | Middleware | Purpose |
-|---|-----------|---------|
-| 1 | CORS | Allows all origins (dev), exposes `X-Request-Id`, `X-Response-Time` |
-| 2 | SecureHeaders | `X-Content-Type-Options`, `X-Frame-Options`, `X-XSS-Protection`, `Referrer-Policy`, `Cache-Control` |
-| 3 | RequestID | UUID per request, propagated via `X-Request-ID` header |
-| 4 | RateLimit | 100 req/min per IP, in-memory sliding window with goroutine cleanup |
-| 5 | Timeout | 30s deadline tracking (header-based, not context-based) |
-| 6 | Metrics | In-memory request counters, per-path latency histograms |
-| 7 | Logger | Structured `slog` logging with method, path, status, latency, IP |
-| 8 | Recovery | Panic recovery with full stack trace logging |
+| # | Middleware | Purpose | Scope |
+|---|-----------|---------|-------|
+| 1 | CORS | Allows all origins (dev), exposes `X-Request-Id`, `X-Response-Time` | Global |
+| 2 | SecureHeaders | `X-Content-Type-Options`, `X-Frame-Options`, `X-XSS-Protection`, `Referrer-Policy`, `Cache-Control` | Global |
+| 3 | RequestID | UUID per request, propagated via `X-Request-ID` header | Global |
+| 4 | RateLimit | 100 req/min per IP, in-memory sliding window with goroutine cleanup | Global |
+| 5 | Timeout | 30s deadline tracking (header-based, not context-based) | Global |
+| 6 | Metrics | In-memory request counters, per-path latency histograms | Global |
+| 7 | Logger | Structured `slog` logging with method, path, status, latency, IP | Global |
+| 8 | Recovery | Panic recovery with full stack trace logging | Global |
+| 9 | **MaintenanceMode** | Checks `maintenance.active` system setting. Returns 503 for all non-SYSTEM_ADMIN users. Only `SYSTEM_ADMIN` bypasses. Auth, health, and `/system/status` endpoints are always allowed. | Secured group only |
 
 ---
 
@@ -552,6 +566,7 @@ Domain errors in `pkg/errs/`:
 | `ErrInsufficientBalance` | 422 | `INSUFFICIENT_BALANCE` |
 | `ErrOptimisticLock` | 409 | `CONCURRENT_MODIFICATION` |
 | `ErrValidation` | 400 | `VALIDATION_ERROR` |
+| `ErrServiceUnavailable` | 503 | `MAINTENANCE` |
 
 ---
 
@@ -559,10 +574,11 @@ Domain errors in `pkg/errs/`:
 
 ### 9.1 Test Coverage
 
-- **425+ tests** across **20 test packages** (all passing)
-- **54 test files** covering services, handlers, middleware, integrations, and workers
-- **Mock repositories** for User, Crew, Wallet, Organization Float, and all others with thread-safe operations
+- **440+ tests** across **21 test packages** (all passing)
+- **55 test files** covering services, handlers, middleware, integrations, and workers
+- **Mock repositories** for User, Crew, Wallet, Organization Float, SystemSetting, SystemAnnouncement, and all others with thread-safe operations
 - **httptest servers** for all external integration tests (no real API calls)
+- **Support Handler tests:** 14 dedicated tests covering search, timeline, OTP resend, and error paths
 
 ### 9.2 Test Categories
 
@@ -576,6 +592,7 @@ Domain errors in `pkg/errs/`:
 | Atomic transactions | Employee payout validation (zero/negative/net>gross), wallet transfer validation (zero/negative/self-transfer) |
 | HTTP handlers | Register, login, refresh, /me, RBAC enforcement |
 | **KYC lifecycle** | Verify, unverify (→PENDING with reason), reject (→REJECTED with reason), timestamp clearing, notification dispatch |
+| **Support Center** | User search (server-side ILIKE), user timeline, OTP resend (audit-logged), non-existent user errors |
 | JWT middleware | Missing token, invalid token, expired token |
 | SMS integration | Manager fallback chain, SetPrimary, Optimize token caching, AT bulk send |
 | JamboPay integration | OAuth2 auth, M-Pesa/bank/paybill payout, OTP verify, balance, token cache, collection STK push |
@@ -669,6 +686,11 @@ make test-coverage                        # HTML coverage report
 | 30 | ~~Static admin filters lack searchability~~ | ✅ Replaced plain select dropdowns with dynamic Autocomplete components in Compliance, Documents, and Team modules for enhanced searchability and UX. |
 | 31 | ~~No API Key or Integration management~~ | ✅ Added IntegrationHandler with secure API Key generation (masked storage via SystemSettings), provider toggling, and health status reporting. Frontend integrations page is fully operational. |
 | 32 | ~~No Support Center Dashboard~~ | ✅ Added Platform Support Component with User Lookup, Wallet Recovery, Payroll Reprocessing, Quick Actions, and Activity Timeline. Fixed backend struct models for `SystemStats` and `AuditLog` fields, and `OTPService` methods, to ensure robust full-stack support actions. |
+| 33 | ~~User search returns all users~~ | ✅ Extended `UserRepository.List()` to accept a `search` parameter. Postgres implementation uses `ILIKE` filtering on `phone` and `email`. `AdminHandler.ListUsers` extracts `phone`/`email`/`search` query params. Frontend now relies on server-side filtering, replacing the O(n) client-side scan. |
+| 34 | ~~Maintenance mode is purely cosmetic~~ | ✅ Full maintenance lockdown implemented. Backend: `MaintenanceMode` middleware returns 503 for all non-`SYSTEM_ADMIN` users. Frontend: `maintenanceGuard` on all routes redirects to a dedicated `/maintenance` page (professional full-page design with animations, contact info, and auto-recovery polling). HTTP interceptor catches 503 `MAINTENANCE` responses. A `/system-admin` backdoor login page is always accessible and rejects non-SYSTEM_ADMIN roles after authentication. |
+| 35 | ~~Announcements not visible to employers/employees~~ | ✅ Root cause: `start_at`/`end_at` stored as past timestamps or zero-value time instead of NULL. Fixed frontend to strip empty date strings before save (`delete a.start_at` when empty). The `ListActive` query correctly uses `start_at IS NULL OR start_at <= now()` to include announcements without date bounds. The `AnnouncementBannerComponent` is rendered in both platform and employer/employee layouts via `app.ts`. |
+| 36 | ~~Payroll mock missing DeleteEntries~~ | ✅ Added `DeleteEntries(ctx, runID)` to `mock.PayrollRepo` to fix pre-existing test compilation errors in the `internal/service` package. |
+| 37 | ~~USSD mock uses stale List signature~~ | ✅ Updated `mockUserRepo.List` in `ussd/session_handler_test.go` to include the new `search string` parameter. |
 
 ### 11.2 Roadmap & Future Recommendations
 
@@ -676,8 +698,9 @@ With the core system at 100% feature parity, future work should focus on:
 - **Mobile App Integration:** Finalizing PUSH notification providers.
 - **Reporting Engine:** Advanced PDF/Excel generation for SACCO-wide financial reports.
 - **Advanced Fraud Detection:** Real-time analysis of assignment locations vs. route geo-fencing.
-
-### 10.4 Gap Priority Matrix
+- **Scheduled Maintenance Windows:** Auto-enable/disable maintenance based on `maintenance.start` and `maintenance.end` timestamps.
+- **Granular Support Permissions:** Role-based support actions (e.g., only supervisors can credit wallets, agents can resend OTPs).
+- **Announcement Targeting:** Allow announcements to target specific user roles, organizations, or regions.
 
 ---
 
@@ -735,7 +758,118 @@ Required variables validated at startup:
 | `IPRS_CLIENT_SECRET` | ❌ | — | IPRS OAuth2 secret |
 | `IPRS_BASE_URL` | ❌ | — | IPRS API base URL |
 | `IPRS_TOKEN_ENDPOINT` | ❌ | — | IPRS OAuth2 token endpoint |
+| `SERVICE_API_KEY` | ❌ | — | API key for service-to-service authentication |
+| `CORS_ALLOWED_ORIGINS` | ❌ | * | Comma-separated allowed CORS origins |
 
 ---
 
-*Document updated from source code analysis on 2026-05-12.*
+## 14. Platform Administration Features
+
+### 14.1 Maintenance Mode
+
+Platform admins can enable **Maintenance Mode** from the Settings → Maintenance tab. When active, the platform enters a **full lockdown**:
+
+#### Backend Enforcement
+
+1. **Middleware** (`MaintenanceMode`) intercepts all secured API requests
+2. Non-admin users receive a `503 Service Unavailable` response with code `MAINTENANCE`
+3. **Only `SYSTEM_ADMIN`** users bypass the check — all other roles (including `PLATFORM_ADMIN`) are blocked
+4. Public endpoints (`/auth/*`, `/system/status`, `/health`) are always accessible
+
+#### Frontend Lockdown
+
+1. A **`maintenanceGuard`** on all routes checks `/api/v1/system/status` and redirects to `/maintenance`
+2. The `/maintenance` page is a **full-page, dedicated maintenance screen** with:
+   - Animated dark background with floating particles and glowing orbs
+   - Company branding with spinning ring animation around logo
+   - "SYSTEM MAINTENANCE" status badge with pulsing indicator
+   - "We'll Be Back Shortly" hero text with gradient
+   - Rotating gear animations
+   - Emergency contact cards: phone, email, WhatsApp
+3. **No login form, no sidebar, no menu** — complete visual lockdown
+4. The page **auto-polls** `/system/status` every 30 seconds and redirects to login when maintenance ends
+5. The **HTTP interceptor** catches any `503 MAINTENANCE` responses and redirects to `/maintenance`
+
+#### System Admin Backdoor (`/system-admin`)
+
+A dedicated admin login page at `/system-admin` is **always accessible**, even during maintenance:
+
+- **Not guarded** by `maintenanceGuard` — whitelisted at the route level
+- Amber/gold themed login form clearly marked "System Administrator — Restricted access"
+- Validates role after login — only `SYSTEM_ADMIN` is allowed through; all other roles are rejected with "Access denied" and immediately logged out
+- "Back to maintenance page" link returns to `/maintenance`
+- The `auth.interceptor` uses `isExemptPage()` check (via `window.location.pathname`) to suppress both 503→redirect and 401→logout on `/system-admin` and `/maintenance` pages, preventing redirect loops
+- `AppComponent.ngOnInit()` skips `fetchProfile()` when on exempt pages to avoid triggering 503 responses during bootstrap
+
+**System Settings used:**
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `maintenance.active` | `bool` | Whether maintenance mode is enabled |
+| `maintenance.message` | `string` | Message shown to users |
+| `maintenance.start` | `string` | Scheduled start time (informational) |
+| `maintenance.end` | `string` | Scheduled end time (informational) |
+
+### 14.2 System Announcements
+
+Platform-wide announcements are managed via the Settings → Announcements tab and displayed to all authenticated users via the `AnnouncementBannerComponent`.
+
+**Severity levels:** `INFO` (purple), `WARNING` (amber), `CRITICAL` (red)
+
+**Visibility rules:**
+- Announcements with `is_active = true` and no date bounds (NULL `start_at`/`end_at`) are always visible
+- Announcements with date bounds are only visible during the specified window
+- Users can dismiss banners per-session (persisted in `sessionStorage`)
+- The banner component polls for new announcements every 5 minutes
+
+**API Endpoints:**
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/api/v1/announcements/active` | ✅ JWT | Returns active announcements for the current user |
+| `GET` | `/api/v1/admin/announcements` | ✅ Admin | List all announcements (paginated) |
+| `POST` | `/api/v1/admin/announcements` | ✅ Admin | Create announcement |
+| `PUT` | `/api/v1/admin/announcements/:id` | ✅ Admin | Update announcement |
+| `DELETE` | `/api/v1/admin/announcements/:id` | ✅ Admin | Delete announcement |
+
+### 14.3 Support Center
+
+The Support Center (`/platform/support`) provides first-line customer support capabilities:
+
+| Feature | Endpoint | Description |
+|---------|----------|-------------|
+| **User Search** | `GET /admin/support/search?q=...` | Server-side ILIKE search on phone and email |
+| **User Timeline** | `GET /admin/support/users/:id/timeline` | Audit log filtered by user ID |
+| **Resend OTP** | `POST /admin/support/users/:id/resend-otp` | Triggers OTP dispatch with mandatory audit logging |
+| **Disable Account** | `POST /admin/users/:id/disable` | Disables user login (with confirmation dialog) |
+| **Enable Account** | `POST /admin/users/:id/enable` | Re-enables user login (with confirmation dialog) |
+| **Wallet Credit** | `POST /wallets/credit` | Manual wallet adjustment (with confirmation dialog) |
+
+**Security measures:**
+- All support actions generate audit log entries
+- Destructive actions (disable, wallet credit) require frontend confirmation dialogs
+- Resend OTP is logged with the admin's user ID for compliance traceability
+
+### 14.4 System Settings (Key-Value Store)
+
+The `system_settings` table stores global platform configuration using dot-notation namespacing:
+
+| Category | Example Keys | Purpose |
+|----------|-------------|--------|
+| `feature.*` | `feature.loans_enabled`, `feature.ussd_enabled` | Feature flags (boolean toggles) |
+| `maintenance.*` | `maintenance.active`, `maintenance.message` | Maintenance mode configuration |
+| `defaults.*` | `defaults.kyc_required`, `defaults.topup_verification_mode` | Default tenant configuration |
+
+**API Endpoints:**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/admin/system-settings?prefix=...` | List settings (optional prefix filter) |
+| `PUT` | `/api/v1/admin/system-settings` | Upsert single setting |
+| `PUT` | `/api/v1/admin/system-settings/bulk` | Bulk upsert multiple settings |
+| `DELETE` | `/api/v1/admin/system-settings/:key` | Delete a setting |
+| `GET` | `/api/v1/system/status` | **Public** — returns maintenance state (no auth) |
+
+---
+
+*Document updated from source code analysis on 2026-05-19.*

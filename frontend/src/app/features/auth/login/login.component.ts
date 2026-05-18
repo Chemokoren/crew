@@ -1,9 +1,10 @@
-import { Component, inject, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, signal, ChangeDetectionStrategy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { AuthService } from '../../../core/services/auth.service';
+import { ApiService } from '../../../core/services/api.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { environment } from '../../../../environments/environment';
 
@@ -16,6 +17,15 @@ import { environment } from '../../../../environments/environment';
     <div class="auth-page">
       <div class="auth-bg-pattern"></div>
       <div class="auth-container animate-slide-up">
+        @if (maintenanceActive()) {
+          <div class="maintenance-banner">
+            <span class="material-icons-round">engineering</span>
+            <div>
+              <strong>Maintenance Mode</strong>
+              <p>{{ maintenanceMessage() }}</p>
+            </div>
+          </div>
+        }
         <div class="auth-card glass-card">
           <div class="auth-header">
             <div class="auth-logo">
@@ -373,6 +383,27 @@ import { environment } from '../../../../environments/environment';
 
     .btn-full { width: 100%; margin-top: var(--space-sm); }
 
+    .maintenance-banner {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 16px 20px;
+      border-radius: var(--radius-lg);
+      background: linear-gradient(135deg, rgba(239,68,68,0.12), rgba(220,38,38,0.06));
+      border: 1px solid rgba(239,68,68,0.2);
+      color: #f87171;
+      margin-bottom: var(--space-md);
+      animation: slideDown 0.3s ease-out;
+      .material-icons-round { font-size: 24px; flex-shrink: 0; margin-top: 2px; }
+      strong { display: block; font-size: 0.875rem; margin-bottom: 2px; }
+      p { font-size: 0.8125rem; opacity: 0.85; margin: 0; line-height: 1.4; }
+    }
+
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
     .spinner {
       width: 16px; height: 16px;
       border: 2px solid rgba(0, 0, 0, 0.2); border-top-color: currentColor;
@@ -516,8 +547,9 @@ import { environment } from '../../../../environments/environment';
     }
   `]
 })
-export class LoginComponent {
+export class LoginComponent implements OnInit {
   private auth = inject(AuthService);
+  private api = inject(ApiService);
   private http = inject(HttpClient);
   private router = inject(Router);
   private toast = inject(ToastService);
@@ -526,6 +558,21 @@ export class LoginComponent {
   password = '';
   loading = signal(false);
   showPassword = signal(false);
+
+  // Maintenance mode state
+  maintenanceActive = signal(false);
+  maintenanceMessage = signal('System is undergoing scheduled maintenance. Please try again later.');
+
+  ngOnInit(): void {
+    this.api.getSystemStatus().subscribe({
+      next: r => {
+        if (r.data?.maintenance) {
+          this.maintenanceActive.set(true);
+          if (r.data.message) this.maintenanceMessage.set(r.data.message);
+        }
+      },
+    });
+  }
 
   // Forgot password state
   showForgotModal = signal(false);

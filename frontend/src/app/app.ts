@@ -22,7 +22,9 @@ import { AnnouncementBannerComponent } from './shared/components/announcement-ba
     ToastComponent, ConfirmDialogComponent, AnnouncementBannerComponent,
   ],
   template: `
-    @if (isAuthRoute()) {
+    @if (isMaintenanceRoute()) {
+      <router-outlet />
+    } @else if (isAuthRoute()) {
       <router-outlet />
     } @else if (isPlatformRoute()) {
       <div class="app-layout platform-layout">
@@ -89,7 +91,9 @@ export class AppComponent implements OnInit {
   ngOnInit(): void {
     // Refresh user profile from server on app init to keep stale localStorage in sync.
     // Only fires if the user has a token (i.e., was previously authenticated).
-    if (this.auth.accessToken) {
+    // Skip on maintenance/system-admin pages to avoid 503 redirect loops.
+    const path = window.location.pathname;
+    if (this.auth.accessToken && !path.startsWith('/maintenance') && !path.startsWith('/system-admin')) {
       this.auth.fetchProfile().subscribe({
         next: () => this.orgCtx.load(),
         error: () => { /* handled by interceptor */ },
@@ -99,7 +103,12 @@ export class AppComponent implements OnInit {
 
   isAuthRoute(): boolean {
     const url = this.currentUrl || this.router.url;
-    return url.startsWith('/auth');
+    return url.startsWith('/auth') || url.startsWith('/system-admin');
+  }
+
+  isMaintenanceRoute(): boolean {
+    const url = this.currentUrl || this.router.url;
+    return url.startsWith('/maintenance');
   }
 
   isPlatformRoute(): boolean {

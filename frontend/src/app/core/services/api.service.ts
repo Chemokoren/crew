@@ -684,4 +684,9 @@ export class ApiService {
   getActiveAnnouncements(): Observable<ApiResponse<SystemAnnouncement[]>> {
     return this.http.get<ApiResponse<SystemAnnouncement[]>>(`${this.API}/announcements/active`);
   }
+
+  // Public system status (no auth required) — used by login page
+  getSystemStatus(): Observable<ApiResponse<{ maintenance: boolean; message: string }>> {
+    return this.http.get<ApiResponse<{ maintenance: boolean; message: string }>>(`${this.API}/system/status`);
+  }
 }

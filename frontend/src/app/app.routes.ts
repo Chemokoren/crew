@@ -5,29 +5,43 @@ import { roleGuard } from './core/guards/role.guard';
 import { kycGuard } from './core/guards/kyc.guard';
 import { platformGuard } from './core/guards/platform.guard';
 import { anyPermissionGuard } from './core/guards/permission.guard';
+import { maintenanceGuard, maintenancePageGuard } from './core/guards/maintenance.guard';
 
 export const routes: Routes = [
-  // --- Auth routes (guest-only) ---
+  // --- Maintenance page (accessible only during maintenance) ---
+  {
+    path: 'maintenance',
+    canActivate: [maintenancePageGuard],
+    loadComponent: () => import('./features/maintenance/maintenance.component').then(m => m.MaintenanceComponent),
+  },
+
+  // --- System Admin backdoor login (always accessible, even during maintenance) ---
+  {
+    path: 'system-admin',
+    loadComponent: () => import('./features/auth/system-admin-login/system-admin-login.component').then(m => m.SystemAdminLoginComponent),
+  },
+
+  // --- Auth routes (guest-only, blocked during maintenance) ---
   {
     path: 'auth',
-    canActivate: [guestGuard],
+    canActivate: [maintenanceGuard, guestGuard],
     loadComponent: () => import('./features/auth/login/login.component').then(m => m.LoginComponent),
   },
   {
     path: 'auth/login',
-    canActivate: [guestGuard],
+    canActivate: [maintenanceGuard, guestGuard],
     loadComponent: () => import('./features/auth/login/login.component').then(m => m.LoginComponent),
   },
   {
     path: 'auth/register',
-    canActivate: [guestGuard],
+    canActivate: [maintenanceGuard, guestGuard],
     loadComponent: () => import('./features/auth/register/register.component').then(m => m.RegisterComponent),
   },
 
   // --- Platform Admin routes (separate shell) ---
   {
     path: 'platform',
-    canActivate: [authGuard, platformGuard],
+    canActivate: [authGuard, platformGuard],  // SYSTEM_ADMIN bypasses maintenance via maintenanceGuard in child guards
     children: [
       { path: '', redirectTo: 'command-center', pathMatch: 'full' },
       {
@@ -89,7 +103,7 @@ export const routes: Routes = [
   // --- Authenticated routes (Organization shell) ---
   {
     path: '',
-    canActivate: [authGuard],
+    canActivate: [maintenanceGuard, authGuard],
     children: [
       { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
 

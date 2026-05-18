@@ -246,6 +246,9 @@ export class PlatformSettingsComponent implements OnInit {
     if (a.end_at && !a.end_at.includes('Z') && a.end_at.length <= 16) {
       a.end_at = new Date(a.end_at).toISOString();
     }
+    // Strip empty date strings — send null so backend stores NULL, not a zero timestamp
+    if (!a.start_at) delete a.start_at;
+    if (!a.end_at) delete a.end_at;
     this.announcementSaving.set(true);
     const obs = a.id
       ? this.api.updateAnnouncement(a.id, a)
