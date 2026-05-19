@@ -31,14 +31,14 @@ import { Notification } from '../../../core/models';
       <!-- Filters (Task 151) -->
       <div class="filters-bar">
         <div class="filter-pills">
-          <button class="pill" [class.active]="filterRead === ''" (click)="filterRead='';applyFilter()">All</button>
-          <button class="pill" [class.active]="filterRead === 'unread'" (click)="filterRead='unread';applyFilter()">
+          <button class="pill" [class.active]="filterRead() === ''" (click)="setFilterRead('')">All</button>
+          <button class="pill" [class.active]="filterRead() === 'unread'" (click)="setFilterRead('unread')">
             Unread
             @if (unreadCount() > 0) { <span class="pill-badge">{{ unreadCount() }}</span> }
           </button>
-          <button class="pill" [class.active]="filterRead === 'read'" (click)="filterRead='read';applyFilter()">Read</button>
+          <button class="pill" [class.active]="filterRead() === 'read'" (click)="setFilterRead('read')">Read</button>
         </div>
-        <select class="form-select filter-select" [(ngModel)]="filterChannel" (ngModelChange)="applyFilter()" id="filter-channel">
+        <select class="form-select filter-select" [ngModel]="filterChannel()" (ngModelChange)="filterChannel.set($event)" id="filter-channel">
           <option value="">All Channels</option>
           <option value="SMS">SMS</option>
           <option value="PUSH">Push</option>
@@ -55,7 +55,7 @@ import { Notification } from '../../../core/models';
       } @else {
         <div class="notif-list">
           @for(n of filtered();track n.id){
-            <div class="notif-item glass-card" [class.unread]="!n.read_at" (click)="markRead(n)">
+            <div class="notif-item glass-card" [class.unread]="!n.read_at">
               <div class="notif-icon" [ngClass]="channelClass(n.channel)">
                 <span class="material-icons-round">{{ channelIcon(n.channel) }}</span>
               </div>
@@ -66,6 +66,11 @@ import { Notification } from '../../../core/models';
               <div class="notif-meta">
                 <span class="notif-channel badge" [ngClass]="channelBadge(n.channel)">{{n.channel}}</span>
                 <span class="notif-time">{{n.created_at|relativeTime}}</span>
+                @if (!n.read_at) {
+                  <button class="btn btn-sm btn-ghost notif-mark-btn" (click)="markRead(n)" title="Mark as read">
+                    <span class="material-icons-round" style="font-size:16px;">check</span>
+                  </button>
+                }
               </div>
             </div>
           }
@@ -101,6 +106,8 @@ import { Notification } from '../../../core/models';
       background:rgba(255,255,255,0.2);border-radius:8px;padding:1px 6px;font-size:0.6875rem;font-weight:700;
     }
     .filter-select{min-width:140px;max-width:180px;}
+    .notif-mark-btn { margin-top: 4px; padding: 2px 6px; min-height: 24px; color: var(--color-text-muted); }
+    .notif-mark-btn:hover { color: var(--color-success); background: rgba(34,197,94,0.1); }
   `]
 })
 export class NotificationListComponent implements OnInit {
@@ -110,8 +117,8 @@ export class NotificationListComponent implements OnInit {
 
   items = signal<Notification[]>([]);
   loading = signal(true);
-  filterRead = '';
-  filterChannel = '';
+  filterRead = signal('');
+  filterChannel = signal('');
 
   unreadCount = computed(() => this.items().filter(n => !n.read_at).length);
 
@@ -127,14 +134,17 @@ export class NotificationListComponent implements OnInit {
 
   filtered = computed(() => {
     let list = this.items();
-    if (this.filterRead === 'unread') list = list.filter(n => !n.read_at);
-    if (this.filterRead === 'read') list = list.filter(n => !!n.read_at);
-    if (this.filterChannel) list = list.filter(n => n.channel === this.filterChannel);
+    const readFilter = this.filterRead();
+    const channelFilter = this.filterChannel();
+    
+    if (readFilter === 'unread') list = list.filter(n => !n.read_at);
+    if (readFilter === 'read') list = list.filter(n => !!n.read_at);
+    if (channelFilter) list = list.filter(n => n.channel === channelFilter);
     return list;
   });
 
-  hasFilters(): boolean { return !!(this.filterRead || this.filterChannel); }
-  applyFilter(): void { /* triggers computed re-evaluation via signal reads */ }
+  hasFilters(): boolean { return !!(this.filterRead() || this.filterChannel()); }
+  setFilterRead(val: string): void { this.filterRead.set(val); }
 
   markRead(n: Notification): void {
     if (!n.read_at) {
