@@ -30,7 +30,25 @@
         [ngModel]="filterEntity()"
         (selectionChange)="filterEntity.set($event); applyFilters()"
       ></app-autocomplete>
-      <input type="text" [ngModel]="filterUser()" (ngModelChange)="filterUser.set($event)" placeholder="User ID..." class="filter-text-input" />
+      <div class="autocomplete-wrap" style="position: relative;">
+        <input type="text" [(ngModel)]="userSearch" (ngModelChange)="onUserSearchChange()" (focus)="showUserDropdown.set(true)" placeholder="Search User ID..." class="filter-text-input" autocomplete="off" />
+        @if (showUserDropdown()) {
+          <div class="autocomplete-dropdown" style="position: absolute; top: 100%; left: 0; right: 0; z-index: 100; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); max-height: 200px; overflow-y: auto; margin-top: 4px;">
+            @if (userSearchLoading()) {
+              <div class="autocomplete-empty" style="padding: 12px; color: var(--color-text-muted); font-size: 0.85rem;">Searching...</div>
+            } @else if (userSearchResults().length === 0 && userSearch.length >= 2) {
+              <div class="autocomplete-empty" style="padding: 12px; color: var(--color-text-muted); font-size: 0.85rem;">No users found</div>
+            } @else {
+              @for (user of userSearchResults(); track user.id) {
+                <button class="autocomplete-option" (mousedown)="selectUser(user)" style="display: flex; flex-direction: column; width: 100%; text-align: left; padding: 8px 12px; border: none; background: transparent; border-bottom: 1px solid rgba(255,255,255,0.05); cursor: pointer;">
+                  <span style="font-weight: 500; font-size: 0.85rem; color: var(--color-text-primary);">{{ user.email || user.phone }}</span>
+                  <span style="font-size: 0.75rem; color: var(--color-text-muted);">{{ user.system_role }}</span>
+                </button>
+              }
+            }
+          </div>
+        }
+      </div>
     </div>
     <div class="filter-actions">
       <button class="btn btn-secondary btn-sm" (click)="clearFilters()"><span class="material-icons-round" style="font-size:14px">clear_all</span> Clear</button>
@@ -43,19 +61,30 @@
   } @else {
     <div class="glass-card log-table">
       <table>
-        <thead><tr><th>Timestamp</th><th>Action</th><th>Entity</th><th>Entity ID</th><th>Details</th></tr></thead>
+        <thead><tr><th>Timestamp</th><th>Action</th><th>Entity</th><th>Entity ID</th><th>Actor ID</th><th>IP / Device</th><th>Details</th></tr></thead>
         <tbody>
           @for (log of logs(); track log.id) {
             <tr>
-              <td class="mono">{{ log.created_at | date:'medium' }}</td>
+              <td class="mono" style="font-size: 0.8rem;">{{ log.created_at | date:'short' }}</td>
               <td><span class="action-badge" [style.background]="actionColor(log.action) + '18'" [style.color]="actionColor(log.action)">{{ log.action }}</span></td>
-              <td>{{ log.resource }}</td>
-              <td class="mono truncate" style="max-width:120px">{{ log.resource_id }}</td>
-              <td class="truncate" style="max-width:300px">{{ log.details }}</td>
+              <td><strong>{{ log.resource }}</strong></td>
+              <td class="mono truncate" style="max-width:100px; font-size: 0.8rem;" [title]="log.resource_id">{{ log.resource_id }}</td>
+              <td class="mono truncate" style="max-width:100px; font-size: 0.8rem;" [title]="log.user_id">{{ log.user_id || 'SYSTEM' }}</td>
+              <td>
+                <div style="font-size: 0.8rem; font-family: monospace;">{{ log.ip_address || 'N/A' }}</div>
+                <div class="truncate" style="max-width:120px; font-size: 0.7rem; color: var(--color-text-muted);" [title]="log.user_agent">{{ log.user_agent || 'Unknown Device' }}</div>
+              </td>
+              <td class="truncate" style="max-width:200px; font-size: 0.8rem;">
+                @if (log.old_value || log.new_value) {
+                  <span style="color: var(--color-text-muted);">Changed values</span>
+                } @else {
+                  <span style="color: var(--color-text-muted);">No payload</span>
+                }
+              </td>
             </tr>
           }
           @if (logs().length === 0) {
-            <tr><td colspan="5" style="text-align:center;color:var(--color-text-muted);padding:var(--space-xl)">No audit logs found matching filters</td></tr>
+            <tr><td colspan="7" style="text-align:center;color:var(--color-text-muted);padding:var(--space-xl)">No audit logs found matching filters</td></tr>
           }
         </tbody>
       </table>

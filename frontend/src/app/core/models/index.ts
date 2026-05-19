@@ -469,11 +469,14 @@ export interface NotificationPreference {
 
 export interface AuditLog {
   id: string;
-  actor_id: string;
+  user_id?: string;
   resource: string;
-  resource_id: string;
+  resource_id?: string;
   action: string;
-  details: string;
+  old_value?: any;
+  new_value?: any;
+  ip_address?: string;
+  user_agent?: string;
   created_at: string;
 }
 
