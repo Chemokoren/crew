@@ -449,6 +449,10 @@ export class ApiService {
     return this.http.put<ApiResponse<NotificationTemplate>>(`${this.API}/admin/notifications/templates`, data);
   }
 
+  sendBroadcastNotification(data: { Target: string; Channel: string; CustomMessage?: string; TemplateEvent?: string }): Observable<ApiResponse<any>> {
+    return this.http.post<ApiResponse<any>>(`${this.API}/admin/notifications/broadcast`, data);
+  }
+
   // --- Documents ---
   getDocuments(params?: Record<string, string>): Observable<ApiListResponse<Document>> {
     return this.http.get<ApiListResponse<Document>>(`${this.API}/documents`, { params: this.buildParams(params) });

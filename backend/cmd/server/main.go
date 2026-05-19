@@ -969,6 +969,7 @@ func main() {
 			admin.GET("/notifications/templates", middleware.RequirePermission(models.PermNotificationsManageTemplates), adminHandler.ListTemplates)
 			admin.POST("/notifications/templates", middleware.RequirePermission(models.PermNotificationsManageTemplates), adminHandler.CreateTemplate)
 			admin.PUT("/notifications/templates", middleware.RequirePermission(models.PermNotificationsManageTemplates), adminHandler.UpdateTemplate)
+			admin.POST("/notifications/broadcast", middleware.RequirePermission(models.PermNotificationsManageTemplates), adminHandler.BroadcastNotification)
 
 			// System Settings (key-value store)
 			admin.GET("/system-settings", middleware.RequireAnyPermission(models.PermSettingsView, models.PermPlatformManageSettings), systemSettingsHandler.ListSettings)

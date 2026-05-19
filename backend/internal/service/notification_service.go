@@ -218,3 +218,84 @@ func (s *NotificationService) SendSMSToPhone(ctx context.Context, phone, message
 	s.logger.Info("OTP SMS sent", slog.String("phone", phone))
 	return nil
 }
+
+// BroadcastRequest defines the parameters for a broadcast notification
+type BroadcastRequest struct {
+	Channel       models.NotificationChannel
+	Target        string // "ALL", "EMPLOYERS", "EMPLOYEES"
+	CustomMessage string
+	TemplateEvent string
+}
+
+// SendBroadcast triggers a broadcast to the specified target group asynchronously
+func (s *NotificationService) SendBroadcast(ctx context.Context, req BroadcastRequest) error {
+	// Start a goroutine to handle the broadcast
+	go func() {
+		// Create a background context that won't be cancelled when the HTTP request ends
+		bgCtx := context.Background()
+		s.logger.Info("starting broadcast", slog.String("target", req.Target), slog.String("channel", string(req.Channel)))
+
+		page := 1
+		perPage := 1000 // Fetch in batches
+		totalSent := 0
+		
+		for {
+			users, _, err := s.userRepo.List(bgCtx, page, perPage, "")
+			if err != nil {
+				s.logger.Error("failed to list users for broadcast", slog.Any("error", err))
+				break
+			}
+			
+			if len(users) == 0 {
+				break
+			}
+			
+			for _, u := range users {
+				// Filter by target
+				if req.Target == "EMPLOYERS" && u.SystemRole != "EMPLOYER" {
+					continue
+				}
+				if req.Target == "EMPLOYEES" && u.SystemRole != "EMPLOYEE" {
+					continue
+				}
+				if !u.IsActive {
+					continue
+				}
+				
+				var title, body string
+				if req.TemplateEvent != "" {
+					tmpl, err := s.notifRepo.GetTemplate(bgCtx, req.TemplateEvent)
+					if err != nil {
+						s.logger.Error("broadcast template error", slog.Any("error", err))
+						continue
+					}
+					// Use user's name/phone for basic interpolation if needed
+					vars := map[string]string{
+						"phone": u.Phone,
+					}
+					title = renderTemplate(tmpl.TitleTemplate, vars)
+					body = renderTemplate(tmpl.BodyTemplate, vars)
+				} else {
+					title = "Announcement"
+					if req.Channel == models.ChannelSMS {
+						title = ""
+					}
+					body = req.CustomMessage
+				}
+
+				_, err = s.SendNotification(bgCtx, u.ID, req.Channel, title, body)
+				if err != nil {
+					s.logger.Error("failed to send broadcast notification to user", slog.String("user_id", u.ID.String()), slog.Any("error", err))
+				} else {
+					totalSent++
+				}
+			}
+			
+			page++
+		}
+		
+		s.logger.Info("broadcast complete", slog.Int("total_sent", totalSent), slog.String("target", req.Target))
+	}()
+
+	return nil
+}

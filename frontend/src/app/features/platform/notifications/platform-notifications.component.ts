@@ -145,10 +145,22 @@ export class PlatformNotificationsComponent implements OnInit {
       return;
     }
     this.broadcastSending.set(true);
-    setTimeout(() => {
-      this.toast.success('Broadcast queued for delivery');
-      this.broadcastSending.set(false);
-    }, 2000);
+    this.api.sendBroadcastNotification({
+      Target: this.broadcastTarget(),
+      Channel: this.broadcastChannel(),
+      CustomMessage: this.broadcastCustomMsg(),
+      TemplateEvent: this.broadcastTemplate()
+    }).subscribe({
+      next: () => {
+        this.toast.success('Broadcast queued for delivery');
+        this.broadcastSending.set(false);
+        this.broadcastCustomMsg.set('');
+      },
+      error: () => {
+        this.toast.error('Failed to queue broadcast');
+        this.broadcastSending.set(false);
+      }
+    });
   }
 
   // ── Delivery Stats ──

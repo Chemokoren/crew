@@ -258,3 +258,42 @@ func (h *AdminHandler) UpdateTemplate(c *gin.Context) {
 	}
 	SuccessResponse(c, http.StatusOK, t)
 }
+
+// BroadcastNotification godoc
+// @Summary Broadcast notification to users
+// @Tags Admin
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/admin/notifications/broadcast [post]
+func (h *AdminHandler) BroadcastNotification(c *gin.Context) {
+	var req service.BroadcastRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		BadRequest(c, err.Error())
+		return
+	}
+
+	// Validate target
+	if req.Target != "ALL" && req.Target != "EMPLOYERS" && req.Target != "EMPLOYEES" {
+		BadRequest(c, "Invalid target. Must be ALL, EMPLOYERS, or EMPLOYEES")
+		return
+	}
+
+	// Validate channel
+	if req.Channel != models.ChannelSMS && req.Channel != models.ChannelPush && req.Channel != models.ChannelInApp {
+		BadRequest(c, "Invalid channel")
+		return
+	}
+
+	if req.CustomMessage == "" && req.TemplateEvent == "" {
+		BadRequest(c, "Either custom message or template event is required")
+		return
+	}
+
+	if err := h.notifSvc.SendBroadcast(c.Request.Context(), req); err != nil {
+		MapServiceError(c, err)
+		return
+	}
+
+	SuccessResponse(c, http.StatusOK, gin.H{"message": "Broadcast queued successfully"})
+}
