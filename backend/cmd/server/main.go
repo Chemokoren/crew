@@ -908,10 +908,10 @@ func main() {
 		// Notifications (all authenticated users)
 		notifications := secured.Group("/notifications")
 		{
-			notifications.GET("", middleware.RequirePermission(models.PermNotificationsView), notifHandler.List)
-			notifications.PUT("/:id/read", middleware.RequirePermission(models.PermNotificationsView), notifHandler.MarkRead)
-			notifications.GET("/preferences", middleware.RequirePermission(models.PermNotificationsView), notifHandler.GetPreferences)
-			notifications.PUT("/preferences", middleware.RequirePermission(models.PermNotificationsView), notifHandler.UpdatePreferences)
+			notifications.GET("", notifHandler.List)
+			notifications.PUT("/:id/read", notifHandler.MarkRead)
+			notifications.GET("/preferences", notifHandler.GetPreferences)
+			notifications.PUT("/preferences", notifHandler.UpdatePreferences)
 		}
 
 		// Financials: Credit
