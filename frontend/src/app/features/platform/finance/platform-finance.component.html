@@ -21,18 +21,42 @@
 
   @if (activeTab() === 'overview') {
     <div class="tab-content" style="margin-top:var(--space-lg)">
-      <h2 class="sec-title"><span class="material-icons-round" style="color:#10b981">account_balance_wallet</span> Organization Float Balances</h2>
+      <div class="flex-row" style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem;">
+        <h2 class="sec-title" style="margin: 0;"><span class="material-icons-round" style="color:#10b981">account_balance_wallet</span> Organization Float Balances</h2>
+        <div class="search-box glass-card" style="display:flex; align-items:center; padding: 4px 12px; border-radius: 20px;">
+          <span class="material-icons-round" style="font-size: 18px; color: var(--color-text-muted);">search</span>
+          <input type="text" [ngModel]="searchQuery()" (input)="onSearch($event)" placeholder="Search organizations..." style="border:none; background:transparent; outline:none; padding: 4px 8px; color: var(--color-text-primary);">
+        </div>
+      </div>
       @if (loading()) {
         @for (i of [1,2,3]; track i) { <div class="skeleton" style="height:64px;margin-bottom:8px"></div> }
       } @else {
         <div class="float-grid">
           @for (org of orgs(); track org.id) {
-            <div class="float-card glass-card">
+            <div class="float-card glass-card" style="cursor: pointer; transition: transform 0.2s;" (click)="selectOrg(org)" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">
               <div class="float-org"><strong>{{ org.name }}</strong><span class="float-type">{{ org.county }}</span></div>
               <div class="float-balance">{{ formatKes(getFloat(org.id)?.balance_cents) }}</div>
             </div>
           }
         </div>
+        
+        <!-- Pagination Controls -->
+        @if (totalPages() > 1) {
+          <div class="pagination" style="display:flex; justify-content: space-between; align-items: center; margin-top: 1.5rem;">
+            <div class="per-page">
+              <select class="form-select" style="padding: 4px 8px; width: auto;" [ngModel]="perPage()" (change)="changePerPage($event)">
+                <option [value]="20">20 per page</option>
+                <option [value]="50">50 per page</option>
+                <option [value]="100">100 per page</option>
+              </select>
+            </div>
+            <div class="page-controls" style="display:flex; gap: 8px; align-items: center;">
+              <button class="btn btn-sm btn-ghost" [disabled]="currentPage() === 1" (click)="setPage(currentPage() - 1)">Previous</button>
+              <span style="font-size: 0.875rem; color: var(--color-text-secondary);">Page {{ currentPage() }} of {{ totalPages() }}</span>
+              <button class="btn btn-sm btn-ghost" [disabled]="currentPage() === totalPages()" (click)="setPage(currentPage() + 1)">Next</button>
+            </div>
+          </div>
+        }
       }
     </div>
   }
@@ -70,10 +94,39 @@
   @if (activeTab() === 'transactions') {
     <div class="tab-content" style="margin-top:var(--space-lg)">
       <h2 class="sec-title"><span class="material-icons-round" style="color:#6366f1">receipt_long</span> Recent Transactions</h2>
-      <div class="glass-card" style="padding:var(--space-xl);text-align:center">
-        <span class="material-icons-round" style="font-size:48px;color:var(--color-text-muted);opacity:0.4">receipt_long</span>
-        <p class="sec-desc" style="margin-top:var(--space-sm)">Select an organization from the overview to view its float transactions</p>
-      </div>
+      @if (!selectedOrg()) {
+        <div class="glass-card" style="padding:var(--space-xl);text-align:center">
+          <span class="material-icons-round" style="font-size:48px;color:var(--color-text-muted);opacity:0.4">receipt_long</span>
+          <p class="sec-desc" style="margin-top:var(--space-sm)">Select an organization from the overview to view its float transactions</p>
+        </div>
+      } @else {
+        <div class="glass-card log-table">
+          <div style="padding: 1rem; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="margin: 0; font-size: 1.1rem;">{{ selectedOrg()?.name }} Transactions</h3>
+            <span class="badge" style="font-size: 0.9rem;">Balance: {{ formatKes(getFloat(selectedOrg()!.id)?.balance_cents) }}</span>
+          </div>
+          @if (loadingTxns()) {
+            <div style="padding: 2rem; text-align: center;"><span class="material-icons-round spin">autorenew</span> Loading...</div>
+          } @else if (orgTransactions().length === 0) {
+            <div style="padding: 2rem; text-align: center; color: var(--color-text-muted);">No transactions found for this organization.</div>
+          } @else {
+            <table>
+              <thead><tr><th>Type</th><th>Amount</th><th>Status</th><th>Reference</th><th>Date</th></tr></thead>
+              <tbody>
+                @for (tx of orgTransactions(); track tx.id) {
+                  <tr>
+                    <td><span class="badge" [ngClass]="{'badge-success': tx.transaction_type==='CREDIT', 'badge-danger': tx.transaction_type==='DEBIT'}">{{ tx.transaction_type }}</span></td>
+                    <td><strong>{{ formatKes(tx.amount_cents) }}</strong></td>
+                    <td><span class="badge" [ngClass]="{'badge-info': tx.status==='PENDING', 'badge-success': tx.status==='COMPLETED', 'badge-danger': tx.status==='FAILED'}">{{ tx.status }}</span></td>
+                    <td class="mono">{{ tx.reference }}</td>
+                    <td>{{ tx.created_at | date:'short' }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          }
+        </div>
+      }
     </div>
   }
 </div>

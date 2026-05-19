@@ -1,9 +1,11 @@
-import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, OnInit, signal, computed, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../../core/services/api.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { Organization, SACCOFloat, SACCOFloatTransaction } from '../../../core/models';
+import { Subject } from 'rxjs';
+import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 
 type FTab = 'overview' | 'approvals' | 'transactions';
 
@@ -35,16 +37,78 @@ export class PlatformFinanceComponent implements OnInit {
     { id: 'transactions', label: 'Transactions', icon: 'receipt_long' },
   ];
 
-  ngOnInit() { this.loadOrgs(); }
+  // Pagination & Search
+  searchQuery = signal('');
+  currentPage = signal(1);
+  perPage = signal(20);
+  totalOrgs = signal(0);
+  private searchSubject = new Subject<string>();
+
+  // Drill-down
+  selectedOrg = signal<Organization | null>(null);
+  orgTransactions = signal<SACCOFloatTransaction[]>([]);
+  loadingTxns = signal(false);
+
+  totalPages = computed(() => Math.ceil(this.totalOrgs() / this.perPage()));
+
+  ngOnInit() {
+    this.searchSubject.pipe(
+      debounceTime(300),
+      distinctUntilChanged()
+    ).subscribe(q => {
+      this.searchQuery.set(q);
+      this.currentPage.set(1);
+      this.loadOrgs();
+    });
+    this.loadOrgs();
+  }
+
+  onSearch(event: any) {
+    this.searchSubject.next(event.target.value);
+  }
+
+  setPage(p: number) {
+    if (p < 1 || p > this.totalPages()) return;
+    this.currentPage.set(p);
+    this.loadOrgs();
+  }
+
+  changePerPage(event: any) {
+    this.perPage.set(parseInt(event.target.value, 10));
+    this.currentPage.set(1);
+    this.loadOrgs();
+  }
+
+  selectOrg(org: Organization) {
+    this.selectedOrg.set(org);
+    this.activeTab.set('transactions');
+    this.loadTransactions(org.id);
+  }
+
+  loadTransactions(orgId: string) {
+    this.loadingTxns.set(true);
+    this.api.getFloatTransactions(orgId, { per_page: '50' }).subscribe({
+      next: r => {
+        this.orgTransactions.set(r.data || []);
+        this.loadingTxns.set(false);
+      },
+      error: () => this.loadingTxns.set(false)
+    });
+  }
 
   switchTab(t: FTab) { this.activeTab.set(t); }
 
   loadOrgs() {
     this.loading.set(true);
-    this.api.getOrganizations({ per_page: '100' }).subscribe({
+    this.api.getOrganizations({
+      page: this.currentPage().toString(),
+      per_page: this.perPage().toString(),
+      search: this.searchQuery()
+    }).subscribe({
       next: r => {
         const orgs = r.data || [];
         this.orgs.set(orgs);
+        this.totalOrgs.set(r.meta?.total || 0);
         let total = 0;
         for (const org of orgs) {
           this.api.getSACCOFloat(org.id).subscribe({
