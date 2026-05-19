@@ -55,7 +55,7 @@ export class OrgContextService {
       return;
     }
 
-    this.api.getOrganization(user.organization_id).subscribe({
+    this.api.getOrganization(user.organization_id, true).subscribe({
       next: r => {
         this.industryType.set(r.data?.industry_type || 'GENERAL');
         this.loaded.set(true);

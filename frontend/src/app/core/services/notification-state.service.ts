@@ -29,7 +29,7 @@ export class NotificationStateService {
   /** Manual refresh — call after marking a notification as read */
   refresh(): void {
     if (!this.auth.isAuthenticated() || this.auth.isTokenExpired()) return;
-    this.api.getNotifications({ per_page: '50' }).subscribe({
+    this.api.getNotifications({ per_page: '50' }, true).subscribe({
       next: r => this.notifications.set(r.data),
       error: () => {},
     });

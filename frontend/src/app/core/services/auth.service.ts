@@ -173,6 +173,7 @@ export class AuthService {
     localStorage.removeItem('amy_access_token');
     localStorage.removeItem('amy_refresh_token');
     localStorage.removeItem('amy_user');
+    sessionStorage.removeItem('dismissed_announcements');
     this.currentUserSignal.set(null);
     this.permissionService.clear();
   }

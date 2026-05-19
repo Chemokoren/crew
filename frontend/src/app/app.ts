@@ -30,8 +30,8 @@ import { AnnouncementBannerComponent } from './shared/components/announcement-ba
       <div class="app-layout platform-layout">
         <app-platform-sidebar [(mobileOpen)]="sidebarMobileOpen" />
         <app-platform-topbar (menuToggle)="toggleMobileSidebar()" />
-        <app-announcement-banner />
         <main class="main-content" id="main-content">
+          <app-announcement-banner />
           <router-outlet />
         </main>
       </div>
@@ -39,8 +39,8 @@ import { AnnouncementBannerComponent } from './shared/components/announcement-ba
       <div class="app-layout">
         <app-sidebar [(mobileOpen)]="sidebarMobileOpen" />
         <app-topbar (menuToggle)="toggleMobileSidebar()" />
-        <app-announcement-banner />
         <main class="main-content" id="main-content">
+          <app-announcement-banner />
           <router-outlet />
         </main>
       </div>

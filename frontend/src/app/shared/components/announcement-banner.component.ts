@@ -1,6 +1,9 @@
 import { Component, inject, OnInit, OnDestroy, signal, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Router, NavigationEnd } from '@angular/router';
+import { filter } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
+import { AuthService } from '../../core/services/auth.service';
 import { SystemAnnouncement } from '../../core/models';
 
 @Component({
@@ -9,41 +12,41 @@ import { SystemAnnouncement } from '../../core/models';
   imports: [CommonModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    @for (a of announcements(); track a.id) {
-      @if (!dismissed().has(a.id)) {
-        <div class="announcement-banner" [class]="'severity-' + a.severity.toLowerCase()">
-          <div class="banner-content">
-            <span class="material-icons-round banner-icon">{{ severityIcon(a.severity) }}</span>
-            <div class="banner-text">
-              <strong>{{ a.title }}</strong>
-              <span class="banner-body">{{ a.body }}</span>
-            </div>
+    @for (a of visibleAnnouncements(); track a.id) {
+      <div class="announcement-banner" [class]="'severity-' + a.severity.toLowerCase()">
+        <div class="banner-content">
+          <span class="material-icons-round banner-icon">{{ severityIcon(a.severity) }}</span>
+          <div class="banner-text">
+            <strong>{{ a.title }}</strong>
+            <span class="banner-body">{{ a.body }}</span>
           </div>
-          <button class="banner-dismiss" (click)="dismiss(a.id)" title="Dismiss">
-            <span class="material-icons-round">close</span>
-          </button>
         </div>
-      }
+        <button class="banner-dismiss" (click)="dismiss(a.id)" title="Dismiss">
+          <span class="material-icons-round">close</span>
+        </button>
+      </div>
     }
   `,
   styles: [`
     :host {
       display: block;
-      margin-left: var(--sidebar-width);
-      margin-top: var(--topbar-height);
-      position: sticky;
-      top: var(--topbar-height);
-      z-index: 50;
+      margin: calc(-1 * var(--space-xl)) calc(-1 * var(--space-xl)) var(--space-md) calc(-1 * var(--space-xl));
+    }
+    :host:empty {
+      display: none;
+      margin: 0;
     }
     @media (max-width: 768px) {
-      :host { margin-left: 0; }
+      :host {
+        margin: calc(-1 * var(--space-md)) calc(-1 * var(--space-md)) var(--space-sm) calc(-1 * var(--space-md));
+      }
     }
 
     .announcement-banner {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 10px 20px;
+      padding: 12px 20px;
       font-size: 0.8125rem;
       animation: slideDown 0.3s ease-out;
     }
@@ -110,10 +113,20 @@ import { SystemAnnouncement } from '../../core/models';
 })
 export class AnnouncementBannerComponent implements OnInit, OnDestroy {
   private api = inject(ApiService);
+  private auth = inject(AuthService);
+  private router = inject(Router);
   private pollInterval: ReturnType<typeof setInterval> | null = null;
+  private routeSub: any;
 
   announcements = signal<SystemAnnouncement[]>([]);
   dismissed = signal<Set<string>>(new Set());
+
+  /** Computed: only non-dismissed announcements */
+  visibleAnnouncements = () => {
+    const all = this.announcements();
+    const d = this.dismissed();
+    return all.filter(a => !d.has(a.id));
+  };
 
   ngOnInit(): void {
     // Restore dismissed state from session
@@ -121,18 +134,43 @@ export class AnnouncementBannerComponent implements OnInit, OnDestroy {
       const stored = sessionStorage.getItem('dismissed_announcements');
       if (stored) this.dismissed.set(new Set(JSON.parse(stored)));
     } catch {}
-    this.loadAnnouncements();
+
+    // Load on init if authenticated
+    if (this.auth.accessToken) {
+      this.loadAnnouncements();
+    }
+
+    // Reload on every navigation (handles post-login scenario)
+    this.routeSub = this.router.events.pipe(
+      filter(e => e instanceof NavigationEnd)
+    ).subscribe(() => {
+      if (this.auth.accessToken) {
+        this.loadAnnouncements();
+      }
+    });
+
     // Poll every 5 minutes for new announcements
-    this.pollInterval = setInterval(() => this.loadAnnouncements(), 5 * 60 * 1000);
+    this.pollInterval = setInterval(() => {
+      if (this.auth.accessToken) {
+        this.loadAnnouncements();
+      }
+    }, 5 * 60 * 1000);
   }
 
   ngOnDestroy(): void {
     if (this.pollInterval) clearInterval(this.pollInterval);
+    if (this.routeSub) this.routeSub.unsubscribe();
   }
 
   loadAnnouncements(): void {
     this.api.getActiveAnnouncements().subscribe({
-      next: r => this.announcements.set(r.data || []),
+      next: r => this.announcements.set(r.data ?? []),
+      error: (err) => {
+        // Don't log 503 (maintenance) — expected when maintenance is active
+        if (err.status !== 503) {
+          console.warn('[AnnouncementBanner] Failed to load:', err.status, err.statusText);
+        }
+      },
     });
   }
 

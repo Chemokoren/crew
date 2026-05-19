@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpParams, HttpHeaders } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import {
@@ -152,8 +152,10 @@ export class ApiService {
     return this.http.get<ApiListResponse<Organization>>(`${this.API}/organizations`, { params: this.buildParams(params) });
   }
 
-  getOrganization(id: string): Observable<ApiResponse<Organization>> {
-    return this.http.get<ApiResponse<Organization>>(`${this.API}/organizations/${id}`);
+  getOrganization(id: string, skipToast = false): Observable<ApiResponse<Organization>> {
+    let headers = new HttpHeaders();
+    if (skipToast) headers = headers.set('X-Skip-Error-Toast', 'true');
+    return this.http.get<ApiResponse<Organization>>(`${this.API}/organizations/${id}`, { headers });
   }
 
   createOrganization(data: Record<string, unknown>): Observable<ApiResponse<Organization>> {
@@ -379,8 +381,13 @@ export class ApiService {
   }
 
   // --- Notifications ---
-  getNotifications(params?: Record<string, string>): Observable<ApiListResponse<Notification>> {
-    return this.http.get<ApiListResponse<Notification>>(`${this.API}/notifications`, { params: this.buildParams(params) });
+  getNotifications(params?: Record<string, string>, skipToast = false): Observable<ApiListResponse<Notification>> {
+    let headers = new HttpHeaders();
+    if (skipToast) headers = headers.set('X-Skip-Error-Toast', 'true');
+    return this.http.get<ApiListResponse<Notification>>(`${this.API}/notifications`, { 
+      params: this.buildParams(params),
+      headers 
+    });
   }
 
   markNotificationRead(id: string): Observable<unknown> {
