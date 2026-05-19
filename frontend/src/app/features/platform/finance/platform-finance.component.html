@@ -124,6 +124,24 @@
                 }
               </tbody>
             </table>
+            
+            <!-- Transaction Pagination Controls -->
+            @if (totalTxnPages() > 1) {
+              <div class="pagination" style="display:flex; justify-content: space-between; align-items: center; margin-top: 1.5rem; padding: 0 1rem 1rem 1rem;">
+                <div class="per-page">
+                  <select class="form-select" style="padding: 4px 8px; width: auto;" [ngModel]="txnPerPage()" (change)="changeTxnPerPage($event)">
+                    <option [value]="20">20 per page</option>
+                    <option [value]="50">50 per page</option>
+                    <option [value]="100">100 per page</option>
+                  </select>
+                </div>
+                <div class="page-controls" style="display:flex; gap: 8px; align-items: center;">
+                  <button class="btn btn-sm btn-ghost" [disabled]="txnPage() === 1" (click)="setTxnPage(txnPage() - 1)">Previous</button>
+                  <span style="font-size: 0.875rem; color: var(--color-text-secondary);">Page {{ txnPage() }} of {{ totalTxnPages() }}</span>
+                  <button class="btn btn-sm btn-ghost" [disabled]="txnPage() === totalTxnPages()" (click)="setTxnPage(txnPage() + 1)">Next</button>
+                </div>
+              </div>
+            }
           }
         </div>
       }

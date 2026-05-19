@@ -48,6 +48,12 @@ export class PlatformFinanceComponent implements OnInit {
   selectedOrg = signal<Organization | null>(null);
   orgTransactions = signal<SACCOFloatTransaction[]>([]);
   loadingTxns = signal(false);
+  
+  // Transaction Pagination
+  txnPage = signal(1);
+  txnPerPage = signal(20);
+  totalTxns = signal(0);
+  totalTxnPages = computed(() => Math.ceil(this.totalTxns() / this.txnPerPage()));
 
   totalPages = computed(() => Math.ceil(this.totalOrgs() / this.perPage()));
 
@@ -82,14 +88,33 @@ export class PlatformFinanceComponent implements OnInit {
   selectOrg(org: Organization) {
     this.selectedOrg.set(org);
     this.activeTab.set('transactions');
+    this.txnPage.set(1);
     this.loadTransactions(org.id);
+  }
+
+  setTxnPage(p: number) {
+    if (p < 1 || p > this.totalTxnPages()) return;
+    this.txnPage.set(p);
+    const org = this.selectedOrg();
+    if (org) this.loadTransactions(org.id);
+  }
+
+  changeTxnPerPage(event: any) {
+    this.txnPerPage.set(parseInt(event.target.value, 10));
+    this.txnPage.set(1);
+    const org = this.selectedOrg();
+    if (org) this.loadTransactions(org.id);
   }
 
   loadTransactions(orgId: string) {
     this.loadingTxns.set(true);
-    this.api.getFloatTransactions(orgId, { per_page: '50' }).subscribe({
+    this.api.getFloatTransactions(orgId, { 
+      page: this.txnPage().toString(),
+      per_page: this.txnPerPage().toString() 
+    }).subscribe({
       next: r => {
         this.orgTransactions.set(r.data || []);
+        this.totalTxns.set(r.meta?.total || 0);
         this.loadingTxns.set(false);
       },
       error: () => this.loadingTxns.set(false)
