@@ -93,6 +93,46 @@
 .audit-item strong, .audit-item small { display: block; }
 .audit-item strong { color: #e2e8f0; font-size: 0.82rem; }
 .audit-item small { color: var(--color-text-muted, #94a3b8); font-size: 0.72rem; margin-top: 2px; }
+
+/* Autocomplete */
+.autocomplete-wrap { position: relative; }
+.autocomplete-dropdown {
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 50;
+  max-height: 280px; overflow-y: auto; margin-top: 4px;
+  background: var(--color-bg-card, #1e293b); border: 1px solid rgba(139,92,246,0.18);
+  border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+}
+.autocomplete-option {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; border: none; padding: 10px 14px; text-align: left;
+  background: transparent; color: #e2e8f0; cursor: pointer;
+  transition: background 0.15s;
+}
+.autocomplete-option:hover { background: rgba(139,92,246,0.10); }
+.ac-user-info { display: flex; flex-direction: column; gap: 2px; }
+.ac-user-info strong { font-size: 0.8125rem; }
+.ac-user-meta { font-size: 0.6875rem; color: var(--color-text-muted, #94a3b8); }
+.autocomplete-empty {
+  padding: 14px; text-align: center; font-size: 0.8125rem;
+  color: var(--color-text-muted, #94a3b8); display: flex; align-items: center;
+  justify-content: center; gap: 8px;
+}
+.spinner-xs {
+  width: 14px; height: 14px; border: 2px solid rgba(139,92,246,0.3);
+  border-top-color: #8b5cf6; border-radius: 50%;
+  animation: spin 0.6s linear infinite; display: inline-block;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Audit pagination */
+.audit-pagination {
+  display: flex; align-items: center; justify-content: center;
+  gap: 4px; padding: 14px 0 4px; border-top: 1px solid rgba(139,92,246,0.08); margin-top: 12px;
+}
+.audit-pagination .rbac-btn-sm.active {
+  background: rgba(139,92,246,0.18); color: #c084fc;
+}
+
 @media (max-width: 768px) {
   .matrix-layout, .compare-controls, .comparison-grid, .assignment-grid, .assignment-form { grid-template-columns: 1fr; }
   .module-sidebar { position: relative; top: 0; max-height: none; }

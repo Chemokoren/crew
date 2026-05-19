@@ -33,10 +33,10 @@ import { AdminUser } from '../../../core/models';
           <div class="search-input-wrap" style="flex:1;">
             <span class="material-icons-round search-icon">search</span>
             <input class="form-input search-input" type="text"
-                   placeholder="Search by phone number..."
-                   [(ngModel)]="searchQuery" (ngModelChange)="filterUsers()" id="user-search" />
+                   placeholder="Search by phone number or email..."
+                   [(ngModel)]="searchQuery" (ngModelChange)="onSearchChange()" id="user-search" />
           </div>
-          <select class="form-select filter-select" [(ngModel)]="roleFilter" (ngModelChange)="filterUsers()" id="user-role-filter">
+          <select class="form-select filter-select" [(ngModel)]="roleFilter" (ngModelChange)="onFilterChange()" id="user-role-filter">
             <option value="">All Roles</option>
             <option value="SYSTEM_ADMIN">System Admin</option>
             <option value="PLATFORM_ADMIN">Platform Admin</option>
@@ -48,7 +48,7 @@ import { AdminUser } from '../../../core/models';
             <option value="LENDER">Lender</option>
             <option value="INSURER">Insurer</option>
           </select>
-          <select class="form-select filter-select" [(ngModel)]="statusFilter" (ngModelChange)="filterUsers()" id="user-status-filter">
+          <select class="form-select filter-select" [(ngModel)]="statusFilter" (ngModelChange)="onFilterChange()" id="user-status-filter">
             <option value="">All Status</option>
             <option value="active">Active</option>
             <option value="disabled">Disabled</option>
@@ -64,7 +64,7 @@ import { AdminUser } from '../../../core/models';
       }
 
       <!-- Empty state -->
-      @else if (filteredUsers().length === 0) {
+      @else if (users().length === 0) {
         <div class="empty-state">
           <span class="material-icons-round empty-icon">people</span>
           <div class="empty-title">No users found</div>
@@ -87,7 +87,7 @@ import { AdminUser } from '../../../core/models';
               </tr>
             </thead>
             <tbody>
-              @for (u of filteredUsers(); track u.id) {
+              @for (u of users(); track u.id) {
                 <tr>
                   <td>
                     <div class="user-cell">
@@ -146,6 +146,39 @@ import { AdminUser } from '../../../core/models';
             </tbody>
           </table>
         </div>
+
+        <!-- Pagination -->
+        @if (totalPages() > 1) {
+          <div class="pagination-bar">
+            <div class="pagination-info">
+              Showing {{ (currentPage() - 1) * perPage() + 1 }}–{{ Math.min(currentPage() * perPage(), totalUsers()) }} of {{ totalUsers() }}
+            </div>
+            <div class="pagination-controls">
+              <button class="btn btn-sm btn-ghost" [disabled]="currentPage() <= 1" (click)="goToPage(1)" title="First">
+                <span class="material-icons-round" style="font-size:18px;">first_page</span>
+              </button>
+              <button class="btn btn-sm btn-ghost" [disabled]="currentPage() <= 1" (click)="goToPage(currentPage() - 1)" title="Previous">
+                <span class="material-icons-round" style="font-size:18px;">chevron_left</span>
+              </button>
+              @for (p of visiblePages(); track p) {
+                <button class="btn btn-sm" [class.btn-primary]="p === currentPage()" [class.btn-ghost]="p !== currentPage()" (click)="goToPage(p)">
+                  {{ p }}
+                </button>
+              }
+              <button class="btn btn-sm btn-ghost" [disabled]="currentPage() >= totalPages()" (click)="goToPage(currentPage() + 1)" title="Next">
+                <span class="material-icons-round" style="font-size:18px;">chevron_right</span>
+              </button>
+              <button class="btn btn-sm btn-ghost" [disabled]="currentPage() >= totalPages()" (click)="goToPage(totalPages())" title="Last">
+                <span class="material-icons-round" style="font-size:18px;">last_page</span>
+              </button>
+            </div>
+            <select class="form-select pagination-size" [(ngModel)]="perPageValue" (ngModelChange)="onPerPageChange($event)">
+              <option [value]="20">20 / page</option>
+              <option [value]="50">50 / page</option>
+              <option [value]="100">100 / page</option>
+            </select>
+          </div>
+        }
       }
 
       <!-- Reset Password Modal -->
@@ -345,25 +378,48 @@ import { AdminUser } from '../../../core/models';
       padding-top: var(--space-md); border-top: 1px solid var(--color-border);
     }
 
+    /* Pagination */
+    .pagination-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: var(--space-md) 0; gap: var(--space-md); flex-wrap: wrap;
+    }
+    .pagination-info {
+      font-size: 0.8125rem; color: var(--color-text-muted); white-space: nowrap;
+    }
+    .pagination-controls {
+      display: flex; align-items: center; gap: 2px;
+    }
+    .pagination-size {
+      max-width: 120px; font-size: 0.8125rem;
+    }
+
     @media (max-width: 640px) {
       .lookup-form { flex-direction: column; }
       .search-input-wrap { min-width: 100%; }
       .filter-select { max-width: 100%; width: 100%; }
       .detail-grid { grid-template-columns: 1fr; }
+      .pagination-bar { justify-content: center; }
+      .pagination-info { display: none; }
     }
   `]
 })
 export class PlatformUsersComponent implements OnInit {
   private api = inject(ApiService);
   private toast = inject(ToastService);
+  Math = Math;
 
   users = signal<AdminUser[]>([]);
   loading = signal(true);
   totalUsers = signal(0);
+  currentPage = signal(1);
+  perPage = signal(20);
+  totalPages = signal(1);
+  perPageValue = 20;
 
   searchQuery = '';
   roleFilter = '';
   statusFilter = '';
+  private searchDebounce: any;
 
   showResetModal = signal(false);
   showDetailPanel = signal(false);
@@ -371,21 +427,14 @@ export class PlatformUsersComponent implements OnInit {
   resetting = signal(false);
   newPassword = '';
 
-  filteredUsers = computed(() => {
-    let list = this.users();
-    const q = this.searchQuery.toLowerCase().trim();
-    if (q) {
-      list = list.filter(u => u.phone.includes(q) || (u.email && u.email.toLowerCase().includes(q)));
-    }
-    if (this.roleFilter) {
-      list = list.filter(u => u.system_role === this.roleFilter);
-    }
-    if (this.statusFilter === 'active') {
-      list = list.filter(u => u.is_active);
-    } else if (this.statusFilter === 'disabled') {
-      list = list.filter(u => !u.is_active);
-    }
-    return list;
+  visiblePages = computed(() => {
+    const total = this.totalPages();
+    const current = this.currentPage();
+    const pages: number[] = [];
+    const start = Math.max(1, current - 2);
+    const end = Math.min(total, current + 2);
+    for (let i = start; i <= end; i++) pages.push(i);
+    return pages;
   });
 
   ngOnInit(): void {
@@ -394,18 +443,48 @@ export class PlatformUsersComponent implements OnInit {
 
   loadUsers(): void {
     this.loading.set(true);
-    this.api.getUsers({ per_page: '200' }).subscribe({
+    const params: Record<string, string> = {
+      page: String(this.currentPage()),
+      per_page: String(this.perPage()),
+    };
+    if (this.searchQuery.trim()) params['search'] = this.searchQuery.trim();
+    if (this.roleFilter) params['role'] = this.roleFilter;
+    if (this.statusFilter) params['status'] = this.statusFilter;
+
+    this.api.getUsers(params).subscribe({
       next: r => {
         this.users.set(r.data || []);
         this.totalUsers.set(r.meta?.total || r.data?.length || 0);
+        this.totalPages.set(r.meta?.total_pages || 1);
         this.loading.set(false);
       },
       error: () => this.loading.set(false),
     });
   }
 
-  filterUsers(): void {
-    // Triggers computed signal re-evaluation
+  onSearchChange(): void {
+    clearTimeout(this.searchDebounce);
+    this.searchDebounce = setTimeout(() => {
+      this.currentPage.set(1);
+      this.loadUsers();
+    }, 400);
+  }
+
+  onFilterChange(): void {
+    this.currentPage.set(1);
+    this.loadUsers();
+  }
+
+  goToPage(page: number): void {
+    if (page < 1 || page > this.totalPages()) return;
+    this.currentPage.set(page);
+    this.loadUsers();
+  }
+
+  onPerPageChange(val: number): void {
+    this.perPage.set(Number(val));
+    this.currentPage.set(1);
+    this.loadUsers();
   }
 
   toggleAccount(u: AdminUser): void {

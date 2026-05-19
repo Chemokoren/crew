@@ -424,9 +424,32 @@ type RoleView = 'grid' | 'table';
         @case ('assignments') {
           <div class="assignment-panel glass-card">
             <div class="rbac-toolbar">
-              <div class="search-box">
+              <div class="search-box autocomplete-wrap">
                 <span class="material-icons-round">search</span>
-                <input type="text" placeholder="Search users..." [(ngModel)]="userSearch">
+                <input type="text" placeholder="Search users by phone, email, or role..." [(ngModel)]="userSearch" (ngModelChange)="onUserSearchChange()" (focus)="showUserDropdown.set(true)" autocomplete="off">
+                @if (showUserDropdown() && userSearchResults().length > 0) {
+                  <div class="autocomplete-dropdown">
+                    @for (user of userSearchResults(); track user.id) {
+                      <button class="autocomplete-option" (mousedown)="selectUser(user); showUserDropdown.set(false)">
+                        <div class="ac-user-info">
+                          <strong>{{ user.email || user.phone }}</strong>
+                          <span class="ac-user-meta">{{ user.system_role }} · {{ user.phone }}</span>
+                        </div>
+                        <span class="badge" style="font-size:0.625rem;">{{ user.is_active ? 'Active' : 'Disabled' }}</span>
+                      </button>
+                    }
+                  </div>
+                }
+                @if (showUserDropdown() && userSearch.length >= 2 && userSearchResults().length === 0 && !userSearchLoading()) {
+                  <div class="autocomplete-dropdown">
+                    <div class="autocomplete-empty">No users found</div>
+                  </div>
+                }
+                @if (userSearchLoading()) {
+                  <div class="autocomplete-dropdown">
+                    <div class="autocomplete-empty"><span class="spinner-xs"></span> Searching...</div>
+                  </div>
+                }
               </div>
               <button class="rbac-btn rbac-btn-outline" (click)="loadUsers()">
                 <span class="material-icons-round">refresh</span> Refresh
@@ -434,13 +457,13 @@ type RoleView = 'grid' | 'table';
             </div>
             <div class="assignment-grid">
               <div class="user-list">
-                @for (user of filteredUsers(); track user.id) {
+                @for (user of assignmentUsers(); track user.id) {
                   <button [class.active]="selectedUserId() === user.id" (click)="selectUser(user)">
                     <strong>{{ user.email || user.phone }}</strong>
                     <span>{{ user.system_role }}</span>
                   </button>
                 } @empty {
-                  <div class="empty-row">No users found</div>
+                  <div class="empty-row">Search for a user above to manage their roles</div>
                 }
               </div>
               <div class="assignment-detail">
@@ -485,6 +508,11 @@ type RoleView = 'grid' | 'table';
         @case ('audit') {
           <div class="audit-panel glass-card">
             <div class="rbac-toolbar">
+              <div class="audit-page-info" style="font-size:0.8125rem;color:var(--color-text-muted);">
+                @if (auditTotal() > 0) {
+                  {{ (auditPage() - 1) * auditPerPage() + 1 }}–{{ mathMin(auditPage() * auditPerPage(), auditTotal()) }} of {{ auditTotal() }}
+                }
+              </div>
               <button class="rbac-btn rbac-btn-outline" (click)="loadAudit()">
                 <span class="material-icons-round">refresh</span> Refresh
               </button>
@@ -502,6 +530,19 @@ type RoleView = 'grid' | 'table';
                 <div class="empty-row">No RBAC activity found</div>
               }
             </div>
+            @if (auditTotalPages() > 1) {
+              <div class="audit-pagination">
+                <button class="rbac-btn-sm" [disabled]="auditPage() <= 1" (click)="auditGoToPage(auditPage() - 1)">
+                  <span class="material-icons-round">chevron_left</span>
+                </button>
+                @for (p of auditVisiblePages(); track p) {
+                  <button class="rbac-btn-sm" [class.active]="p === auditPage()" (click)="auditGoToPage(p)">{{ p }}</button>
+                }
+                <button class="rbac-btn-sm" [disabled]="auditPage() >= auditTotalPages()" (click)="auditGoToPage(auditPage() + 1)">
+                  <span class="material-icons-round">chevron_right</span>
+                </button>
+              </div>
+            }
           </div>
         }
       }
@@ -662,16 +703,25 @@ export class PlatformRolesComponent implements OnInit {
   assignRoleId = '';
   assignTenantId = '';
   assignExpiresAt = '';
+  showUserDropdown = signal(false);
+  userSearchResults = signal<AdminUser[]>([]);
+  userSearchLoading = signal(false);
+  assignmentUsers = signal<AdminUser[]>([]);
+  private userSearchDebounce: any;
 
   // Audit
   auditLogs = signal<AuditLog[]>([]);
+  auditPage = signal(1);
+  auditPerPage = signal(20);
+  auditTotal = signal(0);
+  auditTotalPages = signal(1);
 
   // Computed
   systemRoleCount = computed(() => this.roles().filter(r => r.is_system).length);
   totalPerms = computed(() => this.allPerms().length);
   templateIndustries = computed(() => [...new Set(this.templates().map(t => t.industry_type))]);
   allPermModules = computed(() => Object.keys(this.allPermsGrouped()));
-  selectedUser = computed(() => this.users().find(u => u.id === this.selectedUserId()) || null);
+  selectedUser = computed(() => this.assignmentUsers().find(u => u.id === this.selectedUserId()) || null);
   filteredUsers = computed(() => {
     const search = this.userSearch.trim().toLowerCase();
     if (!search) return this.users();
@@ -681,11 +731,16 @@ export class PlatformRolesComponent implements OnInit {
       u.system_role.toLowerCase().includes(search)
     );
   });
-  rbacAuditLogs = computed(() => this.auditLogs().filter(log =>
-    ['role', 'permission', 'policy', 'rbac'].some(token =>
-      `${log.action} ${log.resource}`.toLowerCase().includes(token)
-    )
-  ));
+  rbacAuditLogs = computed(() => this.auditLogs());
+  auditVisiblePages = computed(() => {
+    const total = this.auditTotalPages();
+    const current = this.auditPage();
+    const pages: number[] = [];
+    const start = Math.max(1, current - 2);
+    const end = Math.min(total, current + 2);
+    for (let i = start; i <= end; i++) pages.push(i);
+    return pages;
+  });
   matrixPermissionRows = computed(() => this.allPerms().filter(perm =>
     this.expandedMatrixModules().has(perm.module) && this.matchesSearch(perm)
   ));
@@ -753,17 +808,51 @@ export class PlatformRolesComponent implements OnInit {
   }
 
   loadUsers(): void {
-    if (this.users().length > 0) return;
-    this.coreApi.getUsers({ per_page: '200' }).subscribe({
-      next: res => this.users.set(res.data || [])
+    this.coreApi.getUsers({ per_page: '50' }).subscribe({
+      next: res => {
+        this.users.set(res.data || []);
+        this.assignmentUsers.set(res.data || []);
+      }
     });
   }
 
+  onUserSearchChange(): void {
+    clearTimeout(this.userSearchDebounce);
+    if (this.userSearch.trim().length < 2) {
+      this.userSearchResults.set([]);
+      this.showUserDropdown.set(false);
+      return;
+    }
+    this.userSearchLoading.set(true);
+    this.showUserDropdown.set(true);
+    this.userSearchDebounce = setTimeout(() => {
+      this.coreApi.getUsers({ search: this.userSearch.trim(), per_page: '10' }).subscribe({
+        next: res => {
+          this.userSearchResults.set(res.data || []);
+          this.userSearchLoading.set(false);
+        },
+        error: () => this.userSearchLoading.set(false),
+      });
+    }, 300);
+  }
+
   loadAudit(): void {
-    this.coreApi.getAuditLogs({ per_page: '30' }).subscribe({
-      next: res => this.auditLogs.set(res.data || [])
+    this.coreApi.getAuditLogs({ page: String(this.auditPage()), per_page: String(this.auditPerPage()) }).subscribe({
+      next: res => {
+        this.auditLogs.set(res.data || []);
+        this.auditTotal.set(res.meta?.total || 0);
+        this.auditTotalPages.set(res.meta?.total_pages || 1);
+      }
     });
   }
+
+  auditGoToPage(page: number): void {
+    if (page < 1 || page > this.auditTotalPages()) return;
+    this.auditPage.set(page);
+    this.loadAudit();
+  }
+
+  mathMin(a: number, b: number): number { return Math.min(a, b); }
 
   // ── Filtering ─────────────────────────────────────────────────────
 
@@ -1064,6 +1153,11 @@ export class PlatformRolesComponent implements OnInit {
     this.selectedUserId.set(user.id);
     this.assignTenantId = user.organization_id || this.auth.currentUser()?.organization_id || '';
     this.assignRoleId = '';
+    // Add to assignmentUsers if not already there
+    const existing = this.assignmentUsers();
+    if (!existing.find(u => u.id === user.id)) {
+      this.assignmentUsers.set([user, ...existing]);
+    }
     this.loadSelectedUserAccess();
   }
 
