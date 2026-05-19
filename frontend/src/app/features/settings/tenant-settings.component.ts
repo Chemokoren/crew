@@ -320,28 +320,42 @@ const JOB_CATEGORIES: { value: JobTypeCategory; label: string; desc: string }[] 
                 </div>
               </div>
 
-              <!-- Verification Mode -->
+              <!-- Verification Modes -->
               <div class="kyc-policy-card">
-                <div class="kyc-policy-title">Verification Method</div>
-                <div class="kyc-policy-desc" style="margin-bottom:var(--space-sm);">How employees prove their identity.</div>
+                <div class="kyc-policy-title">Verification Methods</div>
+                <div class="kyc-policy-desc" style="margin-bottom:var(--space-sm);">Select which verification methods employees can use. You can enable multiple methods — employees will see all enabled options.</div>
                 <div class="kyc-mode-options">
-                  <label class="kyc-mode-option" [class.selected]="kycForm.kyc_verification_mode === 'UPLOAD'">
-                    <input type="radio" name="kycMode" value="UPLOAD" [(ngModel)]="kycForm.kyc_verification_mode" (ngModelChange)="saveKYCConfig()" />
+                  <label class="kyc-mode-option" [class.selected]="isKycModeEnabled('UPLOAD')">
+                    <input type="checkbox" [checked]="isKycModeEnabled('UPLOAD')" (change)="toggleKycMode('UPLOAD')" />
                     <span class="material-icons-round" style="font-size:20px;">cloud_upload</span>
                     <div>
-                      <strong>Upload ID Photos</strong>
-                      <span>Employee uploads front &amp; back of their National ID</span>
+                      <strong>Document Upload</strong>
+                      <span>Employee uploads front &amp; back of their National ID for manual review</span>
                     </div>
                   </label>
-                  <label class="kyc-mode-option" [class.selected]="kycForm.kyc_verification_mode === 'MANUAL'">
-                    <input type="radio" name="kycMode" value="MANUAL" [(ngModel)]="kycForm.kyc_verification_mode" (ngModelChange)="saveKYCConfig()" />
+                  <label class="kyc-mode-option" [class.selected]="isKycModeEnabled('MANUAL')">
+                    <input type="checkbox" [checked]="isKycModeEnabled('MANUAL')" (change)="toggleKycMode('MANUAL')" />
                     <span class="material-icons-round" style="font-size:20px;">edit_note</span>
                     <div>
-                      <strong>Enter ID Details</strong>
-                      <span>Employee enters ID number &amp; serial for IPRS lookup</span>
+                      <strong>Manual Entry</strong>
+                      <span>Employee enters ID number &amp; serial for admin verification</span>
+                    </div>
+                  </label>
+                  <label class="kyc-mode-option" [class.selected]="isKycModeEnabled('IPRS')">
+                    <input type="checkbox" [checked]="isKycModeEnabled('IPRS')" (change)="toggleKycMode('IPRS')" />
+                    <span class="material-icons-round" style="font-size:20px;">fingerprint</span>
+                    <div>
+                      <strong>Automated IPRS</strong>
+                      <span>Employee enters ID number &amp; serial — verified instantly via IPRS integration</span>
                     </div>
                   </label>
                 </div>
+                @if (kycForm.kyc_verification_modes.length === 0) {
+                  <div style="margin-top:var(--space-sm);padding:8px 12px;border-radius:var(--radius-sm);background:rgba(244,67,54,0.06);border:1px solid rgba(244,67,54,0.2);display:flex;align-items:center;gap:8px;">
+                    <span class="material-icons-round" style="color:var(--color-danger);font-size:16px;">warning</span>
+                    <span style="font-size:0.75rem;color:var(--color-danger);">At least one verification method must be enabled. "Document Upload" will be used as default.</span>
+                  </div>
+                }
               </div>
 
               <!-- Restricted Actions -->
@@ -909,7 +923,7 @@ export class TenantSettingsComponent implements OnInit {
   // --- KYC Policy ---
   kycForm = {
     kyc_required: true,
-    kyc_verification_mode: 'UPLOAD' as 'UPLOAD' | 'MANUAL',
+    kyc_verification_modes: ['UPLOAD'] as string[],
     kyc_restricted_actions: [] as string[],
   };
   savingKYC = signal(false);
@@ -1020,7 +1034,7 @@ export class TenantSettingsComponent implements OnInit {
         const cfg = r.data.tenant_config;
         if (cfg) {
           this.kycForm.kyc_required = (cfg as any).kyc_required ?? true;
-          this.kycForm.kyc_verification_mode = (cfg as any).kyc_verification_mode || 'UPLOAD';
+          this.kycForm.kyc_verification_modes = (cfg as any).kyc_verification_modes || ['UPLOAD'];
           const actions = (cfg as any).kyc_restricted_actions as string[] | undefined;
           // Default: all actions restricted
           this.kycForm.kyc_restricted_actions = actions && actions.length > 0
@@ -1036,7 +1050,7 @@ export class TenantSettingsComponent implements OnInit {
         } else {
           // No config yet — default everything off
           this.kycForm.kyc_required = true;
-          this.kycForm.kyc_verification_mode = 'UPLOAD';
+          this.kycForm.kyc_verification_modes = ['UPLOAD'];
           this.kycForm.kyc_restricted_actions = this.allRestrictableActions.map(a => a.code);
           this.financeForm.topup_verification_mode = 'HYBRID';
           this.financeForm.allowed_topup_methods = [];
@@ -1054,6 +1068,25 @@ export class TenantSettingsComponent implements OnInit {
     this.api.getPaySchedules(this.saccoId).subscribe({
       next: r => this.paySchedules.set(r.data || []),
     });
+  }
+
+  // --- KYC Verification Modes ---
+  isKycModeEnabled(mode: string): boolean {
+    return this.kycForm.kyc_verification_modes.includes(mode);
+  }
+
+  toggleKycMode(mode: string): void {
+    const idx = this.kycForm.kyc_verification_modes.indexOf(mode);
+    if (idx >= 0) {
+      this.kycForm.kyc_verification_modes.splice(idx, 1);
+    } else {
+      this.kycForm.kyc_verification_modes.push(mode);
+    }
+    // Ensure at least one mode is always enabled
+    if (this.kycForm.kyc_verification_modes.length === 0) {
+      this.kycForm.kyc_verification_modes.push('UPLOAD');
+    }
+    this.saveKYCConfig();
   }
 
   // --- KYC Policy Methods ---
@@ -1076,7 +1109,7 @@ export class TenantSettingsComponent implements OnInit {
     this.api.updateTenantConfig(this.saccoId, {
       tenant_config: {
         kyc_required: this.kycForm.kyc_required,
-        kyc_verification_mode: this.kycForm.kyc_verification_mode,
+        kyc_verification_modes: this.kycForm.kyc_verification_modes,
         kyc_restricted_actions: this.kycForm.kyc_restricted_actions,
         topup_verification_mode: this.financeForm.topup_verification_mode,
         allowed_topup_methods: this.financeForm.allowed_topup_methods,
@@ -1099,7 +1132,7 @@ export class TenantSettingsComponent implements OnInit {
     this.api.updateTenantConfig(this.saccoId, {
       tenant_config: {
         kyc_required: this.kycForm.kyc_required,
-        kyc_verification_mode: this.kycForm.kyc_verification_mode,
+        kyc_verification_modes: this.kycForm.kyc_verification_modes,
         kyc_restricted_actions: this.kycForm.kyc_restricted_actions,
         topup_verification_mode: this.financeForm.topup_verification_mode,
         allowed_topup_methods: this.financeForm.allowed_topup_methods,

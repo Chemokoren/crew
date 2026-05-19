@@ -218,12 +218,21 @@ import { User, CrewProfile } from '../../../core/models';
                 @if (user()!.crew_profile!.kyc_status !== 'VERIFIED') {
                   <!-- KYC Mode Toggle -->
                   <div class="kyc-mode-toggle">
-                    <button class="kyc-mode-btn" [class.active]="kycActiveMode() === 'UPLOAD'" (click)="kycActiveMode.set('UPLOAD')" id="kyc-mode-upload">
-                      <span class="material-icons-round" style="font-size:16px;">cloud_upload</span> Upload ID
-                    </button>
-                    <button class="kyc-mode-btn" [class.active]="kycActiveMode() === 'MANUAL'" (click)="kycActiveMode.set('MANUAL')" id="kyc-mode-manual">
-                      <span class="material-icons-round" style="font-size:16px;">edit_note</span> Enter ID Details
-                    </button>
+                    @if (hasKycMode('UPLOAD')) {
+                      <button class="kyc-mode-btn" [class.active]="kycActiveMode() === 'UPLOAD'" (click)="kycActiveMode.set('UPLOAD')" id="kyc-mode-upload">
+                        <span class="material-icons-round" style="font-size:16px;">cloud_upload</span> Upload ID
+                      </button>
+                    }
+                    @if (hasKycMode('MANUAL')) {
+                      <button class="kyc-mode-btn" [class.active]="kycActiveMode() === 'MANUAL'" (click)="kycActiveMode.set('MANUAL')" id="kyc-mode-manual">
+                        <span class="material-icons-round" style="font-size:16px;">edit_note</span> Enter ID Details
+                      </button>
+                    }
+                    @if (hasKycMode('IPRS')) {
+                      <button class="kyc-mode-btn" [class.active]="kycActiveMode() === 'IPRS'" (click)="kycActiveMode.set('IPRS')" id="kyc-mode-iprs">
+                        <span class="material-icons-round" style="font-size:16px;">fingerprint</span> IPRS Auto
+                      </button>
+                    }
                   </div>
 
                   <!-- UPLOAD Mode -->
@@ -281,6 +290,26 @@ import { User, CrewProfile } from '../../../core/models';
                       <button class="btn btn-primary" (click)="submitKYC()" [disabled]="submittingKYC() || !kycNationalId || !kycSerialNumber" id="btn-submit-kyc">
                         @if (submittingKYC()) { <span class="spinner-sm"></span> Verifying… } @else {
                           <span class="material-icons-round" style="font-size:16px;">fact_check</span> Verify Identity
+                        }
+                      </button>
+                    </div>
+                  }
+
+                  <!-- IPRS Auto Mode -->
+                  @if (kycActiveMode() === 'IPRS') {
+                    <div class="kyc-form">
+                      <p class="kyc-hint">Automated identity verification via the IPRS (Integrated Population Registration System). Enter your National ID number and serial number — verification is instant.</p>
+                      <div class="form-group">
+                        <label class="form-label" for="kyc-iprs-national-id">National ID Number</label>
+                        <input class="form-input" id="kyc-iprs-national-id" [(ngModel)]="kycNationalId" placeholder="e.g. 12345678" maxlength="10" />
+                      </div>
+                      <div class="form-group">
+                        <label class="form-label" for="kyc-iprs-serial">ID Serial Number</label>
+                        <input class="form-input" id="kyc-iprs-serial" [(ngModel)]="kycSerialNumber" placeholder="Serial number on your ID" />
+                      </div>
+                      <button class="btn btn-primary" (click)="submitKYC()" [disabled]="submittingKYC() || !kycNationalId || !kycSerialNumber" id="btn-submit-kyc-iprs">
+                        @if (submittingKYC()) { <span class="spinner-sm"></span> Verifying… } @else {
+                          <span class="material-icons-round" style="font-size:16px;">fingerprint</span> Verify via IPRS
                         }
                       </button>
                     </div>
@@ -537,7 +566,8 @@ export class ProfileComponent implements OnInit {
   kycNationalId = '';
   kycSerialNumber = '';
   submittingKYC = signal(false);
-  kycActiveMode = signal<'UPLOAD' | 'MANUAL'>('UPLOAD');
+  kycActiveMode = signal<'UPLOAD' | 'MANUAL' | 'IPRS'>('UPLOAD');
+  availableKycModes = signal<string[]>(['UPLOAD']);
   idFrontFile = signal<File | null>(null);
   idBackFile = signal<File | null>(null);
   idFrontPreview = signal<string | null>(null);
@@ -554,10 +584,13 @@ export class ProfileComponent implements OnInit {
     this.auth.fetchProfile().subscribe({
       next: (res) => {
         this.user.set(res.data);
-        // Set default KYC mode from tenant config
-        if (res.data.kyc_verification_mode === 'MANUAL') {
-          this.kycActiveMode.set('MANUAL');
+        // Set available KYC modes and default active mode from tenant config
+        const modes = res.data.kyc_verification_modes;
+        if (modes && modes.length > 0) {
+          this.availableKycModes.set(modes);
+          this.kycActiveMode.set(modes[0] as 'UPLOAD' | 'MANUAL' | 'IPRS');
         } else {
+          this.availableKycModes.set(['UPLOAD']);
           this.kycActiveMode.set('UPLOAD');
         }
         this.loading.set(false);
@@ -590,6 +623,10 @@ export class ProfileComponent implements OnInit {
     if (status === 'VERIFIED') return '#4caf50';
     if (status === 'REJECTED') return '#f44336';
     return '#ff9800';
+  }
+
+  hasKycMode(mode: string): boolean {
+    return this.availableKycModes().includes(mode);
   }
 
   // --- Email ---

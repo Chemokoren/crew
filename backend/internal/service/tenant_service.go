@@ -97,8 +97,8 @@ func (s *TenantService) UpdateTenantConfig(ctx context.Context, orgID uuid.UUID,
 		if incoming.StatutoryExemptions != nil {
 			existing.StatutoryExemptions = incoming.StatutoryExemptions
 		}
-		if incoming.KYCVerificationMode != "" {
-			existing.KYCVerificationMode = incoming.KYCVerificationMode
+		if len(incoming.KYCVerificationModes) > 0 {
+			existing.KYCVerificationModes = incoming.KYCVerificationModes
 		}
 		if incoming.KYCRestrictedActions != nil {
 			existing.KYCRestrictedActions = incoming.KYCRestrictedActions

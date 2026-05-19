@@ -29,7 +29,7 @@ export interface User {
   // Enriched profile data from GET /auth/me
   crew_profile?: CrewProfile;
   kyc_restrictions?: string[];
-  kyc_verification_mode?: 'UPLOAD' | 'MANUAL';
+  kyc_verification_modes?: ('UPLOAD' | 'MANUAL' | 'IPRS')[];
 }
 
 export type SystemRole =
@@ -216,7 +216,7 @@ export interface TenantConfig {
   kyc_required?: boolean;
   kyc_restricted_actions?: string[];
   kyc_document_types?: string[];
-  kyc_verification_mode?: 'UPLOAD' | 'MANUAL';
+  kyc_verification_modes?: ('UPLOAD' | 'MANUAL' | 'IPRS')[];
   topup_verification_mode?: 'API' | 'MANUAL' | 'HYBRID';
   allowed_topup_methods?: ('mobile_money' | 'bank' | 'card')[];
   allowed_topup_channels?: string[];

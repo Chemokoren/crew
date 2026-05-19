@@ -440,11 +440,11 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID uuid.UUID, oldP
 	return nil
 }
 
-// GetEnrichedProfile returns the user plus their crew member profile, KYC restrictions, and verification mode.
-func (s *AuthService) GetEnrichedProfile(ctx context.Context, userID uuid.UUID) (*models.User, *models.CrewMember, []string, string, error) {
+// GetEnrichedProfile returns the user plus their crew member profile, KYC restrictions, and verification modes.
+func (s *AuthService) GetEnrichedProfile(ctx context.Context, userID uuid.UUID) (*models.User, *models.CrewMember, []string, []string, error) {
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
-		return nil, nil, nil, "", err
+		return nil, nil, nil, nil, err
 	}
 
 	var crew *models.CrewMember
@@ -454,13 +454,13 @@ func (s *AuthService) GetEnrichedProfile(ctx context.Context, userID uuid.UUID) 
 
 	// Resolve KYC restrictions and verification mode from tenant config
 	var restrictions []string
-	kycMode := models.KYCModeUpload // default
+	kycModes := []string{models.KYCModeUpload} // default
 	if crew != nil && user.OrganizationID != nil && s.orgRepo != nil {
 		org, err := s.orgRepo.GetByID(ctx, *user.OrganizationID)
 		if err == nil {
 			cfg, err := org.GetTenantConfig()
 			if err == nil {
-				kycMode = cfg.ResolvedKYCMode()
+				kycModes = cfg.ResolvedKYCModes()
 				if cfg.KYCRequired && crew.KYCStatus != models.KYCVerified {
 					restrictions = cfg.KYCRestrictedActions
 					if len(restrictions) == 0 {
@@ -471,7 +471,7 @@ func (s *AuthService) GetEnrichedProfile(ctx context.Context, userID uuid.UUID) 
 		}
 	}
 
-	return user, crew, restrictions, kycMode, nil
+	return user, crew, restrictions, kycModes, nil
 }
 
 // UpdateProfileInput holds the fields a user can update on their own profile.

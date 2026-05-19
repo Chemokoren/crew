@@ -126,7 +126,7 @@ func (h *AuthHandler) Me(c *gin.Context) {
 		return
 	}
 
-	user, crew, restrictions, kycMode, err := h.authSvc.GetEnrichedProfile(c.Request.Context(), claims.UserID)
+	user, crew, restrictions, kycModes, err := h.authSvc.GetEnrichedProfile(c.Request.Context(), claims.UserID)
 	if err != nil {
 		MapServiceError(c, err)
 		return
@@ -135,7 +135,7 @@ func (h *AuthHandler) Me(c *gin.Context) {
 	resp := dto.EnrichedProfileResponse{
 		UserResponse:        dto.UserToResponse(user),
 		KYCRestrictions:     restrictions,
-		KYCVerificationMode: kycMode,
+		KYCVerificationModes: kycModes,
 	}
 
 	if crew != nil {

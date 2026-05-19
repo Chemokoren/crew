@@ -94,9 +94,9 @@ type CrewProfileDTO struct {
 // EnrichedProfileResponse extends the /me response with crew and KYC data.
 type EnrichedProfileResponse struct {
 	UserResponse
-	CrewProfile         *CrewProfileDTO `json:"crew_profile,omitempty"`
-	KYCRestrictions     []string        `json:"kyc_restrictions,omitempty"`     // Actions blocked until KYC verified
-	KYCVerificationMode string          `json:"kyc_verification_mode,omitempty"` // "UPLOAD" (default) or "MANUAL"
+	CrewProfile          *CrewProfileDTO `json:"crew_profile,omitempty"`
+	KYCRestrictions      []string        `json:"kyc_restrictions,omitempty"`     // Actions blocked until KYC verified
+	KYCVerificationModes []string        `json:"kyc_verification_modes,omitempty"` // "UPLOAD", "MANUAL", "IPRS"
 }
 
 // UpdateProfileRequest allows a user to update their job/specialization.

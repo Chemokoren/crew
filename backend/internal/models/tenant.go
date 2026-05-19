@@ -105,11 +105,10 @@ type TenantConfig struct {
 	// KYCDocumentTypes lists acceptable KYC document types.
 	// Defaults to ["NATIONAL_ID"] if empty and KYCRequired is true.
 	KYCDocumentTypes []string `json:"kyc_document_types,omitempty"`
-	// KYCVerificationMode controls how users prove identity.
-	//   "UPLOAD" (default) — user uploads front + back photos of National ID.
-	//   "MANUAL"           — user enters ID number + serial number for IPRS lookup.
-	// The non-default mode is always shown as a fallback option in the UI.
-	KYCVerificationMode string `json:"kyc_verification_mode,omitempty"`
+	// KYCVerificationModes controls how users prove identity.
+	// Allowable values: "UPLOAD", "MANUAL", "IPRS".
+	// Can be combined to allow multiple options.
+	KYCVerificationModes []string `json:"kyc_verification_modes,omitempty"`
 
 	// --- Float Top-Up Verification ---
 
@@ -170,10 +169,10 @@ func (tc *TenantConfig) StatutoryEnabled() bool {
 	return tc.HandleStatutoryDeductions
 }
 
-// KYC verification mode constants.
 const (
 	KYCModeUpload = "UPLOAD"
 	KYCModeManual = "MANUAL"
+	KYCModeIPRS   = "IPRS"
 )
 
 // Top-up verification mode constants.
@@ -183,12 +182,12 @@ const (
 	TopUpVerifyHybrid = "HYBRID"
 )
 
-// ResolvedKYCMode returns the effective verification mode, defaulting to UPLOAD.
-func (tc *TenantConfig) ResolvedKYCMode() string {
-	if tc.KYCVerificationMode == KYCModeManual {
-		return KYCModeManual
+// ResolvedKYCModes returns the effective verification modes, defaulting to [UPLOAD].
+func (tc *TenantConfig) ResolvedKYCModes() []string {
+	if len(tc.KYCVerificationModes) > 0 {
+		return tc.KYCVerificationModes
 	}
-	return KYCModeUpload
+	return []string{KYCModeUpload}
 }
 
 // ResolvedTopUpVerificationMode returns the effective top-up verification mode.
