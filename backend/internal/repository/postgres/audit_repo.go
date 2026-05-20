@@ -32,7 +32,22 @@ func (r *AuditLogRepo) List(ctx context.Context, action, resource string, resour
 
 	query := r.db.WithContext(ctx).Model(&models.AuditLog{})
 	if action != "" {
-		query = query.Where("LOWER(action) LIKE ?", "%"+strings.ToLower(action)+"%")
+		search := strings.ToLower(action)
+		switch search {
+		case "create":
+			search = "created"
+		case "update":
+			search = "updated"
+		case "delete":
+			search = "deleted"
+		case "approve":
+			search = "approved"
+		case "reject":
+			search = "rejected"
+		case "export":
+			search = "exported"
+		}
+		query = query.Where("action LIKE ?", "%"+search+"%")
 	}
 	if resource != "" {
 		query = query.Where("resource = ?", resource)
@@ -59,7 +74,22 @@ func (r *AuditLogRepo) ListByUserID(ctx context.Context, userID uuid.UUID, actio
 	query := r.db.WithContext(ctx).Model(&models.AuditLog{}).
 		Where("user_id = ? OR resource_id = ?", userID, userID)
 	if action != "" {
-		query = query.Where("LOWER(action) LIKE ?", "%"+strings.ToLower(action)+"%")
+		search := strings.ToLower(action)
+		switch search {
+		case "create":
+			search = "created"
+		case "update":
+			search = "updated"
+		case "delete":
+			search = "deleted"
+		case "approve":
+			search = "approved"
+		case "reject":
+			search = "rejected"
+		case "export":
+			search = "exported"
+		}
+		query = query.Where("action LIKE ?", "%"+search+"%")
 	}
 	query.Count(&total)
 
