@@ -43,11 +43,39 @@ export class PlatformComplianceComponent implements OnInit {
   }
 
   formatJson(val: any): string {
-    if (!val) return 'null';
+    if (!val || val === 'null') return 'null';
     if (typeof val === 'string') {
       try { return JSON.stringify(JSON.parse(val), null, 2); } catch { return val; }
     }
     return JSON.stringify(val, null, 2);
+  }
+
+  getUserName(userId: string | undefined): string {
+    if (!userId) return 'System';
+    const opt = this.userOptions().find(o => o.value === userId);
+    return opt ? opt.label : (userId.substring(0, 8) + '...');
+  }
+
+  getIpAddress(log: AuditLog): string {
+    if (log.ip_address) return log.ip_address;
+    if (log.new_value && typeof log.new_value === 'object' && log.new_value.ip_address) {
+      return log.new_value.ip_address;
+    }
+    if (log.new_value && typeof log.new_value === 'string') {
+      try { const parsed = JSON.parse(log.new_value); return parsed.ip_address || 'Unknown IP'; } catch {}
+    }
+    return 'Unknown IP';
+  }
+
+  getUserAgent(log: AuditLog): string {
+    if (log.user_agent) return log.user_agent;
+    if (log.new_value && typeof log.new_value === 'object' && log.new_value.user_agent) {
+      return log.new_value.user_agent;
+    }
+    if (log.new_value && typeof log.new_value === 'string') {
+      try { const parsed = JSON.parse(log.new_value); return parsed.user_agent || 'Unknown'; } catch {}
+    }
+    return 'Unknown';
   }
 
   readonly actionOptions: AutocompleteOption[] = [

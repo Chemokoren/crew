@@ -90,7 +90,7 @@ type Tab = 'overview' | 'users' | 'audit' | 'templates' | 'rates' | 'ussd';
             @for(l of logs();track l.id){<tr>
               <td style="font-weight:500;color:var(--color-text-primary);">{{l.action}}</td>
               <td><span class="badge badge-neutral">{{l.resource}}</span></td>
-              <td style="font-size:0.75rem;color:var(--color-text-muted);font-family:monospace;">{{(l.user_id||'').slice(0,8)}}...</td>
+              <td style="font-size:0.75rem;color:var(--color-text-muted);font-family:monospace;">{{getUserPhone(l.user_id)}}</td>
               <td style="font-size:0.8125rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{(l.new_value ? (l.new_value | json) : l.old_value ? (l.old_value | json) : '—')}}</td>
               <td style="font-size:0.8125rem;color:var(--color-text-muted);white-space:nowrap;">{{l.created_at|relativeTime}}</td>
             </tr>}</tbody></table></div>
@@ -295,6 +295,13 @@ export class AdminDashboardComponent implements OnInit {
   clearAuditFilters() {
     this.auditResource = ''; this.auditActor = ''; this.auditDateFrom = ''; this.auditDateTo = ''; this.auditPage = 1;
     this.loadAuditLogs();
+  }
+
+  getUserPhone(userId?: string): string {
+    if (!userId) return 'System';
+    const u = this.users().find(user => user.id === userId);
+    if (u && u.phone) return u.phone;
+    return userId.slice(0, 8) + '...';
   }
 
   // --- Templates (Task 158) ---

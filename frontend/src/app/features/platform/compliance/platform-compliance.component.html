@@ -57,16 +57,16 @@
               <td>
                 <div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-start;">
                   <span class="action-badge" [style.background]="actionColor(log.action) + '18'" [style.color]="actionColor(log.action)">{{ log.action }}</span>
-                  <span style="font-size: 0.75rem; color: var(--color-text-muted); font-family: monospace;">{{ log.ip_address || 'Unknown IP' }}</span>
+                  <span style="font-size: 0.75rem; color: var(--color-text-muted); font-family: monospace;">{{ getIpAddress(log) }}</span>
                 </div>
               </td>
               <td>
                 <div style="display: flex; flex-direction: column; gap: 4px;">
                   <span><strong>{{ log.resource }}</strong></span>
-                  <span class="mono truncate" style="max-width:120px; font-size: 0.75rem; color: var(--color-text-muted);">{{ log.resource_id }}</span>
+                  <span class="mono truncate" style="max-width:120px; font-size: 0.75rem; color: var(--color-text-muted);">{{ log.resource_id || 'N/A' }}</span>
                 </div>
               </td>
-              <td class="mono truncate" style="max-width:120px">{{ log.user_id || 'System' }}</td>
+              <td class="mono truncate" style="max-width:150px">{{ getUserName(log.user_id) }}</td>
               <td style="text-align: right;">
                 <button class="btn btn-sm btn-ghost" (click)="toggleDetails(log.id)">
                   <span class="material-icons-round">{{ expandedLogId() === log.id ? 'expand_less' : 'expand_more' }}</span>
@@ -87,7 +87,7 @@
                     </div>
                   </div>
                   <div style="margin-top: 1rem; font-size: 0.75rem; color: var(--color-text-muted);">
-                    <strong>User Agent:</strong> <span class="mono">{{ log.user_agent || 'Unknown' }}</span>
+                    <strong>User Agent:</strong> <span class="mono">{{ getUserAgent(log) }}</span>
                   </div>
                 </td>
               </tr>
