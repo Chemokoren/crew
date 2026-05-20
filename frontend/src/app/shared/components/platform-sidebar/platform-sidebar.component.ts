@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { RouterLink, RouterLinkActive, Router } from '@angular/router';
 import { AuthService } from '../../../core/services/auth.service';
 import { NotificationStateService } from '../../../core/services/notification-state.service';
+import { TooltipDirective } from '../../directives/tooltip.directive';
 
 interface PlatformNavItem {
   label: string;
@@ -17,7 +18,7 @@ interface PlatformNavItem {
 @Component({
   selector: 'app-platform-sidebar',
   standalone: true,
-  imports: [CommonModule, RouterLink, RouterLinkActive],
+  imports: [CommonModule, RouterLink, RouterLinkActive, TooltipDirective],
   template: `
     <!-- Mobile backdrop -->
     @if (mobileOpen()) {
@@ -57,6 +58,7 @@ interface PlatformNavItem {
           <a class="nav-item" [routerLink]="item.route" routerLinkActive="active"
              [routerLinkActiveOptions]="{ exact: item.route === '/platform/command-center' }"
              [attr.id]="'pnav-' + item.label.toLowerCase().replace(' ', '-')"
+             [appTooltip]="collapsed() ? item.label : ''" tooltipPosition="right"
              (click)="onNavClick()">
             <span class="material-icons-round nav-icon">{{ item.icon }}</span>
             @if (!collapsed()) {
@@ -70,15 +72,16 @@ interface PlatformNavItem {
       </nav>
 
       <!-- Switch to org view -->
-      @if (!collapsed()) {
-        <div class="sidebar-switch">
-          <a routerLink="/dashboard" class="switch-btn" id="platform-switch-org">
-            <span class="material-icons-round">storefront</span>
+      <div class="sidebar-switch">
+        <a routerLink="/dashboard" class="switch-btn" id="platform-switch-org"
+           [appTooltip]="collapsed() ? 'Organization View' : ''" tooltipPosition="right">
+          <span class="material-icons-round">storefront</span>
+          @if (!collapsed()) {
             <span>Organization View</span>
             <span class="material-icons-round switch-arrow">arrow_forward</span>
-          </a>
-        </div>
-      }
+          }
+        </a>
+      </div>
 
       <div class="sidebar-footer">
         @if (!collapsed()) {
@@ -90,7 +93,8 @@ interface PlatformNavItem {
             </div>
           </div>
         }
-        <button class="nav-item logout-btn" (click)="logout()" id="platform-sidebar-logout">
+        <button class="nav-item logout-btn" (click)="logout()" id="platform-sidebar-logout"
+                [appTooltip]="collapsed() ? 'Logout' : ''" tooltipPosition="right">
           <span class="material-icons-round nav-icon">logout</span>
           @if (!collapsed()) {
             <span class="nav-label">Logout</span>
@@ -315,6 +319,10 @@ interface PlatformNavItem {
       transition: all var(--transition-fast);
       width: 100%;
 
+      .platform-sidebar.collapsed & {
+        justify-content: center;
+      }
+
       .material-icons-round { font-size: 18px; }
 
       &:hover {
@@ -420,7 +428,7 @@ export class PlatformSidebarComponent {
   notifState = inject(NotificationStateService);
   private router = inject(Router);
 
-  collapsed = signal(false);
+  collapsed = model(false);
   mobileOpen = model(false);
 
   private navItems: PlatformNavItem[] = [

@@ -27,8 +27,8 @@ import { AnnouncementBannerComponent } from './shared/components/announcement-ba
     } @else if (isAuthRoute()) {
       <router-outlet />
     } @else if (isPlatformRoute()) {
-      <div class="app-layout platform-layout">
-        <app-platform-sidebar [(mobileOpen)]="sidebarMobileOpen" />
+      <div class="app-layout platform-layout" [class.sidebar-collapsed]="sidebarCollapsed()">
+        <app-platform-sidebar [(mobileOpen)]="sidebarMobileOpen" [(collapsed)]="sidebarCollapsed" />
         <app-platform-topbar (menuToggle)="toggleMobileSidebar()" />
         <main class="main-content" id="main-content">
           <app-announcement-banner />
@@ -36,8 +36,8 @@ import { AnnouncementBannerComponent } from './shared/components/announcement-ba
         </main>
       </div>
     } @else {
-      <div class="app-layout">
-        <app-sidebar [(mobileOpen)]="sidebarMobileOpen" />
+      <div class="app-layout" [class.sidebar-collapsed]="sidebarCollapsed()">
+        <app-sidebar [(mobileOpen)]="sidebarMobileOpen" [(collapsed)]="sidebarCollapsed" />
         <app-topbar (menuToggle)="toggleMobileSidebar()" />
         <main class="main-content" id="main-content">
           <app-announcement-banner />
@@ -62,9 +62,18 @@ import { AnnouncementBannerComponent } from './shared/components/announcement-ba
       animation: fadeIn 300ms ease-out;
     }
 
+    .sidebar-collapsed .main-content {
+      margin-left: var(--sidebar-collapsed-width);
+    }
+
+    :host ::ng-deep .sidebar-collapsed .topbar,
+    :host ::ng-deep .sidebar-collapsed .platform-topbar {
+      left: var(--sidebar-collapsed-width) !important;
+    }
+
     @media (max-width: 768px) {
       .main-content {
-        margin-left: 0;
+        margin-left: 0 !important;
         padding: var(--space-md);
       }
     }
@@ -76,6 +85,7 @@ export class AppComponent implements OnInit {
   private orgCtx = inject(OrgContextService);
 
   sidebarMobileOpen = signal(false);
+  sidebarCollapsed = signal(false);
   private currentUrl = '';
 
   constructor() {

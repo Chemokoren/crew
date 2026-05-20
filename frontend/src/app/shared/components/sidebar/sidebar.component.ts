@@ -5,6 +5,7 @@ import { AuthService } from '../../../core/services/auth.service';
 import { OrgContextService } from '../../../core/services/org-context.service';
 import { NotificationStateService } from '../../../core/services/notification-state.service';
 import { PermissionService } from '../../../core/services/permission.service';
+import { TooltipDirective } from '../../directives/tooltip.directive';
 
 interface NavItem {
   label: string;
@@ -24,7 +25,7 @@ const KYC_EXEMPT_ROUTES = ['/profile', '/notifications'];
 @Component({
   selector: 'app-sidebar',
   standalone: true,
-  imports: [CommonModule, RouterLink, RouterLinkActive],
+  imports: [CommonModule, RouterLink, RouterLinkActive, TooltipDirective],
   template: `
     <!-- Mobile backdrop -->
     @if (mobileOpen()) {
@@ -65,7 +66,8 @@ const KYC_EXEMPT_ROUTES = ['/profile', '/notifications'];
             }
           }
           @if (isItemLocked(item.route)) {
-            <div class="nav-item nav-item-locked" (click)="onLockedClick()" [attr.id]="'nav-' + item.label.toLowerCase().replace(' ', '-')">
+            <div class="nav-item nav-item-locked" (click)="onLockedClick()" [attr.id]="'nav-' + item.label.toLowerCase().replace(' ', '-')"
+                 [appTooltip]="collapsed() ? item.label + ' (Locked)' : ''" tooltipPosition="right">
               <span class="material-icons-round nav-icon">{{ item.icon }}</span>
               @if (!collapsed()) {
                 <span class="nav-label">{{ item.label }}</span>
@@ -75,6 +77,7 @@ const KYC_EXEMPT_ROUTES = ['/profile', '/notifications'];
           } @else {
             <a class="nav-item" [routerLink]="item.route" routerLinkActive="active"
                [attr.id]="'nav-' + item.label.toLowerCase().replace(' ', '-')"
+               [appTooltip]="collapsed() ? item.label : ''" tooltipPosition="right"
                (click)="onNavClick()">
               <span class="material-icons-round nav-icon">{{ item.icon }}</span>
               @if (!collapsed()) {
@@ -89,12 +92,15 @@ const KYC_EXEMPT_ROUTES = ['/profile', '/notifications'];
       </nav>
 
       <!-- Platform switch for admin users -->
-      @if (!collapsed() && auth.isPlatformUser()) {
+      @if (auth.isPlatformUser()) {
         <div class="sidebar-platform-switch">
-          <a routerLink="/platform" class="platform-switch-link" id="sidebar-platform-switch">
+          <a routerLink="/platform" class="platform-switch-link" id="sidebar-platform-switch"
+             [appTooltip]="collapsed() ? 'Platform Admin' : ''" tooltipPosition="right">
             <span class="material-icons-round" style="font-size:18px;">hub</span>
-            <span>Platform Admin</span>
-            <span class="material-icons-round" style="font-size:14px;margin-left:auto;opacity:0.4;">arrow_forward</span>
+            @if (!collapsed()) {
+              <span>Platform Admin</span>
+              <span class="material-icons-round" style="font-size:14px;margin-left:auto;opacity:0.4;">arrow_forward</span>
+            }
           </a>
         </div>
       }
@@ -109,7 +115,8 @@ const KYC_EXEMPT_ROUTES = ['/profile', '/notifications'];
             </div>
           </div>
         }
-        <button class="nav-item logout-btn" (click)="logout()" id="sidebar-logout">
+        <button class="nav-item logout-btn" (click)="logout()" id="sidebar-logout"
+                [appTooltip]="collapsed() ? 'Logout' : ''" tooltipPosition="right">
           <span class="material-icons-round nav-icon">logout</span>
           @if (!collapsed()) {
             <span class="nav-label">Logout</span>
@@ -430,6 +437,10 @@ const KYC_EXEMPT_ROUTES = ['/profile', '/notifications'];
       cursor: pointer;
       transition: all var(--transition-fast);
 
+      .sidebar.collapsed & {
+        justify-content: center;
+      }
+
       &:hover {
         background: rgba(139, 92, 246, 0.1);
         border-color: rgba(139, 92, 246, 0.4);
@@ -471,7 +482,7 @@ export class SidebarComponent {
   private permissions = inject(PermissionService);
   private router = inject(Router);
 
-  collapsed = signal(false);
+  collapsed = model(false);
   mobileOpen = model(false);
   mobileClose = output<void>();
 
