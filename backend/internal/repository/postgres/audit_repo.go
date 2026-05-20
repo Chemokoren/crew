@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/kibsoft/amy-mis/internal/models"
@@ -31,7 +32,7 @@ func (r *AuditLogRepo) List(ctx context.Context, action, resource string, resour
 
 	query := r.db.WithContext(ctx).Model(&models.AuditLog{})
 	if action != "" {
-		query = query.Where("action = ?", action)
+		query = query.Where("LOWER(action) LIKE ?", "%"+strings.ToLower(action)+"%")
 	}
 	if resource != "" {
 		query = query.Where("resource = ?", resource)
@@ -58,7 +59,7 @@ func (r *AuditLogRepo) ListByUserID(ctx context.Context, userID uuid.UUID, actio
 	query := r.db.WithContext(ctx).Model(&models.AuditLog{}).
 		Where("user_id = ? OR resource_id = ?", userID, userID)
 	if action != "" {
-		query = query.Where("action = ?", action)
+		query = query.Where("LOWER(action) LIKE ?", "%"+strings.ToLower(action)+"%")
 	}
 	query.Count(&total)
 
