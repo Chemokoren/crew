@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/google/uuid"
 	"github.com/kibsoft/amy-mis/internal/models"
@@ -32,30 +31,7 @@ func (r *AuditLogRepo) List(ctx context.Context, action, resource string, resour
 
 	query := r.db.WithContext(ctx).Model(&models.AuditLog{})
 	if action != "" {
-		search := strings.ToLower(action)
-		switch search {
-		case "create":
-			search = "created"
-		case "update":
-			search = "updated"
-		case "delete":
-			search = "deleted"
-		case "approve":
-			search = "approved"
-		case "reject":
-			search = "rejected"
-		case "export":
-			search = "exported"
-		case "denied":
-			search = "denied"
-		case "topup":
-			search = "topup"
-		case "credit":
-			search = "credit"
-		case "debit":
-			search = "debit"
-		}
-		query = query.Where("action LIKE ?", "%"+search+"%")
+		query = query.Where("action ILIKE ?", "%"+action+"%")
 	}
 	if resource != "" {
 		query = query.Where("resource = ?", resource)
@@ -82,30 +58,7 @@ func (r *AuditLogRepo) ListByUserID(ctx context.Context, userID uuid.UUID, actio
 	query := r.db.WithContext(ctx).Model(&models.AuditLog{}).
 		Where("user_id = ? OR resource_id = ?", userID, userID)
 	if action != "" {
-		search := strings.ToLower(action)
-		switch search {
-		case "create":
-			search = "created"
-		case "update":
-			search = "updated"
-		case "delete":
-			search = "deleted"
-		case "approve":
-			search = "approved"
-		case "reject":
-			search = "rejected"
-		case "export":
-			search = "exported"
-		case "denied":
-			search = "denied"
-		case "topup":
-			search = "topup"
-		case "credit":
-			search = "credit"
-		case "debit":
-			search = "debit"
-		}
-		query = query.Where("action LIKE ?", "%"+search+"%")
+		query = query.Where("action ILIKE ?", "%"+action+"%")
 	}
 	query.Count(&total)
 

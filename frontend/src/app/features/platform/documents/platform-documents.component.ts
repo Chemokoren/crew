@@ -42,12 +42,11 @@ export class PlatformDocumentsComponent implements OnInit {
   ];
 
   readonly typeOptions: AutocompleteOption[] = [
-    { value: 'NATIONAL_ID', label: 'National ID', sublabel: 'Government-issued ID card', searchText: 'national id card identity', badge: 'KYC' },
-    { value: 'KRA_PIN', label: 'KRA PIN', sublabel: 'Kenya Revenue Authority PIN certificate', searchText: 'kra pin tax revenue', badge: 'TAX' },
-    { value: 'PASSPORT', label: 'Passport', sublabel: 'International travel passport', searchText: 'passport travel international', badge: 'KYC' },
-    { value: 'DRIVERS_LICENSE', label: 'Drivers License', sublabel: 'Motor vehicle driving license', searchText: 'driver license driving permit', badge: 'KYC' },
-    { value: 'COMPANY_REG', label: 'Company Registration', sublabel: 'Business registration certificate', searchText: 'company registration business certificate', badge: 'BIZ' },
-    { value: 'CONTRACT', label: 'Contract', sublabel: 'Employment or service contract', searchText: 'contract agreement employment', badge: 'HR' },
+    { value: 'KYC_ID_FRONT', label: 'KYC ID Front', sublabel: 'National ID front side', searchText: 'national id card front identity', badge: 'KYC' },
+    { value: 'KYC_ID_BACK', label: 'KYC ID Back', sublabel: 'National ID back side', searchText: 'national id card back identity', badge: 'KYC' },
+    { value: 'KYC_SELFIE', label: 'KYC Selfie', sublabel: 'Face verification selfie', searchText: 'selfie face photo', badge: 'KYC' },
+    { value: 'SACCO_REGISTRATION', label: 'Org Registration', sublabel: 'Organization registration certificate', searchText: 'company registration business certificate sacco', badge: 'BIZ' },
+    { value: 'VEHICLE_LOGBOOK', label: 'Vehicle Logbook', sublabel: 'Motor vehicle logbook', searchText: 'vehicle logbook ownership', badge: 'KYC' },
     { value: 'OTHER', label: 'Other', sublabel: 'Miscellaneous document', searchText: 'other misc document' },
   ];
 
@@ -78,7 +77,7 @@ export class PlatformDocumentsComponent implements OnInit {
   }
 
   loadKycQueue() {
-    this.api.getDocuments({ status: 'PENDING', document_type: 'NATIONAL_ID', per_page: '50' }).subscribe({
+    this.api.getDocuments({ status: 'PENDING', document_type: 'KYC_ID_FRONT', per_page: '50' }).subscribe({
       next: r => this.kycPending.set(r.data || []),
     });
   }
@@ -109,6 +108,13 @@ export class PlatformDocumentsComponent implements OnInit {
   }
 
   typeIcon(t: string): string {
-    switch (t) { case 'NATIONAL_ID': return 'badge'; case 'KRA_PIN': return 'receipt'; case 'PASSPORT': return 'flight'; default: return 'description'; }
+    switch (t) { 
+      case 'KYC_ID_FRONT':
+      case 'KYC_ID_BACK': return 'badge'; 
+      case 'KYC_SELFIE': return 'face'; 
+      case 'SACCO_REGISTRATION': return 'business'; 
+      case 'VEHICLE_LOGBOOK': return 'directions_car'; 
+      default: return 'description'; 
+    }
   }
 }

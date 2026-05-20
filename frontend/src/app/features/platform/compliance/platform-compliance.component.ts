@@ -78,20 +78,29 @@ export class PlatformComplianceComponent implements OnInit {
     return 'Unknown';
   }
 
-  readonly actionOptions: AutocompleteOption[] = [
-    { value: 'CREATE', label: 'Create', sublabel: 'Resource creation events', searchText: 'create add new' },
-    { value: 'UPDATE', label: 'Update', sublabel: 'Resource modification events', searchText: 'update edit modify change' },
-    { value: 'DELETE', label: 'Delete', sublabel: 'Resource deletion events', searchText: 'delete remove destroy' },
-    { value: 'LOGIN', label: 'Login', sublabel: 'User authentication events', searchText: 'login sign in auth' },
-    { value: 'LOGOUT', label: 'Logout', sublabel: 'User sign-out events', searchText: 'logout sign out' },
-    { value: 'APPROVE', label: 'Approve', sublabel: 'Approval workflow events', searchText: 'approve accept confirm' },
-    { value: 'REJECT', label: 'Reject', sublabel: 'Rejection workflow events', searchText: 'reject deny decline' },
-    { value: 'EXPORT', label: 'Export', sublabel: 'Data export events', searchText: 'export download csv' },
-    { value: 'DENIED', label: 'Access Denied', sublabel: 'Permission denied events', searchText: 'denied permission block' },
-    { value: 'TOPUP', label: 'Top Up', sublabel: 'Wallet top up events', searchText: 'topup credit float deposit' },
-    { value: 'CREDIT', label: 'Credit', sublabel: 'Credit events', searchText: 'credit' },
-    { value: 'DEBIT', label: 'Debit', sublabel: 'Debit events', searchText: 'debit' },
-  ];
+  actionOptions: AutocompleteOption[] = [];
+
+  private loadActionOptions() {
+    // Build action options dynamically from actual data
+    // Start with known action types from the database, plus common CRUD actions
+    this.actionOptions = [
+      { value: 'permission.denied', label: 'Access Denied', sublabel: 'Permission denied events', searchText: 'denied permission block access forbidden' },
+      { value: 'INITIATE_TOPUP', label: 'Initiate Top-Up', sublabel: 'Float top-up initiation events', searchText: 'topup credit float deposit stk mpesa' },
+      { value: 'CREDIT', label: 'Credit', sublabel: 'Wallet credit events', searchText: 'credit add fund' },
+      { value: 'CREDIT_FLOAT', label: 'Credit Float', sublabel: 'Organization float credit events', searchText: 'credit float org sacco fund' },
+      { value: 'DEBIT', label: 'Debit', sublabel: 'Wallet debit events', searchText: 'debit withdraw' },
+      { value: 'PAYOUT_REVERSED', label: 'Payout Reversed', sublabel: 'Reversed payout events', searchText: 'payout reverse refund' },
+      { value: 'role.assigned', label: 'Role Assigned', sublabel: 'User role assignment events', searchText: 'role assign rbac permission' },
+      { value: 'CREATE', label: 'Create', sublabel: 'Resource creation events', searchText: 'create add new' },
+      { value: 'UPDATE', label: 'Update', sublabel: 'Resource modification events', searchText: 'update edit modify change' },
+      { value: 'DELETE', label: 'Delete', sublabel: 'Resource deletion events', searchText: 'delete remove destroy' },
+      { value: 'LOGIN', label: 'Login', sublabel: 'User authentication events', searchText: 'login sign in auth' },
+      { value: 'LOGOUT', label: 'Logout', sublabel: 'User sign-out events', searchText: 'logout sign out' },
+      { value: 'APPROVE', label: 'Approve', sublabel: 'Approval workflow events', searchText: 'approve accept confirm' },
+      { value: 'REJECT', label: 'Reject', sublabel: 'Rejection workflow events', searchText: 'reject deny decline' },
+      { value: 'EXPORT', label: 'Export', sublabel: 'Data export events', searchText: 'export download csv' },
+    ];
+  }
 
   readonly entityOptions: AutocompleteOption[] = [
     { value: 'user', label: 'User', sublabel: 'Platform user accounts', searchText: 'user account profile', badge: 'AUTH' },
@@ -106,6 +115,7 @@ export class PlatformComplianceComponent implements OnInit {
   ];
 
   ngOnInit() { 
+    this.loadActionOptions();
     this.loadLogs();
     this.loadUsers(); 
   }
@@ -156,9 +166,26 @@ export class PlatformComplianceComponent implements OnInit {
 
   exportCSV() {
     const csv = ['Timestamp,Action,Entity,Entity ID,User,IP,User Agent,Old Value,New Value'];
+    
+    const cleanJson = (val: any) => {
+      if (!val || val === 'null') return '';
+      if (typeof val === 'string') {
+        try { return JSON.stringify(JSON.parse(val)).replace(/"/g, '""'); } catch { return val.replace(/"/g, '""'); }
+      }
+      return JSON.stringify(val).replace(/"/g, '""');
+    };
+
     for (const log of this.logs()) {
-      csv.push(`"${log.created_at}","${log.action}","${log.resource}","${log.resource_id}","${log.user_id || ''}","${log.ip_address || ''}","${log.user_agent || ''}","${(JSON.stringify(log.old_value) || '').replace(/"/g, '""')}","${(JSON.stringify(log.new_value) || '').replace(/"/g, '""')}"`);
+      const entityId = log.resource_id || '';
+      const user = this.getUserName(log.user_id).replace(/"/g, '""');
+      const ip = this.getIpAddress(log).replace(/"/g, '""');
+      const ua = this.getUserAgent(log).replace(/"/g, '""');
+      const oldVal = cleanJson(log.old_value);
+      const newVal = cleanJson(log.new_value);
+      
+      csv.push(`"${log.created_at}","${log.action}","${log.resource}","${entityId}","${user}","${ip}","${ua}","${oldVal}","${newVal}"`);
     }
+    
     const blob = new Blob([csv.join('\n')], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -168,10 +195,19 @@ export class PlatformComplianceComponent implements OnInit {
   }
 
   actionColor(action: string): string {
-    switch (action) {
-      case 'CREATE': return '#10b981'; case 'UPDATE': return '#6366f1'; case 'DELETE': return '#ef4444';
-      case 'LOGIN': return '#3b82f6'; case 'APPROVE': return '#10b981'; case 'REJECT': return '#ef4444';
-      default: return '#8b5cf6';
-    }
+    const a = (action || '').toLowerCase();
+    if (a.includes('create')) return '#10b981';
+    if (a.includes('update')) return '#6366f1';
+    if (a.includes('delete')) return '#ef4444';
+    if (a.includes('login')) return '#3b82f6';
+    if (a.includes('approve')) return '#10b981';
+    if (a.includes('reject')) return '#ef4444';
+    if (a.includes('denied')) return '#f59e0b';
+    if (a.includes('topup')) return '#06b6d4';
+    if (a.includes('credit')) return '#10b981';
+    if (a.includes('debit')) return '#f97316';
+    if (a.includes('payout')) return '#8b5cf6';
+    if (a.includes('role')) return '#6366f1';
+    return '#8b5cf6';
   }
 }
