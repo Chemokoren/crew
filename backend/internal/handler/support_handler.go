@@ -265,7 +265,7 @@ func (h *SupportHandler) SearchUsers(c *gin.Context) {
 	}
 
 	// Fallback: server-side filtered search across phone/email
-	users, total, err := h.authSvc.ListUsers(c.Request.Context(), page, perPage, query)
+	users, total, err := h.authSvc.ListUsers(c.Request.Context(), page, perPage, query, "")
 	if err != nil {
 		MapServiceError(c, err)
 		return

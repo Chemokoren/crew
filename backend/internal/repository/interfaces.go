@@ -72,7 +72,7 @@ type UserRepository interface {
 	GetByPhone(ctx context.Context, phone string) (*models.User, error)
 	GetByCrewMemberID(ctx context.Context, crewMemberID uuid.UUID) (*models.User, error)
 	Update(ctx context.Context, user *models.User) error
-	List(ctx context.Context, page, perPage int, search string) ([]models.User, int64, error)
+	List(ctx context.Context, page, perPage int, search string, role string) ([]models.User, int64, error)
 	CountUsers(ctx context.Context) (total int64, active int64, err error)
 }
 

@@ -240,7 +240,7 @@ func (s *NotificationService) SendBroadcast(ctx context.Context, req BroadcastRe
 		totalSent := 0
 		
 		for {
-			users, _, err := s.userRepo.List(bgCtx, page, perPage, "")
+			users, _, err := s.userRepo.List(bgCtx, page, perPage, "", "")
 			if err != nil {
 				s.logger.Error("failed to list users for broadcast", slog.Any("error", err))
 				break

@@ -13,10 +13,20 @@
         placeholder="Search roles..."
         inputId="filter-role"
         [ngModel]="filterRole()"
-        (selectionChange)="filterRole.set($event); loadMembers()"
+        (selectionChange)="filterRole.set($event); applyFilters()"
+      ></app-autocomplete>
+      <app-autocomplete
+        [options]="userOptions()"
+        placeholder="Search phone or email..."
+        inputId="filter-search"
+        [ngModel]="filterSearch()"
+        (selectionChange)="filterSearch.set($event); applyFilters()"
       ></app-autocomplete>
     </div>
-    <span class="team-count">{{ totalMembers() }} members</span>
+    <div class="filter-actions">
+      <button class="btn btn-secondary btn-sm" (click)="clearFilters()"><span class="material-icons-round" style="font-size:14px">clear_all</span> Clear</button>
+      <span class="team-count" style="margin-left: 1rem;">{{ totalMembers() }} members</span>
+    </div>
   </div>
 
   @if (loading()) {

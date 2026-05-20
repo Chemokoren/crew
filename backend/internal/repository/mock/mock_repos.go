@@ -83,7 +83,7 @@ func (r *UserRepo) Update(_ context.Context, user *models.User) error {
 	return nil
 }
 
-func (r *UserRepo) List(_ context.Context, page, perPage int, search string) ([]models.User, int64, error) {
+func (r *UserRepo) List(_ context.Context, page, perPage int, search string, role string) ([]models.User, int64, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	var all []models.User

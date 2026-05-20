@@ -62,8 +62,9 @@ func (h *AdminHandler) ListUsers(c *gin.Context) {
 	if search == "" {
 		search = c.Query("email")
 	}
+	role := c.Query("role")
 
-	users, total, err := h.authSvc.ListUsers(c.Request.Context(), page, perPage, search)
+	users, total, err := h.authSvc.ListUsers(c.Request.Context(), page, perPage, search, role)
 	if err != nil {
 		MapServiceError(c, err)
 		return

@@ -77,7 +77,7 @@ func (r *UserRepo) Update(ctx context.Context, user *models.User) error {
 	return nil
 }
 
-func (r *UserRepo) List(ctx context.Context, page, perPage int, search string) ([]models.User, int64, error) {
+func (r *UserRepo) List(ctx context.Context, page, perPage int, search string, role string) ([]models.User, int64, error) {
 	var users []models.User
 	var total int64
 
@@ -85,6 +85,9 @@ func (r *UserRepo) List(ctx context.Context, page, perPage int, search string) (
 	if search != "" {
 		like := "%" + search + "%"
 		query = query.Where("phone ILIKE ? OR email ILIKE ?", like, like)
+	}
+	if role != "" {
+		query = query.Where("system_role = ?", role)
 	}
 	query.Count(&total)
 

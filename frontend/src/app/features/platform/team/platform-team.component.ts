@@ -31,6 +31,8 @@ export class PlatformTeamComponent implements OnInit {
 
   // Filter
   filterRole = signal('');
+  filterSearch = signal('');
+  userOptions = signal<AutocompleteOption[]>([]);
 
   readonly roles = [
     { value: 'SYSTEM_ADMIN', label: 'System Admin', color: '#ef4444' },
@@ -48,18 +50,41 @@ export class PlatformTeamComponent implements OnInit {
     { value: 'INSURER', label: 'Insurer', sublabel: 'Insurance provider account', searchText: 'insurer insurance provider underwriter', badge: 'INS' },
   ];
 
-  ngOnInit() { this.loadMembers(); }
+  ngOnInit() { 
+    this.loadMembers();
+    this.loadUserOptions();
+  }
+
+  loadUserOptions() {
+    this.api.getUsers({ per_page: '1000' }).subscribe({
+      next: r => {
+        const users = r.data || [];
+        const opts: AutocompleteOption[] = users.map(u => ({
+          value: u.phone,
+          label: u.phone,
+          sublabel: u.email || 'No email',
+          searchText: `${u.phone} ${u.email}`,
+          badge: 'USER'
+        }));
+        this.userOptions.set(opts);
+      }
+    });
+  }
 
   loadMembers() {
     this.loading.set(true);
     const params: Record<string, string> = { page: String(this.page()), per_page: String(this.perPage) };
     if (this.filterRole()) params['role'] = this.filterRole();
+    if (this.filterSearch()) params['search'] = this.filterSearch();
 
     this.api.getUsers(params).subscribe({
       next: r => { this.members.set(r.data || []); this.totalMembers.set(r.meta?.total || 0); this.loading.set(false); },
       error: () => this.loading.set(false),
     });
   }
+
+  applyFilters() { this.page.set(1); this.loadMembers(); }
+  clearFilters() { this.filterRole.set(''); this.filterSearch.set(''); this.page.set(1); this.loadMembers(); }
 
   openInvite() {
     this.inviteData.set({ first_name: '', last_name: '', phone: '', email: '', role: 'SYSTEM_ADMIN', password: '' });

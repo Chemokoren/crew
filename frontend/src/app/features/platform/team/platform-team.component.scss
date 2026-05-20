@@ -5,6 +5,7 @@
 .filter-group { display:flex;gap:var(--space-sm);flex-wrap:wrap;flex:1;
   app-autocomplete { min-width:200px;max-width:320px;flex:1; }
 }
+.filter-actions { display: flex; align-items: center; gap: var(--space-md); }
 .team-count { font-size:0.8125rem;color:var(--color-text-muted); }
 
 .team-grid { display:flex;flex-direction:column;gap:var(--space-sm); }
