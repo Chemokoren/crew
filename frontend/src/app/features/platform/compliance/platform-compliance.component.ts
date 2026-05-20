@@ -87,6 +87,10 @@ export class PlatformComplianceComponent implements OnInit {
     { value: 'APPROVE', label: 'Approve', sublabel: 'Approval workflow events', searchText: 'approve accept confirm' },
     { value: 'REJECT', label: 'Reject', sublabel: 'Rejection workflow events', searchText: 'reject deny decline' },
     { value: 'EXPORT', label: 'Export', sublabel: 'Data export events', searchText: 'export download csv' },
+    { value: 'DENIED', label: 'Access Denied', sublabel: 'Permission denied events', searchText: 'denied permission block' },
+    { value: 'TOPUP', label: 'Top Up', sublabel: 'Wallet top up events', searchText: 'topup credit float deposit' },
+    { value: 'CREDIT', label: 'Credit', sublabel: 'Credit events', searchText: 'credit' },
+    { value: 'DEBIT', label: 'Debit', sublabel: 'Debit events', searchText: 'debit' },
   ];
 
   readonly entityOptions: AutocompleteOption[] = [

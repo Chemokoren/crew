@@ -46,6 +46,14 @@ func (r *AuditLogRepo) List(ctx context.Context, action, resource string, resour
 			search = "rejected"
 		case "export":
 			search = "exported"
+		case "denied":
+			search = "denied"
+		case "topup":
+			search = "topup"
+		case "credit":
+			search = "credit"
+		case "debit":
+			search = "debit"
 		}
 		query = query.Where("action LIKE ?", "%"+search+"%")
 	}
@@ -88,6 +96,14 @@ func (r *AuditLogRepo) ListByUserID(ctx context.Context, userID uuid.UUID, actio
 			search = "rejected"
 		case "export":
 			search = "exported"
+		case "denied":
+			search = "denied"
+		case "topup":
+			search = "topup"
+		case "credit":
+			search = "credit"
+		case "debit":
+			search = "debit"
 		}
 		query = query.Where("action LIKE ?", "%"+search+"%")
 	}
