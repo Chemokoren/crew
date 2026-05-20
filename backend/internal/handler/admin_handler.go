@@ -145,6 +145,7 @@ func (h *AdminHandler) ListAuditLogs(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "20"))
 	resource := c.Query("resource")
+	action := c.Query("action")
 
 	var resourceID *uuid.UUID
 	if rid := c.Query("resource_id"); rid != "" {
@@ -153,7 +154,14 @@ func (h *AdminHandler) ListAuditLogs(c *gin.Context) {
 		}
 	}
 
-	logs, total, err := h.auditRepo.List(c.Request.Context(), resource, resourceID, page, perPage)
+	var userID *uuid.UUID
+	if uid := c.Query("user_id"); uid != "" {
+		if id, err := uuid.Parse(uid); err == nil {
+			userID = &id
+		}
+	}
+
+	logs, total, err := h.auditRepo.List(c.Request.Context(), action, resource, resourceID, userID, page, perPage)
 	if err != nil {
 		MapServiceError(c, err)
 		return

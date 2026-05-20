@@ -25,16 +25,22 @@ func (r *AuditLogRepo) Create(ctx context.Context, log *models.AuditLog) error {
 	return nil
 }
 
-func (r *AuditLogRepo) List(ctx context.Context, resource string, resourceID *uuid.UUID, page, perPage int) ([]models.AuditLog, int64, error) {
+func (r *AuditLogRepo) List(ctx context.Context, action, resource string, resourceID, userID *uuid.UUID, page, perPage int) ([]models.AuditLog, int64, error) {
 	var logs []models.AuditLog
 	var total int64
 
 	query := r.db.WithContext(ctx).Model(&models.AuditLog{})
+	if action != "" {
+		query = query.Where("action = ?", action)
+	}
 	if resource != "" {
 		query = query.Where("resource = ?", resource)
 	}
 	if resourceID != nil {
 		query = query.Where("resource_id = ?", *resourceID)
+	}
+	if userID != nil {
+		query = query.Where("user_id = ?", *userID)
 	}
 	query.Count(&total)
 

@@ -261,7 +261,7 @@ type NotificationPreferenceRepository interface {
 // AuditLogRepository handles audit log data access (append-only).
 type AuditLogRepository interface {
 	Create(ctx context.Context, log *models.AuditLog) error
-	List(ctx context.Context, resource string, resourceID *uuid.UUID, page, perPage int) ([]models.AuditLog, int64, error)
+	List(ctx context.Context, action, resource string, resourceID, userID *uuid.UUID, page, perPage int) ([]models.AuditLog, int64, error)
 	// ListByUserID returns audit logs where the user is either the actor or the affected resource.
 	ListByUserID(ctx context.Context, userID uuid.UUID, action string, page, perPage int) ([]models.AuditLog, int64, error)
 }

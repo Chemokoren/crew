@@ -44,6 +44,6 @@ func (s *AuditService) Log(ctx context.Context, userID *uuid.UUID, action, resou
 	}
 }
 
-func (s *AuditService) ListLogs(ctx context.Context, resource string, resourceID *uuid.UUID, page, perPage int) ([]models.AuditLog, int64, error) {
-	return s.auditRepo.List(ctx, resource, resourceID, page, perPage)
+func (s *AuditService) ListLogs(ctx context.Context, action, resource string, resourceID, userID *uuid.UUID, page, perPage int) ([]models.AuditLog, int64, error) {
+	return s.auditRepo.List(ctx, action, resource, resourceID, userID, page, perPage)
 }
