@@ -82,13 +82,7 @@
                     <td class="mono">{{ log.created_at | date:'short' }}</td>
                     <td><span class="action-badge" [style.background]="actionColor(log.action) + '18'" [style.color]="actionColor(log.action)">{{ log.action }}</span></td>
                     <td>{{ log.resource }}</td>
-                    <td class="truncate" style="max-width:300px">
-                      @if (log.old_value || log.new_value) {
-                        <span style="color: var(--color-text-muted);">Changed values</span>
-                      } @else {
-                        <span style="color: var(--color-text-muted);">No payload</span>
-                      }
-                    </td>
+                    <td class="truncate">{{ log.new_value ? (log.new_value | json) : log.old_value ? (log.old_value | json) : '—' }}</td>
                   </tr>
                 }
               </tbody>
@@ -422,13 +416,7 @@
                       <td class="mono">{{ log.created_at | date:'medium' }}</td>
                       <td><span class="action-badge" [style.background]="actionColor(log.action) + '18'" [style.color]="actionColor(log.action)">{{ log.action }}</span></td>
                       <td>{{ log.resource }}</td>
-                      <td class="truncate" style="max-width:300px">
-                        @if (log.old_value || log.new_value) {
-                          <span style="color: var(--color-text-muted);">Changed values</span>
-                        } @else {
-                          <span style="color: var(--color-text-muted);">No payload</span>
-                        }
-                      </td>
+                      <td class="truncate" style="max-width:300px">{{ log.new_value ? (log.new_value | json) : log.old_value ? (log.old_value | json) : '—' }}</td>
                     </tr>
                   }
                 </tbody>

@@ -90,10 +90,8 @@ type Tab = 'overview' | 'users' | 'audit' | 'templates' | 'rates' | 'ussd';
             @for(l of logs();track l.id){<tr>
               <td style="font-weight:500;color:var(--color-text-primary);">{{l.action}}</td>
               <td><span class="badge badge-neutral">{{l.resource}}</span></td>
-              <td class="mono truncate" style="max-width:120px;font-size:0.75rem;color:var(--color-text-muted);font-family:monospace;" [title]="l.user_id">{{l.user_id?.slice(0,8) || 'SYSTEM'}}...</td>
-              <td class="truncate" style="max-width:200px;font-size:0.8125rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-                {{ l.old_value || l.new_value ? 'Changed values' : 'No payload' }}
-              </td>
+              <td style="font-size:0.75rem;color:var(--color-text-muted);font-family:monospace;">{{(l.user_id||'').slice(0,8)}}...</td>
+              <td style="font-size:0.8125rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{(l.new_value ? (l.new_value | json) : l.old_value ? (l.old_value | json) : '—')}}</td>
               <td style="font-size:0.8125rem;color:var(--color-text-muted);white-space:nowrap;">{{l.created_at|relativeTime}}</td>
             </tr>}</tbody></table></div>
           <div class="pagination">
