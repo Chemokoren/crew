@@ -28,7 +28,7 @@ interface PlatformNavItem {
       <div class="sidebar-brand">
         <div class="brand-logo">
           <div class="platform-brand-icon">
-            <span class="material-icons-round">hub</span>
+            <img src="/logo.png" alt="AMY Logo" class="platform-brand-img" />
           </div>
           @if (!collapsed()) {
             <div class="platform-brand-text">
@@ -152,14 +152,20 @@ interface PlatformNavItem {
       display: flex;
       align-items: center;
       justify-content: center;
-      background: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
+      border: 2px solid transparent;
+      background: linear-gradient(var(--platform-bg-sidebar, #0c0518), var(--platform-bg-sidebar, #0c0518)) padding-box,
+                  linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%) border-box;
       border-radius: var(--radius-md);
       flex-shrink: 0;
+    }
 
-      .material-icons-round {
-        font-size: 20px;
-        color: #fff;
-      }
+    .platform-brand-img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      padding: 2px;
+      box-sizing: border-box;
+      flex-shrink: 0;
     }
 
     .platform-brand-text {
